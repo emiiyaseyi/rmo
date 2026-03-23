@@ -1,7 +1,9 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { local, logAudit } from '../../lib/utils'
+import { local, logAudit, genId } from '../../lib/utils'
+import { db } from '../../lib/firebase'
+import { doc, getDoc, updateDoc, increment, setDoc } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { Staff } from '../../types'
 import { Eye, EyeOff } from 'lucide-react'
@@ -26,20 +28,39 @@ export default function LoginPage() {
     if (!/[A-Z]/.test(pass)) return 'Password must contain a capital letter'
     if (!/[a-z]/.test(pass)) return 'Password must contain a small letter'
     if (!/[0-9]/.test(pass)) return 'Password must contain a number'
+    if (pass === 'dsn-staff' || pass === '1234') return 'Password is blacklisted'
     return null
   }
 
-  function handleSignIn(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
 
+    if (!email.endsWith('@datasciencenigeria.ai')) {
+      setError('Invalid email. Please use your @datasciencenigeria.ai work email.')
+      setLoading(false)
+      return
+    }
+
     // Find user
     const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
 
-    setTimeout(() => {
-      if (!found) {
-        setError('Invalid credentials.')
+    if (!found) {
+      setError('Invalid credentials.')
+      setLoading(false)
+      return
+    }
+
+    // Check persistent lockout from Firestore
+    try {
+      const userRef = doc(db, 'staff', found.id)
+      const userSnap = await getDoc(userRef)
+      const securityData = userSnap.data()
+      
+      if (securityData?.lockout_until && new Date(securityData.lockout_until) > new Date()) {
+        const remaining = Math.ceil((new Date(securityData.lockout_until).getTime() - Date.now()) / 60000)
+        setError(`Account locked. Try again in ${remaining} minutes.`)
         setLoading(false)
         return
       }
@@ -50,23 +71,33 @@ export default function LoginPage() {
         return
       }
 
-      // Check password/pin (supporting legacy naming for a moment but using password field)
+      // Check password
       if (found.password !== password) {
-        setError('Invalid credentials.')
+        // Increment failed attempts
+        const currentFailed = (securityData?.failed_attempts || 0) + 1
+        let lockoutUpdate = {}
+        if (currentFailed >= 5) {
+          const lockoutTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+          lockoutUpdate = { failed_attempts: currentFailed, lockout_until: lockoutTime }
+          setError('Too many failed attempts. Account locked for 30 minutes.')
+          logAudit('LOCKOUT', `${found.name} account locked for 30 min`, found.id, found.name)
+        } else {
+          lockoutUpdate = { failed_attempts: currentFailed }
+          setError(`Invalid credentials. ${5 - currentFailed} attempts remaining.`)
+        }
+        await setDoc(userRef, lockoutUpdate, { merge: true })
         setLoading(false)
         return
       }
 
-      setFoundUser(found)
-
-      // Check for default password ("admin") or first login
-      if (found.first_login || found.password === 'admin') {
-        setStep('change_password')
-      } else {
-        login(found)
-      }
+      // Success
+      await login(found)
       setLoading(false)
-    }, 600)
+    } catch (e: any) {
+      console.error('Login error:', e)
+      setError('An error occurred during sign-in. Please try again.')
+      setLoading(false)
+    }
   }
 
   function handleChangePassword(e: React.FormEvent) {
@@ -88,13 +119,28 @@ export default function LoginPage() {
     toast.success('Password updated successfully!')
   }
 
-  function handleForgot(e: React.FormEvent) {
+  async function handleForgot(e: React.FormEvent) {
     e.preventDefault()
-    setForgotSent(true)
-    const reqs = local.get<any[]>('reset_requests', [])
-    reqs.push({ email, timestamp: new Date().toISOString(), status: 'pending' })
-    local.set('reset_requests', reqs)
-    toast.success('Reset request sent to admin.')
+    setLoading(true)
+    try {
+      const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
+      if (found) {
+        const reqRef = doc(db, 'reset_requests', genId())
+        await setDoc(reqRef, {
+          userId: found.id,
+          userName: found.name,
+          email: found.email,
+          timestamp: new Date().toISOString(),
+          status: 'pending'
+        })
+      }
+      setForgotSent(true)
+      toast.success('Reset request sent to admin.')
+    } catch (e: any) {
+      toast.error('Failed to send reset request.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

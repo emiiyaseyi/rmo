@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -262,30 +262,97 @@ function ResubmitModal({ entry, onSave, onClose }: ResubmitModalProps) {
 }
 
 /* ────────────────────────────────────────────────────────────── */
+/*  Countdown Timer                                               */
+/* ────────────────────────────────────────────────────────────── */
+function CountdownTimer({ weekKey }: { weekKey: string }) {
+  const [timeLeft, setTimeLeft] = useState('')
+  
+  useEffect(() => {
+    const weekStart = new Date(weekKey)
+    const deadline = new Date(weekStart)
+    deadline.setDate(deadline.getDate() + 1) // Monday
+    deadline.setDate(deadline.getDate() + 1) // Tuesday
+    deadline.setHours(16, 0, 0, 0) // 4:00pm
+
+    const tick = () => {
+      const now = new Date()
+      const diff = deadline.getTime() - now.getTime()
+      if (diff <= 0) { setTimeLeft('Deadline passed'); return }
+      
+      const d = Math.floor(diff / 86400000)
+      const h = Math.floor((diff % 86400000) / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimeLeft(`${d > 0 ? d + 'd ' : ''}${h}h ${m}m ${s}s`)
+    }
+    
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [weekKey])
+
+  return (
+    <div className="badge badge-yellow" style={{ fontSize: 11, fontWeight: 700 }}>
+       ⏳ {timeLeft} left to submit
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
+/*  Submission Confirmation Modal                                 */
+/* ────────────────────────────────────────────────────────────── */
+function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onClose }: any) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Confirm Submission</span>
+          <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, marginBottom: 16 }}>You are about to submit <strong>{entries.length} entries</strong> totaling <strong>{totalHours}h</strong>.</p>
+          <div style={{ background: 'var(--bg-card)', padding: 12, borderRadius: 8, fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span>Base Cap:</span>
+              <span>{cap}h</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: totalHours > cap ? 'var(--warning)' : 'var(--text-1)' }}>
+              <span>Total Hours:</span>
+              <span>{totalHours}h {totalHours > cap ? `(${totalHours - cap}h OT)` : ''}</span>
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 16 }}>Once submitted, this week will be locked for review.</p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={onConfirm}>Confirm & Submit</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
 /*  Main Page                                                     */
 /* ────────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
-  const { user, entries, saveEntries, staff, projects, settings, notify, awardPoints, grantBadge, templates, saveTemplates } = useApp()
+  const { user, entries, saveEntries, staff, projects, settings, notify, awardPoints, grantBadge, templates, saveTemplates, calculateWeekCap, submitWeekEntries } = useApp()
   const [selectedWeek, setSelectedWeek] = useState(getWeekKey())
   const [viewingStaffId, setViewingStaffId] = useState<string | null>(null) // admin: view another staff's sheet
   const [showForm, setShowForm] = useState(false)
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [overrideEntry, setOverrideEntry] = useState<Entry | null>(null)
   const [resubmitEntry, setResubmitEntry] = useState<Entry | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const isAdmin = user?.role === 'admin'
-  // const isOwner = user?.role === 'owner' || isAdmin
-  // Effective viewer: admin can impersonate
-  const viewingStaff = isAdmin && viewingStaffId ? staff.find(s => s.id === viewingStaffId) : null
-  const effectiveUserId = (viewingStaff ? viewingStaff.id : user?.id) || ''
+  const targetUser = isAdmin && viewingStaffId ? staff.find(s => s.id === viewingStaffId) : user
+  const effectiveUserId = targetUser?.id || ''
 
   const leads = staff.filter(s => s.role === 'owner' || s.role === 'admin')
   const categories = settings?.categories || ['Client Work', 'Internal', 'Training', 'Admin']
-  const weekCap = (() => {
-    const target = viewingStaff || user
-    if (!target) return settings?.weekly_cap || 45
-    return target.weekly_cap ? parseInt(target.weekly_cap as string) : (settings?.weekly_cap || 45)
-  })()
+  
+  const { cap: weekCap, isHoliday, isCDS } = calculateWeekCap(targetUser, selectedWeek)
 
   const [lockedWeeks] = useState(() => {
     if (typeof window === 'undefined') return []
@@ -318,37 +385,36 @@ export default function TimesheetPage() {
   const hasRejected = weekEntries.some(e => e.status === 'rejected')
   const canEdit = isAdmin || (!submitted && !isLocked)
   const canSubmit = !isAdmin && isWindowOpen && !submitted && weekEntries.length > 0 && !isLocked && isCurrentWeek && !isOver
-  const myTemplates = templates.filter(t => t.ownerId === user?.id)
+  const myTemplates = templates.filter(t => t.staffId === user?.id)
+
+  function updateEntry(entryId: string, updates: any) {
+    saveEntries(entries.map(e => e.id === entryId ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e))
+  }
 
   function saveEntry(form: any) {
     const isEdit = !!editEntry?.id
     if (!isEdit) {
-      const similar = weekEntries.find(e => e.project === form.project && e.date === form.date && Math.abs((e.hours || 0) - (form.hours || 0)) < 0.5)
-      if (similar && !window.confirm('A similar entry exists for this project/date. Add anyway?')) return
+      const similar = weekEntries.find(e => e.project === form.project && e.category === form.category)
+      if (similar && !window.confirm('A similar entry (same project + category) already exists for this week. Add anyway?')) return
     }
-    const now = new Date().toISOString()
+
     if (isEdit && editEntry) {
-      saveEntries(entries.map(e => e.id === editEntry.id ? { ...e, ...form, updatedAt: now } : e))
-      logAudit('EDIT_ENTRY', `${user?.name} edited entry`, user?.id || '', user?.name || '')
+      updateEntry(editEntry.id, form)
       toast.success('Entry updated')
     } else {
+      const now = new Date().toISOString()
       const ne: Entry = {
         ...form,
         id: genId(),
         staffId: effectiveUserId,
-        staffName: viewingStaff?.name || user?.name || '',
+        staffName: targetUser?.name || '',
         weekKey: selectedWeek,
         status: 'draft',
         createdAt: now,
         updatedAt: now
       }
       saveEntries([...entries, ne])
-      logAudit('ADD_ENTRY', `${user?.name} added entry${viewingStaff ? ' for ' + viewingStaff.name : ''}`, user?.id || '', user?.name || '')
       toast.success('Entry added')
-      if (user) {
-        const myTotal = entries.filter(e => e.staffId === effectiveUserId).length
-        if (myTotal === 0 && !viewingStaff) grantBadge(user.id, 'first_blood')
-      }
     }
     setShowForm(false); setEditEntry(null)
   }
@@ -376,16 +442,13 @@ export default function TimesheetPage() {
 
   function submitWeek() {
     if (!user) return
-    if (isOver) { toast.error(`Cannot submit: ${totalHours}h exceeds ${weekCap}h cap`); return }
-    if (!window.confirm(`Submit ${weekEntries.length} entries (${totalHours}h) for ${weekRange(selectedWeek)}?`)) return
-    const now = new Date().toISOString()
-    saveEntries(entries.map(e => e.staffId === user.id && e.weekKey === selectedWeek && e.status === 'draft' ? { ...e, status: 'submitted', submittedAt: now, updatedAt: now } : e))
-    const isEarly = new Date().getUTCDay() === 1 && new Date().getUTCHours() < 12
-    awardPoints(user.id, isEarly ? (settings?.points?.submit_early || 15) : (settings?.points?.submit_ontime || 10), 'Submitted timesheet')
-    if (isEarly) grantBadge(user.id, 'early_bird')
-    if (totalHours >= weekCap) grantBadge(user.id, 'full_house')
-    staff.filter(s => s.role === 'admin' || (s.role === 'owner' && user.leadId === s.id)).forEach(lead => notify(lead.id, `${user.name} submitted timesheet for ${weekRange(selectedWeek)}`, 'submission'))
-    logAudit('SUBMIT_WEEK', `${user.name} submitted week ${selectedWeek}`, user.id, user.name)
+    setShowConfirm(true)
+  }
+
+  async function handleConfirmSubmit() {
+    if (!user) return
+    await submitWeekEntries(user.id, selectedWeek, totalHours)
+    setShowConfirm(false)
     toast.success('✅ Timesheet submitted!')
   }
 
@@ -441,7 +504,7 @@ export default function TimesheetPage() {
           const newEntries: Entry[] = rows.map(r => ({
             id: genId(),
             staffId: effectiveUserId,
-            staffName: viewingStaff?.name || user?.name || '',
+            staffName: targetUser?.name || '',
             weekKey: selectedWeek,
             project: r.Project || r.project || '',
             lead: r.Lead || r.lead || '',
@@ -473,7 +536,7 @@ export default function TimesheetPage() {
   async function handleExport(format: string) {
     const rows = weekEntries.map(e => ({ Date: fmtDate(e.date), Project: e.project, Lead: e.lead || '', Category: e.category || '', Description: e.description, Hours: e.hours, Status: e.status }))
     if (format === 'csv') {
-      exportCSV(rows, `timesheet_${(viewingStaff || user)?.name?.replace(/ /g, '_')}_${selectedWeek}.csv`)
+      exportCSV(rows, `timesheet_${(targetUser)?.name?.replace(/ /g, '_')}_${selectedWeek}.csv`)
       toast.success('CSV exported')
     } else {
       try {
@@ -481,7 +544,7 @@ export default function TimesheetPage() {
           { key: 'Date', label: 'Date' }, { key: 'Project', label: 'Project' }, { key: 'Lead', label: 'Lead' },
           { key: 'Category', label: 'Category' }, { key: 'Description', label: 'Description' },
           { key: 'Hours', label: 'Hours' }, { key: 'Status', label: 'Status' },
-        ], `Timesheet — ${(viewingStaff || user)?.name} — ${weekRange(selectedWeek)}`, `timesheet_${selectedWeek}.pdf`)
+        ], `Timesheet — ${(targetUser)?.name} — ${weekRange(selectedWeek)}`, `timesheet_${selectedWeek}.pdf`)
         toast.success('PDF exported')
       } catch { toast.error('PDF failed — use CSV') }
     }
@@ -496,14 +559,15 @@ export default function TimesheetPage() {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>
             📋 Timesheet
-            {viewingStaff && <span style={{ fontSize: 13, color: 'var(--warning)', marginLeft: 10 }}>👁 Viewing: {viewingStaff.name}</span>}
+            {viewingStaffId && <span style={{ fontSize: 13, color: 'var(--warning)', marginLeft: 10 }}>👁 Viewing: {targetUser?.name}</span>}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{weekRange(selectedWeek)}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {isCurrentWeek && isWindowOpen && <CountdownTimer weekKey={selectedWeek} />}
           {/* Admin: view another staff's timesheet */}
           {isAdmin && (
-            <select className="form-select" style={{ width: 'auto', borderColor: viewingStaff ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
+            <select className="form-select" style={{ width: 'auto', borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
               <option value="">My Timesheet</option>
               {staff.filter(s => s.id !== user?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -520,10 +584,24 @@ export default function TimesheetPage() {
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>PDF</button>
           {canEdit && !isLocked && (
             <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
-              <Plus size={14} /> Add Entry
+              <Plus size={14} /> Log Hours
             </button>
           )}
         </div>
+      </div>
+
+      {/* Dynamic Banners */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {isHoliday && (
+          <div style={{ flex: 1, background: 'var(--accent-bg)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '10px 14px', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            🌴 <strong>Public Holiday Week:</strong> Cap reduced by 8h per holiday.
+          </div>
+        )}
+        {isCDS && (
+          <div style={{ flex: 1, background: 'rgba(139, 92, 246, 0.1)', border: '1px solid #8B5CF6', color: '#8B5CF6', padding: '10px 14px', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            🎓 <strong>Intern CDS:</strong> 8h deduction applied to your weekly cap.
+          </div>
+        )}
       </div>
 
       {/* Hours bar */}
@@ -536,9 +614,9 @@ export default function TimesheetPage() {
         </div>
         <div style={{ flex: 1, minWidth: 150 }}>
           <div className="progress" style={{ height: 8 }}>
-            <div className="progress-bar" style={{ width: `${Math.min((totalHours / weekCap) * 100, 100)}%`, background: isOver ? 'var(--danger)' : totalHours >= weekCap * 0.8 ? 'var(--warning)' : 'var(--accent)' }} />
+            <div className="progress-bar" style={{ width: `${Math.min((totalHours / weekCap) * 100, 100)}%`, background: isOver ? 'var(--warning)' : totalHours >= weekCap * 0.8 ? 'var(--accent)' : 'var(--accent)' }} />
           </div>
-          {isOver && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>⛔ Over cap by {(totalHours - weekCap).toFixed(1)}h — submit blocked</div>}
+          {isOver && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 4 }}>⚡ Overtime: Logging {(totalHours - weekCap).toFixed(1)}h beyond base cap</div>}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {submitted && <span className="badge badge-green" style={{ fontSize: 13 }}>✅ Submitted</span>}
@@ -567,8 +645,8 @@ export default function TimesheetPage() {
       {weekEntries.length === 0 ? (
         <div className="empty-state card">
           <div className="empty-state-icon">📋</div>
-          <div className="empty-state-title">No entries {viewingStaff ? `for ${viewingStaff.name}` : ''} this week</div>
-          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Add Entry</button>}
+          <div className="empty-state-title">No entries {targetUser?.id !== user?.id ? `for ${targetUser?.name}` : ''} this week</div>
+          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -613,7 +691,7 @@ export default function TimesheetPage() {
                           <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditEntry(e); setShowForm(true) }}><Edit2 size={12} /></button>
                         )}
                         <button className="btn btn-icon btn-secondary btn-sm" title="Duplicate" onClick={() => duplicateEntry(e)}><Copy size={12} /></button>
-                        {e.status === 'rejected' && !viewingStaff && (
+                        {e.status === 'rejected' && !viewingStaffId && (
                           <button className="btn btn-success btn-sm" onClick={() => setResubmitEntry(e)}>Resubmit</button>
                         )}
                         {(e.status === 'draft' || isAdmin) && !isLocked && (
@@ -654,6 +732,15 @@ export default function TimesheetPage() {
       )}
       {resubmitEntry && (
         <ResubmitModal entry={resubmitEntry} onSave={handleResubmit} onClose={() => setResubmitEntry(null)} />
+      )}
+      {showConfirm && (
+        <SubmissionConfirmationModal
+          entries={weekEntries}
+          totalHours={totalHours}
+          cap={weekCap}
+          onConfirm={handleConfirmSubmit}
+          onClose={() => setShowConfirm(false)}
+        />
       )}
     </div>
   )

@@ -1,63 +1,36 @@
-# DSN Resource Management System
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Full-featured timesheet, approval, and staff management system built with React + Vite.
+## Getting Started
 
-## 🚀 Deploy to Vercel via GitHub
+First, run the development server:
 
 ```bash
-# 1. Clone / initialize
-cd dsn-rms
-git init
-git add .
-git commit -m "feat: DSN RMS initial build"
-
-# 2. Push to GitHub
-git remote add origin https://github.com/YOUR_USERNAME/dsn-rms.git
-git push -u origin main
-
-# 3. Go to vercel.com → New Project → Import from GitHub
-# Vercel auto-detects Vite. No config needed.
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-## 🔌 Connect Supabase
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-1. Go to [supabase.com](https://supabase.com) and create a project
-2. In Supabase → SQL Editor, paste and run `supabase_schema.sql` (in project root)
-3. Log into DSN RMS as admin → Settings → Supabase → paste Project URL + Anon Key
-4. Click "Test & Save Connection"
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-**That's it.** All data will now sync to Supabase in real-time.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## 👤 Adding Your First Admin
+## Learn More
 
-After deploying, go to Settings → Staff and add your admin account manually,
-OR import via the Excel/CSV bulk import. Set role to `admin`.
+To learn more about Next.js, take a look at the following resources:
 
-## 📁 Staff Import Format
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-CSV/Excel columns:
-| Name | Email | Department | Role | Lead | Phone | PIN |
-|------|-------|------------|------|------|-------|-----|
-| Jane Doe | jane@dsn.com | Engineering | staff | John Manager | +234... | 1234 |
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-- `Role`: `staff`, `owner`, or `admin`
-- `Lead`: Must match exact name of an existing staff member
-- `PIN`: Default PIN (staff change on first login)
+## Deploy on Vercel
 
-## 🔑 Default Login Flow
-1. Enter email → enter PIN
-2. First login: staff must set a new PIN before accessing the app
-3. Forgot PIN: requests go to Settings → PIN Resets queue
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-## ✨ Feature Summary
-- Email + PIN auth with lockout, idle timeout, first-login PIN change
-- Timesheet with 45h cap enforcement, submission window, bulk import/export
-- Approval workflow: approve / correct / reject / clarify + 2nd-level threshold
-- Leaderboard with points, badges, Hall of Fame, Points Shop
-- Direct messages + group channels
-- Analytics with week comparison, budget vs actual, custom column reports
-- Staff management with bulk select, bulk edit, bulk delete, import preview
-- Active sessions view, force logout
-- Delegation of approval authority
-- Org chart, audit trail, dark/light mode
-- Supabase real-time sync + localStorage offline fallback
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

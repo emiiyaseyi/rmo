@@ -16,7 +16,7 @@ interface StaffModalProps {
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
   const leads = allStaff.filter(s => s.role === 'owner' || s.role === 'admin')
-  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', role: 'staff', leadId: '', leadName: '', phone: '', pin: '1234', first_login: true, weekly_cap: '' })
+  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', role: 'staff', leadId: '', leadName: '', phone: '', password: 'admin', first_login: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
 
@@ -25,7 +25,7 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
     if (!form.name.trim()) e.name = 'Required'
     if (!form.email.trim()) e.email = 'Required'
     if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email'
-    if (!form.pin || String(form.pin).length < 4) e.pin = 'Min 4 digits'
+    if (!form.password || String(form.password).length < 4) e.password = 'Min 4 characters'
     return e
   }
   function submit() {
@@ -80,10 +80,10 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <input className="form-input" value={form.phone || ''} onChange={e => F('phone', e.target.value)} placeholder="+234..." />
             </div>
             <div className="form-group">
-              <label className="form-label">Initial PIN * (min 4 digits)</label>
-              <input className="form-input" type="password" value={form.pin} onChange={e => F('pin', e.target.value.replace(/\D/g, ''))} maxLength={8} />
-              {errors.pin && <span className="form-error">{errors.pin}</span>}
-              <span className="form-hint">Staff will change on first login</span>
+              <label className="form-label">Initial Password *</label>
+              <input className="form-input" type="password" value={form.password} onChange={e => F('password', e.target.value)} />
+              {errors.password && <span className="form-error">{errors.password}</span>}
+              <span className="form-hint">Default: admin. Staff will change on first login</span>
             </div>
             <div className="form-group">
               <label className="form-label">Weekly Cap Override (hrs)</label>
@@ -110,8 +110,8 @@ interface BulkEditModalProps {
 
 function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps) {
   const leads = allStaff.filter(s => s.role === 'owner' || s.role === 'admin')
-  const [fields, setFields] = useState<any>({ department: '', role: '', leadId: '', leadName: '', weekly_cap: '', pin: '' })
-  const [checks, setChecks] = useState<any>({ department: false, role: false, leadId: false, weekly_cap: false, pin: false })
+  const [fields, setFields] = useState<any>({ department: '', role: '', leadId: '', leadName: '', weekly_cap: '', password: '' })
+  const [checks, setChecks] = useState<any>({ department: false, role: false, leadId: false, weekly_cap: false, password: false })
   const F = (k: string, v: any) => setFields((f: any) => ({ ...f, [k]: v }))
   const C = (k: string) => setChecks((c: any) => ({ ...c, [k]: !c[k] }))
 
@@ -121,7 +121,7 @@ function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps
     if (checks.role && fields.role) updates.role = fields.role
     if (checks.leadId && fields.leadId) { updates.leadId = fields.leadId; updates.leadName = fields.leadName }
     if (checks.weekly_cap && fields.weekly_cap) updates.weekly_cap = parseInt(fields.weekly_cap)
-    if (checks.pin && fields.pin && fields.pin.length >= 4) { updates.pin = fields.pin; updates.first_login = true }
+    if (checks.password && fields.password && fields.password.length >= 4) { updates.password = fields.password; updates.first_login = true }
     if (Object.keys(updates).length === 0) { toast.error('Select at least one field to update'); return }
     onApply(updates)
   }
@@ -170,8 +170,8 @@ function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps
           <Row field="weekly_cap" label="Weekly Cap (hrs)">
             <input className="form-input" type="number" value={fields.weekly_cap} onChange={e => F('weekly_cap', e.target.value)} placeholder="e.g. 40" style={{ maxWidth: 120 }} />
           </Row>
-          <Row field="pin" label="Reset PIN">
-            <input className="form-input" type="password" value={fields.pin} onChange={e => F('pin', e.target.value.replace(/\D/g, ''))} placeholder="New PIN (min 4)" maxLength={8} style={{ maxWidth: 160 }} />
+          <Row field="password" label="Reset Password">
+            <input className="form-input" type="password" value={fields.password} onChange={e => F('password', e.target.value)} placeholder="New password" style={{ maxWidth: 160 }} />
           </Row>
         </div>
         <div className="modal-footer">
@@ -400,12 +400,12 @@ export default function StaffPage() {
     toast.success(`${selected.size} staff updated`)
   }
 
-  function resetPIN(s: Staff) {
-    const newPin = prompt(`New PIN for ${s.name} (min 4 digits):`)
-    if (!newPin || newPin.replace(/\D/g, '').length < 4) { toast.error('Invalid PIN'); return }
-    saveStaff(staff.map(m => m.id === s.id ? { ...m, pin: newPin.replace(/\D/g, ''), first_login: true } : m))
-    notify(s.id, 'Your PIN has been reset by admin. Please login with your new PIN.', 'info')
-    toast.success('PIN reset for ' + s.name)
+  function resetPassword(s: Staff) {
+    const newPass = prompt(`New password for ${s.name} (min 4 characters):`, 'admin')
+    if (!newPass || newPass.length < 4) { toast.error('Invalid password'); return }
+    saveStaff(staff.map(m => m.id === s.id ? { ...m, password: newPass, first_login: true } : m))
+    notify(s.id, 'Your password has been reset by admin. Please login with your new password.', 'info')
+    toast.success('Password reset for ' + s.name)
   }
 
   function forceLogout(s: Staff) {
@@ -449,7 +449,7 @@ export default function StaffPage() {
   }
 
   function downloadTemplate() {
-    exportCSV([{ Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'Engineering', Role: 'staff', Lead: 'John Manager', Phone: '+2341234567', PIN: '1234' }], 'staff_import_template.csv')
+    exportCSV([{ Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'Engineering', Role: 'staff', Lead: 'John Manager', Phone: '+2341234567', Password: 'admin' }], 'staff_import_template.csv')
   }
 
   /* ── Bulk import ── */
@@ -482,7 +482,7 @@ export default function StaffPage() {
     const now = new Date().toISOString()
     const newStaff: Staff[] = rows.map(r => {
       const lead = staff.find(s => s.name === r.lead)
-      return { id: genId(), name: r.name, email: r.email, department: r.department, role: r.role, leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, pin: r.pin, first_login: true, points: 0, streak: 0, badges: [], createdAt: now }
+      return { id: genId(), name: r.name, email: r.email, department: r.department, role: r.role, leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, password: r.password || 'admin', first_login: true, points: 0, streak: 0, badges: [], createdAt: now }
     })
     saveStaff([...staff, ...newStaff])
     logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
@@ -646,7 +646,7 @@ export default function StaffPage() {
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
                             <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditStaff(s); setShowModal(true) }}><Edit2 size={12} /></button>
-                            <button className="btn btn-icon btn-secondary btn-sm" title="Reset PIN" onClick={() => resetPIN(s)}><Key size={12} /></button>
+                            <button className="btn btn-icon btn-secondary btn-sm" title="Reset Password" onClick={() => resetPassword(s)}><Key size={12} /></button>
                             <button className="btn btn-icon btn-secondary btn-sm" title={s.suspended ? 'Unsuspend' : 'Suspend'} onClick={() => toggleSuspend(s)}>
                               {s.suspended ? <UserCheck size={12} /> : <UserX size={12} />}
                             </button>

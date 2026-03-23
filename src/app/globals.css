@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+
 *,
 *::before,
 *::after {
@@ -7,22 +9,22 @@
 }
 
 :root {
-  --font-inter: var(--font-inter, 'Inter', sans-serif);
-  --font-poppins: var(--font-poppins, 'Poppins', sans-serif);
-  --font-jakarta: var(--font-jakarta, 'Plus Jakarta Sans', sans-serif);
-  --font-dm: var(--font-dm, 'DM Sans', sans-serif);
+  --font-inter: 'Inter', sans-serif;
+  --font-poppins: 'Poppins', sans-serif;
+  --font-jakarta: 'Plus Jakarta Sans', sans-serif;
+  --font-dm: 'DM Sans', sans-serif;
 
   --font: var(--font-poppins);
   --mono: 'JetBrains Mono', monospace;
 
-  /* VoiceAgent Brand Colors */
+  /* DSN Brand Colors (Refined) */
   --brand-primary: #076C04;
-  --brand-hover: #3A7326;
-  --brand-red: #D8001A;
-  --brand-light: #E9F5E9;
+  --brand-hover: #065903;
+  --brand-red: #E60000;
+  --brand-light: #F0FDF4;
 
-  /* Primary Theme (Light-leaning) */
-  --bg-base: #FFFFFF;
+  /* Primary Theme */
+  --bg-base: #F9FAFB;
   --bg-surface: #F8FAF9;
   --bg-card: #FFFFFF;
   --bg-elevated: #F2F5F3;

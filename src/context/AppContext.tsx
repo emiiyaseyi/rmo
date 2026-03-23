@@ -38,7 +38,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const dm = local.get<boolean>('dark_mode', false)
     setDarkMode(dm)
-    document.body.classList.toggle('light', !dm)
+    document.body.classList.toggle('dark', dm)
 
     const acts = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart']
     const handler = () => resetIdle()
@@ -68,13 +68,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function loadAll() {
     // Seed the bootstrap admin if staff list is empty
-    const SEED_ADMIN = {
+    const SEED_ADMIN: Staff = {
       id: 'seed-admin-001',
       name: 'Adeniran',
       email: 'adeniran@datasciencenigeria.ai',
       department: 'Administration',
-      role: 'admin',
-      pin: '1234',
+      role: 'admin' as 'admin',
+      password: 'admin',
       first_login: true,
       points: 0,
       streak: 0,
@@ -82,12 +82,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       suspended: false,
       createdAt: new Date().toISOString(),
     }
-    const savedStaff = local.get('staff', [])
-    const staffToLoad = savedStaff.length === 0 ? [SEED_ADMIN] : savedStaff
-    // Ensure seed admin is always present even if staff was cleared
-    const hasSeedAdmin = staffToLoad.some(s => s.email === 'adeniran@datasciencenigeria.ai')
-    if (!hasSeedAdmin) staffToLoad.unshift(SEED_ADMIN)
-    setStaff(staffToLoad as Staff[])
+    let staffToLoad = local.get<Staff[]>('staff', [])
+
+    // MIGRATION: If staff list is empty or admin has old PIN, update to Password
+    if (staffToLoad.length === 0) {
+      staffToLoad = [SEED_ADMIN]
+    } else {
+      staffToLoad = staffToLoad.map(s => {
+        // Migration of 'pin' to 'password'
+        const currentPin = (s as any).pin;
+        if (currentPin && !s.password) {
+          return { ...s, password: currentPin, first_login: true } as Staff
+        }
+        return s
+      })
+
+      // Force reset for specific seed admin to ensure login works during migration
+      const seedIdx = staffToLoad.findIndex(s => s.email === 'adeniran@datasciencenigeria.ai')
+      if (seedIdx > -1) {
+        staffToLoad[seedIdx].password = 'admin'
+        staffToLoad[seedIdx].first_login = true
+      } else {
+        staffToLoad.unshift(SEED_ADMIN)
+      }
+    }
+
+    setStaff(staffToLoad)
+    local.set('staff', staffToLoad) // Persist migration
     setEntries(local.get<Entry[]>('entries', []))
     setMessages(local.get<any[]>('messages', []))
     setNots(local.get<any[]>('notifications', []))
@@ -172,7 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const next = !darkMode
     setDarkMode(next)
     local.set('dark_mode', next)
-    document.body.classList.toggle('light', !next)
+    document.body.classList.toggle('dark', next)
   }
 
   function notify(userId: string, message: string, type = 'info') {

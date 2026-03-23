@@ -8,8 +8,8 @@ import toast from 'react-hot-toast'
 export default function ProfilePage() {
   const { user, updateUser, staff, entries, leaves, saveLeaves, settings, notify, templates, saveTemplates } = useApp()
   const [tab, setTab] = useState<string>('overview')
-  const [pinForm, setPinForm] = useState({ current: '', newPin: '', confirm: '' })
-  const [pinError, setPinError] = useState<string>('')
+  const [passwordForm, setPasswordForm] = useState({ current: '', newPassword: '', confirm: '' })
+  const [passwordError, setPasswordError] = useState<string>('')
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
   const [fontSize, setFontSize] = useState<number>(local.get<number>('font_size', 14))
   const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weekly_goal || 40)
@@ -28,16 +28,29 @@ export default function ProfilePage() {
   const rank = [...staff].sort((a, b) => (b.points || 0) - (a.points || 0)).findIndex(s => s.id === user?.id) + 1
   const myLeaves = leaves.filter(l => l.staffId === user?.id)
 
-  function changePIN(e: React.FormEvent) {
+  function validateNewPassword(pass: string) {
+    if (pass.length < 8) return 'Password must be at least 8 characters'
+    if (!/[A-Z]/.test(pass)) return 'Password must contain a capital letter'
+    if (!/[a-z]/.test(pass)) return 'Password must contain a small letter'
+    if (!/[0-9]/.test(pass)) return 'Password must contain a number'
+    return null
+  }
+
+  function changePassword(e: React.FormEvent) {
     e.preventDefault()
-    setPinError('')
-    if (pinForm.current !== user?.pin) { setPinError('Current PIN is incorrect'); return }
-    if (pinForm.newPin.length < 4) { setPinError('New PIN must be at least 4 digits'); return }
-    if (pinForm.newPin !== pinForm.confirm) { setPinError('PINs do not match'); return }
-    if (pinForm.newPin === user?.pin) { setPinError('New PIN must differ from current'); return }
-    updateUser({ pin: pinForm.newPin, first_login: false })
-    setPinForm({ current: '', newPin: '', confirm: '' })
-    toast.success('PIN updated successfully')
+    setPasswordError('')
+    if (passwordForm.current !== user?.password) { setPasswordError('Current password is incorrect'); return }
+
+    const validationError = validateNewPassword(passwordForm.newPassword)
+    if (validationError) { setPasswordError(validationError); return }
+
+    if (passwordForm.newPassword !== passwordForm.confirm) { setPasswordError('Passwords do not match'); return }
+    if (passwordForm.newPassword === user?.password) { setPasswordError('New password must differ from current'); return }
+    if (passwordForm.newPassword === 'admin') { setPasswordError('Cannot use "admin" as new password'); return }
+
+    updateUser({ password: passwordForm.newPassword, first_login: false })
+    setPasswordForm({ current: '', newPassword: '', confirm: '' })
+    toast.success('Password updated successfully')
   }
 
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -177,9 +190,9 @@ export default function ProfilePage() {
       </div>
 
       <div className="tabs">
-        {['overview', 'change_pin', 'leave', 'badges', 'templates', 'accessibility'].map(t => (
+        {['overview', 'change_password', 'leave', 'badges', 'templates', 'accessibility'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'overview' ? 'Overview' : t === 'change_pin' ? 'Change PIN' : t === 'leave' ? 'Leave' : t === 'badges' ? 'Badges' : t === 'templates' ? '📋 Templates' : 'Accessibility'}
+            {t === 'overview' ? 'Overview' : t === 'change_password' ? 'Security' : t === 'leave' ? 'Leave' : t === 'badges' ? 'Badges' : t === 'templates' ? '📋 Templates' : 'Accessibility'}
           </div>
         ))}
       </div>
@@ -224,24 +237,25 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {tab === 'change_pin' && (
+      {tab === 'change_password' && (
         <div className="card" style={{ maxWidth: 420 }}>
-          <div style={{ fontWeight: 700, marginBottom: 16 }}>Change PIN</div>
-          <form onSubmit={changePIN} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {pinError && <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{pinError}</div>}
+          <div style={{ fontWeight: 700, marginBottom: 16 }}>Update Security Password</div>
+          <form onSubmit={changePassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {passwordError && <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{passwordError}</div>}
             <div className="form-group">
-              <label className="form-label">Current PIN</label>
-              <input className="form-input" type="password" inputMode="numeric" value={pinForm.current} onChange={e => setPinForm(f => ({ ...f, current: e.target.value.replace(/\D/g, '') }))} maxLength={8} />
+              <label className="form-label">Current Password</label>
+              <input className="form-input" type="password" value={passwordForm.current} onChange={e => setPasswordForm(f => ({ ...f, current: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">New PIN</label>
-              <input className="form-input" type="password" inputMode="numeric" value={pinForm.newPin} onChange={e => setPinForm(f => ({ ...f, newPin: e.target.value.replace(/\D/g, '') }))} maxLength={8} />
+              <label className="form-label">New Password</label>
+              <input className="form-input" type="password" value={passwordForm.newPassword} onChange={e => setPasswordForm(f => ({ ...f, newPassword: e.target.value }))} />
+              <span className="form-hint">Min 8 chars, must include capital & small letters.</span>
             </div>
             <div className="form-group">
-              <label className="form-label">Confirm New PIN</label>
-              <input className="form-input" type="password" inputMode="numeric" value={pinForm.confirm} onChange={e => setPinForm(f => ({ ...f, confirm: e.target.value.replace(/\D/g, '') }))} maxLength={8} />
+              <label className="form-label">Confirm New Password</label>
+              <input className="form-input" type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(f => ({ ...f, confirm: e.target.value }))} />
             </div>
-            <button className="btn btn-primary" type="submit">Update PIN</button>
+            <button className="btn btn-primary" type="submit" style={{ marginTop: 6 }}>Update Password</button>
           </form>
         </div>
       )}

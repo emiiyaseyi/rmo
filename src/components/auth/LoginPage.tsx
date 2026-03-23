@@ -1,113 +1,101 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { local, logAudit, genId } from '../../lib/utils'
+import { local, logAudit } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { Staff } from '../../types'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
-  const { staff, login, settings } = useApp()
-  const [step, setStep] = useState<'email' | 'pin' | 'change_pin' | 'forgot'>('email')
+  const { staff, login, settings, saveStaff } = useApp()
+  const [step, setStep] = useState<'signin' | 'change_password' | 'forgot'>('signin')
   const [email, setEmail] = useState('')
-  const [pin, setPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
+  const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [foundUser, setFoundUser] = useState<Staff | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [forgotSent, setForgotSent] = useState(false)
-  const pinRef = useRef<HTMLInputElement>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
-  useEffect(() => {
-    if (step === 'pin') pinRef.current?.focus()
-  }, [step])
+  const passwordRef = useRef<HTMLInputElement>(null)
 
-  function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
-    if (!found) { setError('No account found with this email.'); return }
-    if (found.suspended) { setError('Your account is suspended. Contact admin.'); return }
-
-    // Check lockout
-    const lockoutKey = `lockout_${found.id}`
-    const lockout = local.get<{ until: number } | null>(lockoutKey, null)
-    if (lockout && Date.now() < lockout.until) {
-      const mins = Math.ceil((lockout.until - Date.now()) / 60000)
-      setError(`Account locked. Try again in ${mins} minute(s).`)
-      return
-    }
-
-    setFoundUser(found)
-    setStep('pin')
+  function validateNewPassword(pass: string) {
+    if (pass.length < 8) return 'Password must be at least 8 characters'
+    if (!/[A-Z]/.test(pass)) return 'Password must contain a capital letter'
+    if (!/[a-z]/.test(pass)) return 'Password must contain a small letter'
+    if (!/[0-9]/.test(pass)) return 'Password must contain a number'
+    return null
   }
 
-  function handlePinSubmit(e: React.FormEvent) {
+  function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
-    if (!foundUser) return
     setError('')
     setLoading(true)
 
+    // Find user
+    const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
+
     setTimeout(() => {
-      if (!foundUser) return
-      const lockoutKey = `lockout_${foundUser.id}`
-      const attemptsKey = `attempts_${foundUser.id}`
-
-      if (pin !== foundUser.pin) {
-        const attempts = (local.get<number>(attemptsKey, 0)) + 1
-        local.set(attemptsKey, attempts)
-
-        if (attempts >= 5) {
-          local.set(lockoutKey, { until: Date.now() + 30 * 60 * 1000 })
-          local.remove(attemptsKey)
-          setError('Too many failed attempts. Account locked for 30 minutes.')
-          logAudit('LOCKOUT', `${foundUser.name} locked out`, foundUser.id, foundUser.name)
-        } else {
-          setError(`Incorrect PIN. ${5 - attempts} attempt(s) remaining.`)
-        }
+      if (!found) {
+        setError('Invalid credentials.')
         setLoading(false)
-        setPin('')
         return
       }
 
-      // Correct PIN — clear lockout
-      local.remove(lockoutKey)
-      local.remove(`attempts_${foundUser.id}`)
+      if (found.suspended) {
+        setError('Account suspended.')
+        setLoading(false)
+        return
+      }
 
-      if (foundUser.first_login) {
-        setStep('change_pin')
+      // Check password/pin (supporting legacy naming for a moment but using password field)
+      if (found.password !== password) {
+        setError('Invalid credentials.')
+        setLoading(false)
+        return
+      }
+
+      setFoundUser(found)
+
+      // Check for default password ("admin") or first login
+      if (found.first_login || found.password === 'admin') {
+        setStep('change_password')
       } else {
-        login(foundUser)
+        login(found)
       }
       setLoading(false)
-    }, 400)
+    }, 600)
   }
 
-  function handleChangePinSubmit(e: React.FormEvent) {
+  function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
     if (!foundUser) return
     setError('')
-    if (newPin.length < 4) { setError('PIN must be at least 4 digits.'); return }
-    if (newPin !== confirmPin) { setError('PINs do not match.'); return }
-    if (newPin === foundUser.pin) { setError('New PIN must be different from current PIN.'); return }
 
-    const updatedUser: Staff = { ...foundUser, pin: newPin, first_login: false }
-    sessionStorage.setItem('dsn_pin_change', JSON.stringify(updatedUser))
+    const validationError = validateNewPassword(newPassword)
+    if (validationError) { setError(validationError); return }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
+    if (newPassword === 'admin') { setError('Cannot use "admin" as new password.'); return }
+
+    const updatedUser: Staff = { ...foundUser, password: newPassword, first_login: false }
+
+    // Persist change via context
+    saveStaff(staff.map(s => s.id === updatedUser.id ? updatedUser : s))
+
     login(updatedUser)
-    toast.success('PIN updated! Welcome to DSN RMS.')
+    toast.success('Password updated successfully!')
   }
 
   function handleForgot(e: React.FormEvent) {
     e.preventDefault()
     setForgotSent(true)
-    const reqs = local.get<any[]>('pin_reset_requests', [])
+    const reqs = local.get<any[]>('reset_requests', [])
     reqs.push({ email, timestamp: new Date().toISOString(), status: 'pending' })
-    local.set('pin_reset_requests', reqs)
+    local.set('reset_requests', reqs)
     toast.success('Reset request sent to admin.')
   }
-
-  const logoUrl = local.get<string | null>('logo_url', null)
-  const appName = settings?.app_name || 'DSN Resource Management'
 
   return (
     <div style={{
@@ -117,174 +105,305 @@ export default function LoginPage() {
       justifyContent: 'center',
       position: 'relative',
       overflow: 'hidden',
-      padding: 20
+      padding: 24,
+      fontFamily: 'var(--font-poppins)',
+      background: '#0F172A'
     }}>
-      {/* Background Image with Overlay */}
+
+      {/* Background Image with Clearer Visibility */}
       <div style={{
         position: 'fixed', inset: 0, zIndex: 0,
         backgroundImage: 'url("/dsnstaff.JPG")',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-      }} />
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 1,
-        background: 'linear-gradient(135deg, rgba(7, 108, 4, 0.45) 0%, rgba(24, 24, 27, 0.7) 100%)',
+        filter: 'brightness(0.85) contrast(1.05)',
+        transform: 'scale(1)'
       }} />
 
-      <div style={{ width: '100%', maxWidth: 480, position: 'relative', zIndex: 2 }}>
-        {/* Logo + Name */}
+      {/* Subtle Decorative Gradient Overlay */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 1,
+        background: 'radial-gradient(circle at center, rgba(7, 108, 4, 0.1) 0%, rgba(15, 23, 42, 0.5) 100%)',
+      }} />
+
+      <div style={{ width: '100%', maxWidth: 440, position: 'relative', zIndex: 10 }}>
+
+        {/* Branding */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <img
             src="/dsn.png"
             alt="DSN Logo"
             style={{
-              height: 120,
+              height: 100,
               objectFit: 'contain',
-              marginBottom: 20,
-              filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.3))'
+              marginBottom: 16,
+              filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.5))'
             }}
           />
-          <h1 style={{
-            fontSize: 32,
+          <h2 style={{
+            fontSize: 14,
             fontWeight: 800,
-            color: 'white',
-            lineHeight: 1.2,
-            fontFamily: 'var(--font-poppins)',
-            textShadow: '0 2px 8px rgba(0,0,0,0.4)'
+            color: '#4ADE80',
+            textTransform: 'uppercase',
+            letterSpacing: '0.25em',
+            marginBottom: 8,
+            textShadow: '0 2px 10px rgba(0,0,0,0.8)'
           }}>
-            {appName}
-          </h1>
-          <p className="login-welcome">
-            {settings?.welcome_message || 'Sign in to your account'}
-          </p>
+            Resource Management
+          </h2>
         </div>
 
-
-        {/* Card with glassmorphism */}
-        <div className="card card-lg" style={{
-          background: 'rgba(255, 255, 255, 0.92)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255, 255, 255, 0.2)',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
+        {/* GLASS CARD */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(32px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(32px) saturate(180%)',
+          borderRadius: 32,
+          padding: 40,
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.6)',
         }}>
 
+          {/* CENTRALIZED BIG HEADER */}
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <h1 style={{
+              fontSize: 36,
+              fontWeight: 800,
+              color: 'white',
+              letterSpacing: '-0.02em',
+              marginBottom: 8
+            }}>
+              Sign In
+            </h1>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
+              {step === 'signin' ? 'Access your dashboard' :
+                step === 'change_password' ? 'Update default password' : 'Recover security access'}
+            </p>
+          </div>
 
-          {/* STEP: EMAIL */}
-          {step === 'email' && (
-            <form onSubmit={handleEmailSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 700 }}>Sign In</h2>
-                <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>Enter your work email to continue</p>
-              </div>
-              {error && <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+          {error && (
+            <div style={{
+              background: 'rgba(220, 38, 38, 0.2)',
+              border: '1px solid rgba(220, 38, 38, 0.3)',
+              color: '#FCA5A5',
+              padding: '12px 16px',
+              borderRadius: 12,
+              fontSize: 13,
+              marginBottom: 20,
+              textAlign: 'center'
+            }}>
+              {error}
+            </div>
+          )}
+
+          {/* SIGN IN FORM (ONE PAGE) */}
+          {step === 'signin' && (
+            <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div className="form-group">
-                <label className="form-label">Work Email</label>
+                <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>Work Email</label>
                 <input
-                  className="form-input"
+                  style={{
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
+                    padding: '14px 16px',
+                    color: 'white',
+                    fontSize: 16,
+                    outline: 'none',
+                    width: '100%'
+                  }}
                   type="email"
-                  placeholder="you@datasciencenigeria.ai"
+                  placeholder="name@datasciencenigeria.ai"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  autoFocus
                 />
               </div>
-              <button className="btn btn-primary btn-lg w-full" type="submit">Continue →</button>
-              <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: 'center' }} onClick={() => setStep('forgot')}>
-                Forgot PIN?
-              </button>
-            </form>
-          )}
 
-          {/* STEP: PIN */}
-          {step === 'pin' && (
-            <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div className="avatar avatar-md" style={{ background: 'linear-gradient(135deg, #3B82F6, #7C3AED)', fontSize: 16 }}>
-                  {foundUser?.name?.[0]?.toUpperCase()}
+              <div className="form-group">
+                <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    ref={passwordRef}
+                    style={{
+                      background: 'rgba(0,0,0,0.25)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 12,
+                      padding: '14px 16px',
+                      paddingRight: '48px',
+                      color: 'white',
+                      fontSize: 16,
+                      outline: 'none',
+                      width: '100%'
+                    }}
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'rgba(255,255,255,0.4)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 4
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{foundUser?.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{foundUser?.department}</div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  background: 'var(--brand-primary)',
+                  color: 'white',
+                  borderRadius: 14,
+                  padding: '15px',
+                  fontSize: 16,
+                  fontWeight: 800,
+                  border: 'none',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
+                  transition: 'all 0.2s',
+                  marginTop: 8,
+                  boxShadow: '0 8px 20px rgba(7, 108, 4, 0.4)'
+                }}
+              >
+                {loading ? 'Authenticating…' : 'Continue →'}
+              </button>
+
+              <button
+                type="button"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 13, cursor: 'pointer', alignSelf: 'center', marginTop: 8 }}
+                onClick={() => setStep('forgot')}
+              >
+                Forgotten your password?
+              </button>
+            </form>
+          )}
+
+          {/* CHANGE PASSWORD STEP */}
+          {step === 'change_password' && (
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: 14, borderRadius: 12, marginBottom: 4 }}>
+                <p style={{ color: '#4ADE80', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>Default password detected. Please set a secure password with capital & small letters.</p>
+              </div>
+
+              <div className="form-group">
+                <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'block' }}>New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{
+                      background: 'rgba(0,0,0,0.25)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 12,
+                      padding: '14px 16px',
+                      paddingRight: '48px',
+                      color: 'white',
+                      fontSize: 16,
+                      outline: 'none',
+                      width: '100%'
+                    }}
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Minimum 8 characters"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'rgba(255,255,255,0.4)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: 4
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                 </div>
               </div>
-              {error && <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
               <div className="form-group">
-                <label className="form-label">Enter PIN</label>
+                <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'block' }}>Confirm New Password</label>
                 <input
-                  ref={pinRef}
-                  className="form-input"
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="••••"
-                  value={pin}
-                  onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-                  maxLength={8}
+                  style={{
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
+                    padding: '14px 16px',
+                    color: 'white',
+                    fontSize: 16,
+                    outline: 'none',
+                    width: '100%'
+                  }}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Repeat new password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
                   required
                 />
               </div>
-              <button className="btn btn-primary btn-lg w-full" type="submit" disabled={loading}>
-                {loading ? 'Verifying…' : 'Sign In'}
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: 'center' }} onClick={() => { setStep('email'); setPin(''); setError('') }}>
-                ← Back
+
+              <button
+                type="submit"
+                style={{
+                  background: 'var(--brand-primary)',
+                  color: 'white',
+                  borderRadius: 14,
+                  padding: '15px',
+                  fontSize: 16,
+                  fontWeight: 800,
+                  border: 'none',
+                  cursor: 'pointer',
+                  marginTop: 8
+                }}
+              >
+                Secure Account & Log In
               </button>
             </form>
           )}
 
-          {/* STEP: CHANGE PIN (first login) */}
-          {step === 'change_pin' && (
-            <form onSubmit={handleChangePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>🔐</div>
-                <h2 style={{ fontSize: 17, fontWeight: 700 }}>Set Your PIN</h2>
-                <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>First login detected. Please set a new PIN before continuing.</p>
-              </div>
-              {error && <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
-              <div className="form-group">
-                <label className="form-label">New PIN (min 4 digits)</label>
-                <input
-                  className="form-input"
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="New PIN"
-                  value={newPin}
-                  onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
-                  maxLength={8}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Confirm New PIN</label>
-                <input
-                  className="form-input"
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="Confirm PIN"
-                  value={confirmPin}
-                  onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                  maxLength={8}
-                  required
-                />
-              </div>
-              <button className="btn btn-primary btn-lg w-full" type="submit">Set PIN & Sign In</button>
-            </form>
-          )}
-
-          {/* STEP: FORGOT */}
+          {/* FORGOT STEP */}
           {step === 'forgot' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <h2 style={{ fontSize: 17, fontWeight: 700 }}>Forgot PIN</h2>
-                <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>Enter your email to send a reset request to your admin.</p>
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {!forgotSent ? (
                 <form onSubmit={handleForgot} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div className="form-group">
-                    <label className="form-label">Work Email</label>
+                    <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>Recovery Email</label>
                     <input
-                      className="form-input"
+                      style={{
+                        background: 'rgba(0,0,0,0.25)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 12,
+                        padding: '14px 16px',
+                        color: 'white',
+                        fontSize: 16,
+                        outline: 'none',
+                        width: '100%'
+                      }}
                       type="email"
                       placeholder="you@datasciencenigeria.ai"
                       value={email}
@@ -292,22 +411,45 @@ export default function LoginPage() {
                       required
                     />
                   </div>
-                  <button className="btn btn-primary w-full" type="submit">Send Reset Request</button>
+                  <button
+                    type="submit"
+                    style={{
+                      background: 'var(--brand-primary)',
+                      color: 'white',
+                      borderRadius: 14,
+                      padding: '14px',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Send Recovery Request
+                  </button>
                 </form>
               ) : (
-                <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '14px', borderRadius: 8, fontSize: 13, textAlign: 'center' }}>
-                  ✅ Request sent! Your admin will reset your PIN and notify you.
+                <div style={{
+                  background: 'rgba(5, 150, 105, 0.2)',
+                  border: '1px solid rgba(5, 150, 105, 0.3)',
+                  color: '#A7F3D0', padding: '24px', borderRadius: 20, fontSize: 14, textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: 28, marginBottom: 12 }}>📬</div>
+                  Reset Instructions Sent!<br />Please check your email.
                 </div>
               )}
-              <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: 'center' }} onClick={() => { setStep('email'); setForgotSent(false); setError('') }}>
+              <button
+                type="button"
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 13, cursor: 'pointer', alignSelf: 'center' }}
+                onClick={() => { setStep('signin'); setForgotSent(false); setError('') }}
+              >
                 ← Back to Sign In
               </button>
             </div>
           )}
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-3)', marginTop: 20 }}>
-          DSN Resource Management System © {new Date().getFullYear()}
+        <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 32, letterSpacing: '0.05em' }}>
+          DSN RESOURCE MANAGEMENT SYSTEM • {new Date().getFullYear()}
         </p>
       </div>
     </div>

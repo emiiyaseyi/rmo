@@ -2,7 +2,7 @@ export interface Staff {
     id: string;
     name: string;
     email: string;
-    pin: string;
+    password: string;
     role: 'staff' | 'admin' | 'owner' | 'hr';
     department: string;
     suspended?: boolean;

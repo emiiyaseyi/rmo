@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+firebase.env
 
 # vercel
 .vercel
@@ -37,3 +38,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

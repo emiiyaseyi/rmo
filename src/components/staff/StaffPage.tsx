@@ -1,7 +1,9 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { genId, exportCSV, exportPDF, avatarColor, initials, logAudit, getActiveSessions } from '../../lib/utils'
+import { genId, exportCSV, exportPDF, avatarColor, initials, logAudit } from '../../lib/utils'
+import { db } from '../../lib/firebase'
+import { doc, updateDoc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore'
 import { Search, Plus, Upload, Download, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Staff, Entry } from '../../types'
@@ -16,7 +18,7 @@ interface StaffModalProps {
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
   const leads = allStaff.filter(s => s.role === 'owner' || s.role === 'admin')
-  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', role: 'staff', leadId: '', leadName: '', phone: '', password: 'admin', first_login: true, weekly_cap: '' })
+  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', role: 'staff', leadId: '', leadName: '', phone: '', password: 'dsn-staff', first_login: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
 
@@ -83,7 +85,7 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <label className="form-label">Initial Password *</label>
               <input className="form-input" type="password" value={form.password} onChange={e => F('password', e.target.value)} />
               {errors.password && <span className="form-error">{errors.password}</span>}
-              <span className="form-hint">Default: admin. Staff will change on first login</span>
+              <span className="form-hint">Default: dsn-staff. Staff will change on first login</span>
             </div>
             <div className="form-group">
               <label className="form-label">Weekly Cap Override (hrs)</label>
@@ -325,12 +327,17 @@ export default function StaffPage() {
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
 
-  // Refresh active sessions periodically
+  // Subscribe to real-time active sessions from Firebase
   useEffect(() => {
-    const refresh = () => setActiveSessions(getActiveSessions())
-    refresh()
-    const t = setInterval(refresh, 30000)
-    return () => clearInterval(t)
+    const q = query(collection(db, 'active_sessions'))
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => d.data())
+      // Filter out stale sessions (older than 2 mins) just in case cleanup failed
+      const cutoff = Date.now() - 2 * 60 * 1000
+      const active = data.filter((s: any) => new Date(s.lastSeen).getTime() > cutoff)
+      setActiveSessions(active)
+    })
+    return () => unsub()
   }, [])
 
   const filtered = useMemo(() => staff.filter(s => {
@@ -400,25 +407,38 @@ export default function StaffPage() {
     toast.success(`${selected.size} staff updated`)
   }
 
-  function resetPassword(s: Staff) {
-    const newPass = prompt(`New password for ${s.name} (min 4 characters):`, 'admin')
-    if (!newPass || newPass.length < 4) { toast.error('Invalid password'); return }
-    saveStaff(staff.map(m => m.id === s.id ? { ...m, password: newPass, first_login: true } : m))
-    notify(s.id, 'Your password has been reset by admin. Please login with your new password.', 'info')
-    toast.success('Password reset for ' + s.name)
+  async function resetPassword(s: Staff) {
+    if (!window.confirm(`Reset password for ${s.name} to "1234"?`)) return
+    try {
+      await updateDoc(doc(db, 'staff', s.id), {
+        password: '1234',
+        first_login: true,
+        password_reset_pending: true
+      })
+      saveStaff(staff.map(m => m.id === s.id ? { ...m, password: '1234', first_login: true, password_reset_pending: true } : m))
+      notify(s.id, 'Your password has been reset by admin to "1234". Please change it on next login.', 'info')
+      toast.success('Password reset for ' + s.name)
+    } catch (e: any) {
+      toast.error('Failed to reset password.')
+    }
   }
 
-  function forceLogout(s: Staff) {
+  async function forceLogout(s: Staff) {
     if (!window.confirm(`Force logout ${s.name}?`)) return
     try {
-      const sess = localStorage.getItem('dsn_session_user')
-      if (sess && JSON.parse(sess).id === s.id) localStorage.removeItem('dsn_session_user')
-    } catch { }
-    const sessions = JSON.parse(localStorage.getItem('dsn_active_sessions') || '{}')
-    delete sessions[s.id]
-    localStorage.setItem('dsn_active_sessions', JSON.stringify(sessions))
-    logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
-    toast.success(s.name + ' logged out')
+      // Set force_logout flag in Firestore
+      await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
+      
+      // Cleanup local (though AppContext will handle the real logout)
+      const sessions = JSON.parse(localStorage.getItem('dsn_active_sessions') || '{}')
+      delete sessions[s.id]
+      localStorage.setItem('dsn_active_sessions', JSON.stringify(sessions))
+      
+      logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
+      toast.success(s.name + ' logged out')
+    } catch (e: any) {
+      toast.error('Failed to force logout.')
+    }
   }
 
   /* ── Export ── */

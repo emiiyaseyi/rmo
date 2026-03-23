@@ -8,14 +8,21 @@ export interface Staff {
     suspended?: boolean;
     first_login?: boolean;
     points?: number;
-    weekly_cap?: number | string;
-    weekly_goal?: number;
-    streak?: number;
     badges?: string[];
     last_login?: string;
     createdAt?: string;
+    failed_attempts?: number;
+    lockout_until?: string;
+    password_reset_pending?: boolean;
+    force_logout?: boolean;
     tour_done?: boolean;
     leadId?: string;
+    staffType?: 'staff' | 'intern';
+    isIntern?: boolean; // Convenience flag
+    weekly_cap?: number | string;
+    streak?: number;
+    weekly_goal?: number;
+
     leadName?: string;
     phone?: string;
     photo?: string | null;
@@ -39,19 +46,40 @@ export interface Entry {
     approvedBy?: string;
     approvedAt?: string;
     approvedByName?: string;
-    comment?: string;
     lead?: string;
+    leadId?: string;
     overriddenBy?: string;
     overriddenAt?: string;
+    overrideHistory?: OverrideLog[];
     rejectionReason?: string;
-    rejectedAt?: string;
-    rejectedBy?: string;
     resubmitNote?: string;
     submittedAt?: string;
-    correctionNote?: string;
-    corrected?: boolean;
-    clarifyNote?: string;
     deletedAt?: string;
+    rejectedBy?: string;
+    rejectedAt?: string;
+    correctionNote?: string;
+    clarifyNote?: string;
+    corrected?: boolean;
+}
+
+export interface OverrideLog {
+    id: string;
+    adminId: string;
+    adminName: string;
+    fieldName: string;
+    oldValue: any;
+    newValue: any;
+    note?: string;
+    timestamp: string;
+}
+
+export interface WeekSubmission {
+    id: string; // staffId_weekKey
+    staffId: string;
+    weekKey: string;
+    status: 'submitted' | 'no_work';
+    submittedAt: string;
+    totalHours: number;
 }
 
 export interface AppNotification {
@@ -133,15 +161,18 @@ export interface Leave {
 
 export interface Template {
     id: string;
-    userId: string;
-    name: string;
-    project: string;
-    lead?: string;
-    description?: string;
-    hours?: number | string;
+    staffId: string;
+    userId?: string; // Alias for compatibility
+    projectId?: string;
+    project?: string; // Support both formats
+    leadId?: string;
+    lead?: string; // Support both formats
     category: string;
+    description: string;
+    hours?: number;
+    name: string;
     createdAt: string;
-    ownerId?: string;
+    ownerId?: string; // For backward compatibility
 }
 
 export interface Delegation {
@@ -227,6 +258,10 @@ export interface AppContextType {
     saveFeatures: (data: Record<string, boolean>) => void;
     lockedWeeks: string[];
     saveLockedWeeks: (data: string[]) => void;
+    idleCountdown: number | null;
+    showPasswordChange: boolean;
+    setShowPasswordChange: (show: boolean) => void;
     // Add other fields as needed or use any for complex legacy state
     [key: string]: any;
 }
+

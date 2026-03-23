@@ -21,6 +21,7 @@ import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
 import BackendPage from '@/components/settings/BackendPage'
+import ResetRequestsPage from '@/components/admin/ResetRequestsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   dashboard: ['staff', 'owner', 'admin'],
@@ -33,7 +34,9 @@ const PAGE_ROLES: Record<string, string[]> = {
   staff: ['admin'],
   org_chart: ['admin'],
   audit: ['admin'],
+  reset_queue: ['admin'],
   settings: ['admin'],
+
   backend: ['admin'],
   profile: ['staff', 'owner', 'admin'],
   help: ['staff', 'owner', 'admin'],
@@ -102,7 +105,9 @@ export default function Home() {
       case 'staff': return <StaffPage />
       case 'org_chart': return <OrgChartPage />
       case 'audit': return <AuditPage />
+      case 'reset_queue': return <ResetRequestsPage />
       case 'backend': return <BackendPage />
+
       case 'settings': return <SettingsPage />
       case 'profile': return <ProfilePage />
       case 'help': return <HelpPage />

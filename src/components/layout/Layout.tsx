@@ -4,6 +4,9 @@ import { useApp } from '../../context/AppContext'
 import { initials, avatarColor, local } from '../../lib/utils'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Bell, Menu, Sun, Moon, Wifi, WifiOff, ChevronDown } from 'lucide-react'
+import PasswordChangeModal from '../auth/PasswordChangeModal'
+import IdleWarningOverlay from '../auth/IdleWarningOverlay'
+
 
 interface NavItem {
   id: string;
@@ -25,7 +28,9 @@ function getNavItems(role: string): NavItem[] {
     { id: 'staff', label: 'Staff', icon: '👥', roles: ['admin'] },
     { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
     { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
+    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin'] },
     { id: 'backend', label: 'Backend', icon: '🔧', roles: ['admin'] },
+
     { id: 'settings', label: 'Settings', icon: '⚙️', roles: ['admin'] },
     { id: 'profile', label: 'My Profile', icon: '👤', roles: ['staff', 'owner', 'admin'] },
     { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'owner', 'admin'] },
@@ -40,7 +45,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { user, logout, unreadCount, notifications, markAllRead, online, darkMode, toggleDark, pendingApprovals, messages, settings } = useApp()
+  const { user, logout, unreadCount, notifications, markAllRead, online, darkMode, toggleDark, pendingApprovals, messages, settings, showPasswordChange } = useApp()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -258,6 +263,9 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </main>
         </div>
       </div>
+      {user && showPasswordChange && <PasswordChangeModal />}
+      <IdleWarningOverlay />
     </div>
   )
 }
+

@@ -382,7 +382,15 @@ function TemplatesTab({ templates, saveTemplates, userId, settings }: TemplatesT
 
   function saveTemplate() {
     if (!form.name || !form.project) { return }
-    const t: Template = { ...form, id: genId(), userId, createdAt: new Date().toISOString(), ownerId: userId }
+    const t: Template = {
+      ...form,
+      hours: form.hours ? parseFloat(form.hours) : undefined,
+      id: genId(),
+      staffId: userId,
+      userId,
+      createdAt: new Date().toISOString(),
+      ownerId: userId
+    }
     saveTemplates([...(templates || []), t])
     setForm({ name: '', project: '', lead: '', description: '', hours: '', category: 'Client Work' })
     setShowForm(false)

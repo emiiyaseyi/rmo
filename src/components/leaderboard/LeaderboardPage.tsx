@@ -21,11 +21,12 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints } = useApp()
+  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
   const [rewardForm, setRewardForm] = useState({ name: '', desc: '', cost: '', icon: '🎁' })
+  const [recoveryForm, setRecoveryForm] = useState({ weekId: '', reason: '' })
 
   // Rankings
   const ranked: RankedStaff[] = useMemo(() =>
@@ -82,6 +83,8 @@ export default function LeaderboardPage() {
       id: genId(),
       cost: parseInt(rewardForm.cost),
       active: true,
+      stock: 10, // Default stock
+      isEnabled: true,
       createdAt: new Date().toISOString()
     }
     saveRewards([...rewards, r])
@@ -92,9 +95,11 @@ export default function LeaderboardPage() {
 
   function redeemReward(reward: Reward) {
     if (!user) return
+    if (reward.stock <= 0) { toast.error('Item out of stock'); return }
     const myPts = user.points || 0
     if (myPts < reward.cost) { toast.error('Not enough points'); return }
     if (!window.confirm(`Redeem "${reward.name}" for ${reward.cost} pts?`)) return
+    
     const redeem: Redemption = {
       id: genId(),
       staffId: user.id,
@@ -102,12 +107,58 @@ export default function LeaderboardPage() {
       rewardId: reward.id,
       rewardName: reward.name,
       cost: reward.cost,
-      createdAt: new Date().toISOString(),
-      status: 'pending'
+      status: 'pending',
+      createdAt: new Date().toISOString()
     }
+
+    // Deduct stock
+    const updatedRewards = rewards.map(r => r.id === reward.id ? { ...r, stock: r.stock - 1 } : r)
+    saveRewards(updatedRewards)
+    
     saveRedeems([...redeems, redeem])
-    awardPoints(user.id, -reward.cost, 'Reward redemption')
+    awardPoints(user.id, -reward.cost, `Redeemed ${reward.name}`)
     toast.success('🎁 Redemption request sent to admin!')
+  }
+
+  function handleRecoveryRequest() {
+    if (!recoveryForm.weekId || !recoveryForm.reason) { toast.error('Week and reason required'); return }
+    const req = {
+      id: genId(),
+      staffId: user!.id,
+      staffName: user!.name,
+      weekId: recoveryForm.weekId,
+      reason: recoveryForm.reason,
+      status: 'pending' as const,
+      createdAt: new Date().toISOString()
+    }
+    saveStreakRecoveries([...streakRecoveries, req])
+    setRecoveryForm({ weekId: '', reason: '' })
+    toast.success('Recovery request submitted')
+  }
+
+  function resolveRecovery(reqId: string, status: 'approved' | 'rejected') {
+    const req = streakRecoveries.find(r => r.id === reqId)
+    if (!req) return
+    
+    const updated = streakRecoveries.map(r => r.id === reqId ? { ...r, status, reviewedBy: user?.name, reviewedAt: new Date().toISOString() } : r)
+    saveStreakRecoveries(updated)
+    
+    if (status === 'approved') {
+      const sIdx = staff.findIndex(s => s.id === req.staffId)
+      if (sIdx > -1) {
+        const updatedStaff = [...staff]
+        updatedStaff[sIdx] = { ...updatedStaff[sIdx], streak: (updatedStaff[sIdx].streak || 0) + 1 }
+        saveStaff(updatedStaff)
+        awardPoints(req.staffId, 5, 'Streak Recovery Bonus', req.weekId)
+      }
+    }
+    toast.success(`Request ${status}`)
+  }
+
+  function fulfillRedeem(id: string) {
+    const updated = redeems.map(r => r.id === id ? { ...r, status: 'fulfilled' as const, fulfilledAt: new Date().toISOString() } : r)
+    saveRedeems(updated)
+    toast.success('Reward fulfilled!')
   }
 
   return (
@@ -152,68 +203,93 @@ export default function LeaderboardPage() {
       </div>
 
       <div className="tabs">
-        {['individual', 'department', 'badges', 'hof'].map(t => (
+        {['individual', 'department', 'badges', 'hof', 'recovery'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '👤 Individual' : t === 'department' ? '🏢 Department' : t === 'badges' ? '🏅 Badges' : '🏛️ Hall of Fame'}
+            {t === 'individual' ? '👤 Individual' : t === 'department' ? '🏢 Department' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
           </div>
         ))}
       </div>
 
       {tab === 'individual' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>Name</th>
-                  <th>Department</th>
-                  <th>Points</th>
-                  <th>Streak</th>
-                  <th>Submit Rate</th>
-                  <th>Badges</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ranked.slice(0, 30).map((s, i) => (
-                  <tr key={s.id} style={{ background: s.id === user?.id ? 'var(--accent-subtle)' : '' }}>
-                    <td style={{ fontWeight: 700, fontSize: 18 }}>
-                      {i < 3 ? MEDAL[i] : `#${i + 1}`}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div className="avatar avatar-sm" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 20 % 360}, 60%, 45%)`, fontSize: 10 }}>
-                          {s.name?.[0]}
-                        </div>
-                        <span style={{ fontWeight: 600 }}>{s.name}{s.id === user?.id ? ' (You)' : ''}</span>
-                      </div>
-                    </td>
-                    <td style={{ color: 'var(--text-3)' }}>{s.department || '—'}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--gold)', fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()}</td>
-                    <td>
-                      {(s.streak || 0) > 0 ? <span className="badge badge-yellow">🔥 {s.streak}w</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div className="progress" style={{ width: 60, display: 'inline-block' }}>
-                          <div className="progress-bar" style={{ width: `${s.submissionRate}%`, background: s.submissionRate >= 80 ? 'var(--success)' : 'var(--warning)' }} />
-                        </div>
-                        <span style={{ fontSize: 12 }}>{s.submissionRate}%</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 2 }}>
-                        {(s.badges || []).slice(0, 4).map(b => {
-                          const badge = BADGES.find(x => x.id === b)
-                          return badge ? <span key={b} title={badge.name} style={{ fontSize: 16 }}>{badge.icon}</span> : null
-                        })}
-                        {(s.badges || []).length > 4 && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>+{(s.badges || []).length - 4}</span>}
-                      </div>
-                    </td>
+        <div className="flex flex-col gap-4">
+          {/* Pinned My Rank Card (if not in top 25) */}
+          {(myRank > 25 || myRank === 0) && (
+            <div className="card border-accent bg-accent-subtle relative overflow-hidden">
+              <div className="flex items-center gap-4">
+                <div className="text-3xl font-bold opacity-50">#{myRank || '?'}</div>
+                <div className="flex-1">
+                  <div className="font-bold text-1">{user?.name} (You)</div>
+                  <div className="text-xs text-3">{user?.points || 0} points · {user?.streak || 0}w streak</div>
+                </div>
+                {myRank > 25 && (
+                  <div className="text-right">
+                    <div className="text-xs text-4">To enter Top 25</div>
+                    <div className="font-bold text-accent">+{ (ranked[24]?.points || 0) - (user?.points || 0) + 1 } pts</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Name</th>
+                    <th>Points</th>
+                    <th>Performance</th>
+                    <th>Streak</th>
+                    <th>Badges</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ranked.slice(0, 25).map((s, i) => {
+                    const isMe = s.id === user?.id
+                    const relWidth = Math.max(5, Math.round(((s.points || 0) / (ranked[0]?.points || 1)) * 100))
+                    return (
+                      <tr key={s.id} className={isMe ? 'bg-accent-subtle' : ''}>
+                        <td className="font-bold text-lg">
+                          {i < 3 ? MEDAL[i] : (i < 25 ? `🏅 #${i + 1}` : `#${i + 1}`)}
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>{s.name?.[0]}</div>
+                            <span className="font-bold">{s.name}{isMe ? ' (You)' : ''}</span>
+                          </div>
+                          <div className="text-4 text-xs">{s.department}</div>
+                        </td>
+                        <td className="font-bold text-accent">{(s.points || 0).toLocaleString()}</td>
+                        <td style={{ minWidth: 140 }}>
+                          <div className="flex flex-col gap-1">
+                            <div className="progress h-1.5 w-full bg-border rounded-full overflow-hidden">
+                                <div className="progress-bar h-full bg-accent" style={{ width: `${relWidth}%` }} />
+                            </div>
+                            <div className="flex justify-between text-[10px] text-4">
+                                <span>{s.submissionRate}% rate</span>
+                                <span>{relWidth}% of top</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          {s.streak ? <span className="badge badge-yellow">🔥 {s.streak}</span> : <span className="text-4">—</span>}
+                        </td>
+                        <td>
+                          <div className="flex gap-1">
+                            {(s.badges || []).slice(0, 3).map(b => {
+                              const badge = BADGES.find(x => x.id === b)
+                              return badge ? <span key={b} title={badge.name}>{badge.icon}</span> : null
+                            })}
+                            {(s.badges || []).length > 3 && <span className="text-4 text-xs">+{s.badges!.length - 3}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -255,15 +331,18 @@ export default function LeaderboardPage() {
       )}
 
       {tab === 'badges' && (
-        <div className="grid-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {BADGES.map(badge => {
             const earned = (user?.badges || []).includes(badge.id)
             return (
-              <div key={badge.id} className="card" style={{ textAlign: 'center', opacity: earned ? 1 : 0.4, borderColor: earned ? 'var(--accent)' : 'var(--border)' }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>{badge.icon}</div>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>{badge.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{badge.desc}</div>
-                {earned && <span className="badge badge-green" style={{ marginTop: 10 }}>Earned ✓</span>}
+              <div key={badge.id} className={`card flex items-center gap-4 ${earned ? 'border-accent bg-accent-subtle' : 'opacity-50 grayscale'}`}>
+                <div className="text-4xl">{badge.icon}</div>
+                <div className="flex-1">
+                  <div className="font-bold">{badge.name}</div>
+                  <div className="text-xs text-3">{badge.desc}</div>
+                  {!earned && <div className="text-[10px] text-accent mt-1 uppercase font-bold tracking-wider">Earn: {badge.id.replace(/_/g, ' ')}...</div>}
+                </div>
+                {earned && <div className="text-accent">✓</div>}
               </div>
             )
           })}
@@ -271,24 +350,92 @@ export default function LeaderboardPage() {
       )}
 
       {tab === 'hof' && (
-        hof.length === 0 ? (
-          <div className="empty-state card">
-            <div className="empty-state-icon">🏛️</div>
-            <div className="empty-state-title">Hall of Fame is empty</div>
-          </div>
-        ) : (
-          <div className="grid-3">
-            {hof.map(s => (
-              <div key={s.id} className="card" style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 40, marginBottom: 8 }}>{MEDAL[s.rank - 1]}</div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>{s.name}</div>
-                <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.department}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--gold)' }}>{(s.points || 0).toLocaleString()} pts</div>
-                {s.savedAt && <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {hof.length === 0 ? (
+            <div className="empty-state card col-span-full">
+              <div className="empty-state-icon">🏛️</div>
+              <div className="empty-state-title">Hall of Fame is empty</div>
+              <p className="text-4 text-xs mt-2">Admins can save a snapshot of the current Top 3.</p>
+            </div>
+          ) : (
+            hof.map((s, i) => (
+              <div key={s.id} className="card text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-10 font-bold text-4xl">#{s.rank}</div>
+                <div className="text-5xl mb-4">{MEDAL[s.rank - 1]}</div>
+                <div className="font-bold text-lg">{s.name}</div>
+                <div className="text-xs text-4 mb-3">{s.department}</div>
+                <div className="text-2xl font-bold text-accent">{(s.points || 0).toLocaleString()} <span className="text-xs uppercase opacity-60">pts</span></div>
+                {s.savedAt && <div className="text-[10px] text-4 mt-4 italic">Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
               </div>
-            ))}
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === 'recovery' && (
+        <div className="flex flex-col gap-6">
+          {user?.role !== 'admin' && (
+            <div className="card max-w-md mx-auto w-full">
+              <h3 className="font-bold mb-4">Request Streak Recovery</h3>
+              <p className="text-xs text-3 mb-4">Missed a week? Request a recovery to keep your streak alive. Limit: Once per month.</p>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs font-bold mb-1 block">Week ID (e.g. 2026-W12)</label>
+                  <input className="input w-full" value={recoveryForm.weekId} onChange={e => setRecoveryForm({ ...recoveryForm, weekId: e.target.value })} placeholder="YYYY-WXX" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold mb-1 block">Reason</label>
+                  <textarea className="input w-full h-20" value={recoveryForm.reason} onChange={e => setRecoveryForm({ ...recoveryForm, reason: e.target.value })} placeholder="Why did you miss this week?" />
+                </div>
+                <button className="btn btn-accent w-full" onClick={handleRecoveryRequest}>Submit Request</button>
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="p-4 border-b">
+              <h3 className="font-bold">{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Requests'}</h3>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff</th>
+                    <th>Week</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    {user?.role === 'admin' && <th>Action</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(streakRecoveries || [])
+                    .filter(r => user?.role === 'admin' || r.staffId === user?.id)
+                    .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
+                    .map(r => (
+                      <tr key={r.id}>
+                        <td>{r.staffName}</td>
+                        <td className="font-mono">{r.weekId}</td>
+                        <td className="max-w-xs truncate" title={r.reason}>{r.reason}</td>
+                        <td>
+                          <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
+                            {r.status.toUpperCase()}
+                          </span>
+                        </td>
+                        {user?.role === 'admin' && r.status === 'pending' && (
+                          <td className="flex gap-2">
+                            <button className="btn btn-xs btn-green" onClick={() => resolveRecovery(r.id, 'approved')}>Approve</button>
+                            <button className="btn btn-xs btn-red" onClick={() => resolveRecovery(r.id, 'rejected')}>Reject</button>
+                          </td>
+                        )}
+                        {user?.role === 'admin' && r.status !== 'pending' && <td className="text-4 text-xs">Reviewed by {r.reviewedBy}</td>}
+                      </tr>
+                  ))}
+                  {(streakRecoveries || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-4">No requests found</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )
+        </div>
       )}
 
       {showShop && (
@@ -330,23 +477,67 @@ export default function LeaderboardPage() {
                 </div>
               )}
 
-              <div className="grid-3">
+              <div className="grid-3 mb-8">
                 {rewards.filter(r => r.active).map(r => (
-                  <div key={r.id} className="card" style={{ textAlign: 'center' }}>
+                  <div key={r.id} className={`card text-center ${!r.isEnabled ? 'opacity-40 grayscale' : ''}`}>
                     <div style={{ fontSize: 36, marginBottom: 8 }}>{r.icon}</div>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>{r.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>{r.desc}</div>
-                    <div style={{ fontWeight: 800, color: 'var(--gold)', marginBottom: 10 }}>{r.cost} pts</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>{r.desc}</div>
+                    <div className="flex justify-between items-center mb-3 px-4">
+                      <span className="text-xs text-4">Stock: {r.stock}</span>
+                      <span style={{ fontWeight: 800, color: 'var(--gold)' }}>{r.cost} pts</span>
+                    </div>
                     <button
                       className="btn btn-primary btn-sm w-full"
-                      disabled={(user?.points || 0) < r.cost}
+                      disabled={(user?.points || 0) < r.cost || r.stock <= 0 || !r.isEnabled}
                       onClick={() => redeemReward(r)}
                     >
-                      {(user?.points || 0) >= r.cost ? 'Redeem' : 'Not enough points'}
+                      {r.stock <= 0 ? 'Out of Stock' : (user?.points || 0) >= r.cost ? 'Redeem' : 'Not enough points'}
                     </button>
+                    {user?.role === 'admin' && (
+                      <div className="mt-3 flex gap-2">
+                        <button className="btn btn-xs btn-secondary flex-1" onClick={() => saveRewards(rewards.map(x => x.id === r.id ? { ...x, stock: x.stock + 5 } : x))}>+5 Stock</button>
+                        <button className="btn btn-xs btn-secondary" onClick={() => saveRewards(rewards.map(x => x.id === r.id ? { ...x, isEnabled: !x.isEnabled } : x))}>{r.isEnabled ? 'Disable' : 'Enable'}</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
+
+              {user?.role === 'admin' && (
+                <div className="mt-8 border-t pt-6">
+                  <h3 className="font-bold mb-4">Pending Fullfilment</h3>
+                  <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Staff</th>
+                            <th>Reward</th>
+                            <th>Cost</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {redeems.filter(r => r.status === 'pending').map(r => (
+                            <tr key={r.id}>
+                              <td>{r.staffName}</td>
+                              <td>{r.rewardName}</td>
+                              <td className="font-bold text-accent">{r.cost}</td>
+                              <td className="text-xs text-4">{new Date(r.createdAt).toLocaleDateString()}</td>
+                              <td>
+                                <button className="btn btn-xs btn-accent" onClick={() => fulfillRedeem(r.id)}>Fulfill</button>
+                              </td>
+                            </tr>
+                          ))}
+                          {redeems.filter(r => r.status === 'pending').length === 0 && <tr><td colSpan={5} className="text-center py-6 text-4">No pending redemptions</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

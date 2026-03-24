@@ -24,22 +24,22 @@ import BackendPage from '@/components/settings/BackendPage'
 import ResetRequestsPage from '@/components/admin/ResetRequestsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
-  dashboard: ['staff', 'owner', 'admin'],
-  timesheet: ['staff', 'owner', 'admin'],
-  approvals: ['owner', 'admin'],
-  delegation: ['owner', 'admin'],
-  leaderboard: ['staff', 'owner', 'admin'],
-  messages: ['staff', 'owner', 'admin'],
-  analytics: ['owner', 'admin'],
-  staff: ['admin'],
-  org_chart: ['admin'],
-  audit: ['admin'],
-  reset_queue: ['admin'],
-  settings: ['admin'],
+  dashboard: ['staff', 'team_lead', 'admin', 'super_admin'],
+  timesheet: ['staff', 'team_lead', 'admin', 'super_admin'],
+  approvals: ['team_lead', 'admin', 'super_admin'],
+  delegation: ['team_lead', 'admin', 'super_admin'],
+  leaderboard: ['staff', 'team_lead', 'admin', 'super_admin'],
+  messages: ['staff', 'team_lead', 'admin', 'super_admin'],
+  analytics: ['team_lead', 'admin', 'super_admin'],
+  staff: ['admin', 'super_admin'],
+  org_chart: ['admin', 'super_admin'],
+  audit: ['admin', 'super_admin'],
+  reset_queue: ['admin', 'super_admin'],
+  settings: ['admin', 'super_admin'],
 
-  backend: ['admin'],
-  profile: ['staff', 'owner', 'admin'],
-  help: ['staff', 'owner', 'admin'],
+  backend: ['admin', 'super_admin'],
+  profile: ['staff', 'team_lead', 'admin', 'super_admin'],
+  help: ['staff', 'team_lead', 'admin', 'super_admin'],
 }
 
 export default function Home() {

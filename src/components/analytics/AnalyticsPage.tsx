@@ -5,529 +5,931 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { getWeekKey, weekRange, exportCSV, exportPDF, fmtDate } from '../../lib/utils'
 import { Staff, Entry, Reward, Redemption, HofEntry, AppMessage, Leave } from '../../types'
 import toast from 'react-hot-toast'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
+import * as XLSX from 'xlsx'
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
-const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }
+const COLORS = ['#076C04', '#22C55E', '#EAB308', '#D8001A', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
+const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-1)' }
 
-interface HourWeekStat {
-  week: string;
-  weekKey: string;
-  hours: number;
-  entries: number;
-  submittedStaff: number;
-}
-
-interface CompareWeekStat {
-  week: string;
-  hours: number;
-  submissions: number;
-  approved: number;
-  rejected: number;
-}
-
-interface ProjectStat {
-  name: string;
-  actual: number;
-  budget: number;
-  variance: number | null;
-}
-
-interface StaffYTDStat {
-  id: string;
-  name: string;
-  department: string;
-  totalHours: number;
-  approvedHours: number;
-  weeks: number;
-  submittedWeeks: number;
-  submitRate: number;
-  utilization: number;
-  points: number;
-  streak: number;
-}
-
-interface ReportColumns {
-  name: boolean;
-  department: boolean;
-  totalHours: boolean;
-  approvedHours: boolean;
-  weeks: boolean;
-  submitRate: boolean;
-  utilization: boolean;
-  points: boolean;
-  [key: string]: boolean;
-}
+type PeriodType = 'week' | 'month' | 'custom'
 
 export default function AnalyticsPage() {
-  const { staff, entries, settings, projects, budgets, saveBudgets } = useApp()
+  const { staff, entries, settings, projects, projectBudgets, bulkImportLogs } = useApp()
   const [tab, setTab] = useState('overview')
+  
+  // Filter State
+  const [periodType, setPeriodType] = useState<PeriodType>('week')
+  const [selectedWeek, setSelectedWeek] = useState(getWeekKey())
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
+  const [customStart, setCustomStart] = useState(format(subWeeks(new Date(), 4), 'yyyy-MM-dd'))
+  const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'))
+
   const [staffFilter, setStaffFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
-  const [compareWeeks, setCompareWeeks] = useState<string[]>([])
-  const [reportColumns, setReportColumns] = useState<ReportColumns>({ name: true, department: true, totalHours: true, approvedHours: true, weeks: true, submitRate: true, utilization: true, points: true })
-  const [showColPicker, setShowColPicker] = useState(false)
-  const [budgetProject, setBudgetProject] = useState('')
-  const [budgetHours, setBudgetHours] = useState('')
 
+  // Comparison State
+  const [compareStaff1, setCompareStaff1] = useState<string>('')
+  const [compareStaff2, setCompareStaff2] = useState<string>('')
+
+  // Bulk Import State
+  const [importing, setImporting] = useState(false)
+  const [importPreview, setImportPreview] = useState<any[]>([])
+  const [importErrors, setImportErrors] = useState<string[]>([])
+  const { saveEntries, saveBulkImportLogs, user } = useApp()
+  
+  // Utils
   const weekCap = settings?.weekly_cap || 45
-  const currentWeek = getWeekKey()
   const activeStaff = staff.filter(s => !s.suspended)
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean).map(d => d as string))).sort()
 
-  const last8Weeks = useMemo(() => {
-    const result: string[] = []
-    for (let i = 7; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i * 7)
-      result.push(getWeekKey(d))
+  // Date Range Calculation
+  const dateRange = useMemo(() => {
+    let start: Date, end: Date
+    if (periodType === 'week') {
+      start = startOfWeek(parseISO(selectedWeek), { weekStartsOn: 1 })
+      end = endOfWeek(parseISO(selectedWeek), { weekStartsOn: 1 })
+    } else if (periodType === 'month') {
+      start = startOfMonth(parseISO(selectedMonth + '-01'))
+      end = endOfMonth(parseISO(selectedMonth + '-01'))
+    } else {
+      start = startOfDay(parseISO(customStart))
+      end = endOfDay(parseISO(customEnd))
     }
-    return result
-  }, [])
+    return { start, end }
+  }, [periodType, selectedWeek, selectedMonth, customStart, customEnd])
 
-  // Current week stats
-  const currentEntries = entries.filter(e => e.weekKey === currentWeek && !e.deleted)
-  const submittedStaffIds = Array.from(new Set(currentEntries.filter(e => ['submitted', 'approved', 'resubmitted'].includes(e.status)).map(e => e.staffId)))
-  const submissionRate = activeStaff.length > 0 ? Math.round((submittedStaffIds.length / activeStaff.length) * 100) : 0
-  const totalApproved = entries.filter(e => e.status === 'approved' && !e.deleted).reduce((s, e) => s + (e.hours || 0), 0)
-  const pendingCount = entries.filter(e => ['submitted', 'resubmitted'].includes(e.status) && !e.deleted).length
-  const rejectedCount = entries.filter(e => e.status === 'rejected' && !e.deleted).length
-  const approvalRate = (() => {
-    const decided = entries.filter(e => ['approved', 'rejected'].includes(e.status) && !e.deleted).length
-    const approved = entries.filter(e => e.status === 'approved' && !e.deleted).length
-    return decided > 0 ? Math.round((approved / decided) * 100) : 0
-  })()
+  // Filtered Data
+  const filteredEntries = useMemo(() => {
+    return entries.filter(e => {
+      if (e.deleted) return false
+      const d = parseISO(e.date)
+      return isWithinInterval(d, { start: dateRange.start, end: dateRange.end })
+    })
+  }, [entries, dateRange])
 
-  // Hours by week chart
-  const hoursByWeek: HourWeekStat[] = useMemo(() => last8Weeks.map(w => {
-    const wEntries = entries.filter(e => e.weekKey === w && e.status === 'approved' && !e.deleted)
-    const submitted = Array.from(new Set(entries.filter(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status) && !e.deleted).map(e => e.staffId)))
+  const filteredStaff = useMemo(() => {
+    return activeStaff.filter(s => {
+      const matchStaff = !staffFilter || s.name.toLowerCase().includes(staffFilter.toLowerCase())
+      const matchDept = !deptFilter || s.department === deptFilter
+      return matchStaff && matchDept
+    })
+  }, [activeStaff, staffFilter, deptFilter])
+
+  // Overview Stats
+  const stats = useMemo(() => {
+    const approved = filteredEntries.filter(e => e.status === 'approved')
+    const submitted = filteredEntries.filter(e => ['submitted', 'resubmitted', 'approved', 'pending_2nd_approval'].includes(e.status))
+    const pending = filteredEntries.filter(e => ['submitted', 'resubmitted', 'pending_2nd_approval'].includes(e.status))
+    
+    const totalHours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
+    const decided = filteredEntries.filter(e => ['approved', 'rejected'].includes(e.status))
+    const approvalRate = decided.length > 0 ? Math.round((approved.length / decided.length) * 100) : 0
+    
+    const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
+    const activeStaffCount = staffWithEntries.length
+    const notSubmittedList = activeStaff.filter(s => !staffWithEntries.includes(s.id))
+
     return {
-      week: weekRange(w).split('–')[0].trim(),
-      weekKey: w,
-      hours: parseFloat(wEntries.reduce((s, e) => s + (e.hours || 0), 0).toFixed(1)),
-      entries: wEntries.length,
-      submittedStaff: submitted.length,
+      totalHours: parseFloat(totalHours.toFixed(1)),
+      approvalRate,
+      pendingCount: pending.length,
+      activeStaffCount,
+      notSubmittedList
     }
-  }), [entries, last8Weeks])
+  }, [filteredEntries, activeStaff])
 
-  // Compare weeks
-  const compareData: CompareWeekStat[] = useMemo(() => {
-    if (compareWeeks.length < 2) return []
-    return compareWeeks.map(w => ({
-      week: weekRange(w).split('–')[0].trim(),
-      hours: parseFloat(entries.filter(e => e.weekKey === w && e.status === 'approved' && !e.deleted).reduce((s, e) => s + (e.hours || 0), 0).toFixed(1)),
-      submissions: Array.from(new Set(entries.filter(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status) && !e.deleted).map(e => e.staffId))).length,
-      approved: entries.filter(e => e.weekKey === w && e.status === 'approved' && !e.deleted).length,
-      rejected: entries.filter(e => e.weekKey === w && e.status === 'rejected' && !e.deleted).length,
+  // Bar chart - hours logged across last 5 weeks
+  const last5WeeksData = useMemo(() => {
+    const weeks: any[] = []
+    const end = dateRange.end
+    const start = subWeeks(end, 4)
+    const interval = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 })
+    
+    interval.forEach(w => {
+      const wKey = getWeekKey(w)
+      const wEntries = entries.filter(e => e.weekKey === wKey && e.status === 'approved' && !e.deleted)
+      weeks.push({
+        week: format(w, 'dd MMM'),
+        hours: parseFloat(wEntries.reduce((s, e) => s + (e.hours || 0), 0).toFixed(1))
+      })
+    })
+    return weeks.slice(-5)
+  }, [entries, dateRange])
+
+  // Weekly breakdown table
+  const weeklyBreakdown = useMemo(() => {
+    const weeksMap: Record<string, any> = {}
+    filteredEntries.forEach(e => {
+      if (!weeksMap[e.weekKey]) {
+        weeksMap[e.weekKey] = { weekKey: e.weekKey, entries: 0, hours: 0, approved: 0, pending: 0, rejected: 0 }
+      }
+      const w = weeksMap[e.weekKey]
+      w.entries++
+      w.hours += e.hours || 0
+      if (e.status === 'approved') w.approved++
+      else if (['submitted', 'resubmitted', 'pending_2nd_approval'].includes(e.status)) w.pending++
+      else if (e.status === 'rejected') w.rejected++
+    })
+
+    return Object.values(weeksMap).map(w => {
+      const decided = w.approved + w.rejected
+      return {
+        ...w,
+        hours: parseFloat(w.hours.toFixed(1)),
+        approvalRate: decided > 0 ? Math.round((w.approved / decided) * 100) : 0
+      }
+    }).sort((a, b) => b.weekKey.localeCompare(a.weekKey))
+  }, [filteredEntries])
+
+  // Month Comparison Data
+  const monthCompareData = useMemo(() => {
+    const currentMonthStart = startOfMonth(dateRange.start)
+    const prevMonthStart = startOfMonth(subWeeks(currentMonthStart, 4)) // Roughly previous month
+    const prevMonthEnd = endOfMonth(prevMonthStart)
+
+    const getMonthStats = (start: Date, end: Date) => {
+      const ents = entries.filter(e => !e.deleted && isWithinInterval(parseISO(e.date), { start, end }))
+      const approved = ents.filter(e => e.status === 'approved')
+      const hours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
+      const submissionCount = new Set(ents.map(e => `${e.staffId}-${e.weekKey}`)).size
+      return { hours: parseFloat(hours.toFixed(1)), submissions: submissionCount }
+    }
+
+    const current = getMonthStats(currentMonthStart, endOfMonth(currentMonthStart))
+    const previous = getMonthStats(prevMonthStart, prevMonthEnd)
+
+    return { current, previous }
+  }, [entries, dateRange.start])
+
+  // Utilisation Data
+  const utilisationData = useMemo(() => {
+    // Determine number of weeks in period for averaging
+    const days = (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
+    const weeksInPeriod = Math.max(days / 7, 1)
+
+    return filteredStaff.map(s => {
+      const sEntries = filteredEntries.filter(e => e.staffId === s.id && e.status === 'approved')
+      const totalHours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
+      const avgWeekly = totalHours / weeksInPeriod
+      const utilization = Math.round((avgWeekly / weekCap) * 100)
+      
+      return {
+        ...s,
+        totalHours: parseFloat(totalHours.toFixed(1)),
+        avgWeekly: parseFloat(avgWeekly.toFixed(1)),
+        utilization,
+        isUnder: avgWeekly < 30 && totalHours > 0,
+        isOver: avgWeekly > weekCap
+      }
+    }).sort((a, b) => b.avgWeekly - a.avgWeekly)
+  }, [filteredStaff, filteredEntries, weekCap, dateRange])
+
+  // Staff YTD Data
+  const staffYTD = useMemo(() => {
+    const yearStart = new Date(new Date().getFullYear(), 0, 1)
+    const yearEnd = new Date()
+    const ytdEntries = entries.filter(e => !e.deleted && parseISO(e.date) >= yearStart)
+    
+    return activeStaff.map(s => {
+      const sEntries = ytdEntries.filter(e => e.staffId === s.id)
+      const approved = sEntries.filter(e => e.status === 'approved')
+      const totalHours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
+      
+      // Submit rate: weeks with entries / weeks in year so far
+      const weeksSoFar = eachWeekOfInterval({ start: yearStart, end: yearEnd }, { weekStartsOn: 1 })
+      const weeksWithEntries = new Set(sEntries.map(e => e.weekKey)).size
+      const submitRate = Math.round((weeksWithEntries / weeksSoFar.length) * 100)
+      
+      return {
+        ...s,
+        ytdHours: parseFloat(totalHours.toFixed(1)),
+        submitRate,
+        weeksActive: weeksWithEntries
+      }
+    }).sort((a, b) => b.ytdHours - a.ytdHours)
+  }, [activeStaff, entries])
+
+  // Tab switching and exports
+  const exportNotSubmitted = () => {
+    const rows = stats.notSubmittedList.map(s => ({
+      Name: s.name,
+      Email: s.email,
+      Department: s.department || '—',
+      Lead: s.leadName || '—'
     }))
-  }, [entries, compareWeeks])
-
-  // Project hours with budget
-  const projectData: ProjectStat[] = useMemo(() => {
-    const map: Record<string, number> = {}
-    entries.filter(e => e.status === 'approved' && !e.deleted).forEach(e => {
-      if (!map[e.project]) map[e.project] = 0
-      map[e.project] += e.hours || 0
-    })
-    return Object.entries(map).map(([name, actual]) => {
-      const proj = projects.find((p: any) => p.name === name)
-      const budget = budgets.find((b: any) => b.project === name)?.hours || proj?.budget || 0
-      return {
-        name,
-        actual: parseFloat(actual.toFixed(1)),
-        budget: parseFloat(String(budget)),
-        variance: budget > 0 ? parseFloat((actual - budget).toFixed(1)) : null
-      }
-    }).sort((a, b) => b.actual - a.actual).slice(0, 10)
-  }, [entries, projects, budgets])
-
-  // Category breakdown
-  const categoryData = useMemo(() => {
-    const map: Record<string, number> = {}
-    entries.filter(e => e.status === 'approved' && !e.deleted).forEach(e => {
-      const cat = e.category || 'Uncategorised'
-      if (!map[cat]) map[cat] = 0
-      map[cat] += e.hours || 0
-    })
-    return Object.entries(map).map(([name, value]) => ({ name, value: parseFloat(value.toFixed(1)) }))
-  }, [entries])
-
-  // Staff YTD
-  const staffYTD: StaffYTDStat[] = useMemo(() => activeStaff
-    .filter(s => !deptFilter || s.department === deptFilter)
-    .filter(s => !staffFilter || s.name.toLowerCase().includes(staffFilter.toLowerCase()))
-    .map(s => {
-      const my = entries.filter(e => e.staffId === s.id && !e.deleted)
-      const weeks = Array.from(new Set(my.map(e => e.weekKey)))
-      const submitted = weeks.filter(w => my.some(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status)))
-      const totalH = parseFloat(my.reduce((a, e) => a + (e.hours || 0), 0).toFixed(1))
-      const approvedH = parseFloat(my.filter(e => e.status === 'approved').reduce((a, e) => a + (e.hours || 0), 0).toFixed(1))
-      const util = weeks.length > 0 && weekCap > 0 ? Math.round((totalH / (weekCap * weeks.length)) * 100) : 0
-      return {
-        id: s.id, name: s.name, department: s.department || '—', totalHours: totalH,
-        approvedHours: approvedH, weeks: weeks.length, submittedWeeks: submitted.length,
-        submitRate: weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0,
-        utilization: util, points: s.points || 0, streak: s.streak || 0
-      }
-    }), [activeStaff, entries, deptFilter, staffFilter, weekCap])
-
-  const notSubmitted = activeStaff.filter(s => !submittedStaffIds.includes(s.id))
-
-  function exportYTD() {
-    const cols = Object.entries(reportColumns).filter(([, v]) => v).map(([k]) => k)
-    const colMap: Record<string, string> = { name: 'Name', department: 'Department', totalHours: 'Total Hours', approvedHours: 'Approved Hours', weeks: 'Weeks', submitRate: 'Submit Rate %', utilization: 'Utilization %', points: 'Points' }
-    const rows = staffYTD.map(s => {
-      const row: Record<string, any> = {}
-      cols.forEach(c => { row[colMap[c] || c] = s[c as keyof StaffYTDStat] })
-      return row
-    })
-    exportCSV(rows, 'dsn_staff_ytd.csv')
-    toast.success('YTD report exported')
+    exportCSV(rows, `not_submitted_${format(dateRange.start, 'yyyy-MM-dd')}_to_${format(dateRange.end, 'yyyy-MM-dd')}.csv`)
+    toast.success('Exported not-submitted list')
   }
 
-  async function exportYTDpdf() {
-    const cols = Object.entries(reportColumns).filter(([, v]) => v).map(([k]) => k)
-    const colMap: Record<string, string> = { name: 'Name', department: 'Department', totalHours: 'Total Hrs', approvedHours: 'Approved Hrs', weeks: 'Weeks', submitRate: 'Submit %', utilization: 'Util %', points: 'Points' }
+  const exportUtilisation = () => {
+    const columns = [
+      { key: 'name', label: 'Staff Name' },
+      { key: 'dept', label: 'Department' },
+      { key: 'total', label: 'Total Hrs' },
+      { key: 'avg', label: 'Avg Weekly' },
+      { key: 'util', label: 'Util %' }
+    ]
+    const rows = utilisationData.map(u => ({
+      name: u.name,
+      dept: u.department || '—',
+      total: u.totalHours + 'h',
+      avg: u.avgWeekly + 'h',
+      util: u.utilization + '%'
+    }))
+    exportPDF(rows, columns, 'Staff Utilisation Report', `utilisation_${format(dateRange.start, 'yyyy-MM-dd')}.pdf`)
+    toast.success('Generated Utilisation PDF')
+  }
+
+  const exportYTD = () => {
+    const rows = staffYTD.map(s => ({
+      Name: s.name,
+      Department: s.department || '—',
+      'YTD Hours': s.ytdHours,
+      'Submit Rate %': s.submitRate,
+      'Weeks Active': s.weeksActive
+    }))
+    exportCSV(rows, `staff_ytd_${new Date().getFullYear()}.csv`)
+    toast.success('Exported YTD CSV')
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result
+      const wb = XLSX.read(bstr, { type: 'binary' })
+      const wsname = wb.SheetNames[0]
+      const ws = wb.Sheets[wsname]
+      const data = XLSX.utils.sheet_to_json(ws) as any[]
+      
+      const errors: string[] = []
+      const preview = data.map((row, idx) => {
+        const staffObj = staff.find(s => s.id === row.staffId || s.email === row.email)
+        const projObj = projects.find(p => p.name === row.project)
+        
+        if (!staffObj) errors.push(`Row ${idx + 2}: Staff not found (${row.staffId || row.email})`)
+        if (!projObj) errors.push(`Row ${idx + 2}: Project not found (${row.project})`)
+        if (!row.date || isNaN(Date.parse(row.date))) errors.push(`Row ${idx + 2}: Invalid date (${row.date})`)
+        if (isNaN(parseFloat(row.hours))) errors.push(`Row ${idx + 2}: Invalid hours (${row.hours})`)
+
+        return {
+          ...row,
+          isValid: !errors.length,
+          staffName: staffObj?.name || 'Unknown',
+          projectName: projObj?.name || 'Unknown'
+        }
+      })
+
+      setImportPreview(preview)
+      setImportErrors(errors)
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const commitImport = async () => {
+    if (importErrors.length > 0) {
+      toast.error('Please fix errors before importing')
+      return
+    }
+    if (importPreview.length === 0) return
+
+    setImporting(true)
     try {
-      await exportPDF(staffYTD, cols.map(k => ({ key: k, label: colMap[k] || k })), 'DSN Staff YTD Report', 'dsn_staff_ytd.pdf')
-      toast.success('PDF exported')
-    } catch { toast.error('PDF failed — use CSV') }
-  }
+      const newEntries: Entry[] = importPreview.map(row => {
+        const s = staff.find(st => st.id === row.staffId || st.email === row.email)
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          staffId: s?.id || row.staffId,
+          staffName: s?.name || 'Unknown',
+          date: format(new Date(row.date), 'yyyy-MM-dd'),
+          hours: parseFloat(row.hours),
+          project: row.project,
+          category: row.category || 'Client Work',
+          description: row.description || 'Bulk imported',
+          status: 'approved',
+          weekKey: getWeekKey(new Date(row.date)),
+          createdAt: new Date().toISOString(),
+          createdBy: user?.id || 'system'
+        }
+      })
 
-  function saveBudget() {
-    if (!budgetProject || !budgetHours) { toast.error('Select project and enter hours'); return }
-    const updated = budgets.filter((b: any) => b.project !== budgetProject)
-    updated.push({ project: budgetProject, hours: parseFloat(budgetHours) })
-    saveBudgets(updated)
-    setBudgetProject(''); setBudgetHours('')
-    toast.success('Budget saved')
+      await saveEntries([...entries, ...newEntries])
+      
+      const log = {
+        id: Math.random().toString(36).substr(2, 9),
+        importedBy: user?.id || 'admin',
+        importedByName: user?.name || 'Admin',
+        timestamp: new Date().toISOString(),
+        totalRows: importPreview.length,
+        successCount: importPreview.length,
+        failCount: 0,
+        errors: []
+      }
+      await saveBulkImportLogs([...bulkImportLogs, log])
+      
+      toast.success(`Successfully imported ${newEntries.length} entries`)
+      setImportPreview([])
+      setTab('overview')
+    } catch (e) {
+      toast.error('Import failed')
+      console.error(e)
+    } finally {
+      setImporting(false)
+    }
   }
-
-  function toggleCompareWeek(w: string) {
-    setCompareWeeks(prev => prev.includes(w) ? prev.filter(x => x !== w) : prev.length < 5 ? [...prev, w] : prev)
-  }
-
-  const COL_LABELS = { name: 'Name', department: 'Department', totalHours: 'Total Hours', approvedHours: 'Approved Hours', weeks: 'Weeks Active', submitRate: 'Submit Rate', utilization: 'Utilization', points: 'Points' }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>📊 Analytics</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Team performance, insights & reports</p>
+          <h1 className="page-title">📊 Analytics & Reports</h1>
+          <p className="page-subtitle">Visibility into timesheet activity, staff utilisation, and project progress.</p>
         </div>
-      </div>
 
-      {/* KPI row */}
-      <div className="grid-4">
-        {[
-          { label: 'Submission Rate', value: submissionRate + '%', sub: submittedStaffIds.length + '/' + activeStaff.length + ' staff', color: submissionRate >= 80 ? 'var(--success)' : 'var(--warning)' },
-          { label: 'Approval Rate', value: approvalRate + '%', sub: 'of decided entries', color: approvalRate >= 80 ? 'var(--success)' : 'var(--warning)' },
-          { label: 'Pending Approval', value: pendingCount, sub: 'entries awaiting review', color: 'var(--warning)' },
-          { label: 'Total Approved Hrs', value: totalApproved + 'h', sub: 'all time', color: 'var(--accent)' },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
-            <div className="stat-label">{s.label}</div>
-            <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
-            <div className="stat-sub">{s.sub}</div>
+        {/* Global Period Filter */}
+        <div className="card card-sm flex items-center gap-3 flex-wrap">
+          <div className="flex items-center bg-elevated rounded-lg p-1">
+            {(['week', 'month', 'custom'] as PeriodType[]).map(t => (
+              <button
+                key={t}
+                onClick={() => setPeriodType(t)}
+                className={`btn btn-sm ${periodType === t ? 'btn-primary' : 'btn-secondary border-none'}`}
+                style={{ textTransform: 'capitalize' }}
+              >
+                {t}
+              </button>
+            ))}
           </div>
-        ))}
+
+          {periodType === 'week' && (
+            <input
+              type="week"
+              className="form-input"
+              style={{ width: 180 }}
+              value={selectedWeek.includes('-W') ? selectedWeek : format(parseISO(selectedWeek), "yyyy-'W'II")}
+              onChange={e => {
+                const [yStr, wStr] = e.target.value.split('-W')
+                if (yStr && wStr) {
+                  const y = parseInt(yStr)
+                  const w = parseInt(wStr)
+                  const target = startOfWeek(new Date(y, 0, 1 + (w - 1) * 7), { weekStartsOn: 1 })
+                  setSelectedWeek(getWeekKey(target))
+                }
+              }}
+            />
+          )}
+
+          {periodType === 'month' && (
+            <input
+              type="month"
+              className="form-input"
+              style={{ width: 160 }}
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+            />
+          )}
+
+          {periodType === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="form-input"
+                style={{ width: 140 }}
+                value={customStart}
+                onChange={e => setCustomStart(e.target.value)}
+              />
+              <span className="text-4">to</span>
+              <input
+                type="date"
+                className="form-input"
+                style={{ width: 140 }}
+                value={customEnd}
+                onChange={e => setCustomEnd(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="tabs">
-        {['overview', 'compare', 'projects', 'staff_ytd', 'not_submitted'].map(t => (
-          <div key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>
-            {t === 'overview' ? 'Overview' : t === 'compare' ? 'Week Compare' : t === 'projects' ? 'Projects' : t === 'staff_ytd' ? 'Staff YTD' : 'Not Submitted'}
+        {['overview', 'projects', 'utilisation', 'staff_ytd', 'compare_staff', 'month_compare', 'bulk_import'].map(t => (
+          <div
+            key={t}
+            className={`tab ${tab === t ? 'active' : ''}`}
+            onClick={() => setTab(t)}
+            style={{ textTransform: 'capitalize' }}
+          >
+            {t.replace('_', ' ')}
           </div>
         ))}
       </div>
 
-      {/* ── OVERVIEW ── */}
+      {/* ── OVERVIEW TAB ── */}
       {tab === 'overview' && (
-        <>
-          <div className="chart-wrap">
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Approved Hours — Last 8 Weeks</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <ComposedChart data={hoursByWeek}>
-                <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                <Tooltip contentStyle={TT} />
-                <Bar yAxisId="left" dataKey="hours" fill="var(--accent)" radius={[4, 4, 0, 0]} name="Hours" />
-                <Line yAxisId="right" type="monotone" dataKey="submittedStaff" stroke="var(--success)" strokeWidth={2} dot={{ r: 3 }} name="Staff Submitted" />
-              </ComposedChart>
-            </ResponsiveContainer>
+        <div className="flex flex-col gap-6">
+          <div className="grid-4">
+            <div className="stat-card">
+              <div className="stat-label">Total Hours</div>
+              <div className="stat-value text-accent">{stats.totalHours}h</div>
+              <div className="stat-sub">Approved entries in period</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Approval Rate</div>
+              <div className="stat-value" style={{ color: stats.approvalRate >= 80 ? 'var(--success)' : 'var(--warning)' }}>
+                {stats.approvalRate}%
+              </div>
+              <div className="stat-sub">Of submitted entries</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Pending Count</div>
+              <div className="stat-value text-warning">{stats.pendingCount}</div>
+              <div className="stat-sub">Awaiting review</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Active Staff</div>
+              <div className="stat-value">{stats.activeStaffCount}</div>
+              <div className="stat-sub">Logging hours in period</div>
+            </div>
           </div>
 
           <div className="grid-2">
-            <div className="chart-wrap">
-              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Hours by Category</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }: any) => (percent || 0) > 0.05 ? (name || '').slice(0, 10) + ' ' + Math.round((percent || 0) * 100) + '%' : ''} labelLine={false}>
-                    {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
+            <div className="card">
+              <h3 className="text-1 font-bold mb-4">Hours Logged (Last 5 Weeks)</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={last5WeeksData}>
+                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
                   <Tooltip contentStyle={TT} />
-                </PieChart>
+                  <Bar dataKey="hours" fill="var(--accent)" radius={[4, 4, 0, 0]} name="Approved Hours" />
+                </BarChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="chart-wrap">
-              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Weekly Breakdown</h3>
-              <table style={{ width: '100%' }}>
-                <thead><tr><th style={{ textAlign: 'left', fontSize: 11, color: 'var(--text-3)', padding: '4px 0' }}>Week</th><th style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-3)' }}>Hours</th><th style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-3)' }}>Entries</th><th style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-3)' }}>Staff</th></tr></thead>
+            <div className="card flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-1 font-bold">Not-Submitted List</h3>
+                <button className="btn btn-secondary btn-sm" onClick={exportNotSubmitted}>⬇ Export CSV</button>
+              </div>
+              <div className="table-wrap flex-1" style={{ maxHeight: 250 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Staff Name</th>
+                      <th>Department</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.notSubmittedList.length === 0 ? (
+                      <tr><td colSpan={2} className="text-center py-8 text-4">All staff submitted! 🎉</td></tr>
+                    ) : (
+                      stats.notSubmittedList.map(s => (
+                        <tr key={s.id}>
+                          <td>{s.name}</td>
+                          <td className="text-3">{s.department || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="text-1 font-bold mb-4">Weekly Breakdown</h3>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Week Range</th>
+                    <th>Entries</th>
+                    <th>Hours</th>
+                    <th>Approved</th>
+                    <th>Pending</th>
+                    <th>Rejected</th>
+                    <th>Approval Rate</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {hoursByWeek.slice(-5).map((w, i) => (
-                    <tr key={i}>
-                      <td style={{ fontSize: 12, padding: '6px 0', color: 'var(--text-2)' }}>{w.week}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'var(--mono)', fontSize: 12 }}>{w.hours}h</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12 }}>{w.entries}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12 }}>{w.submittedStaff}</td>
+                  {weeklyBreakdown.map(w => (
+                    <tr key={w.weekKey}>
+                      <td className="font-medium">{weekRange(w.weekKey)}</td>
+                      <td>{w.entries}</td>
+                      <td className="font-bold">{w.hours}h</td>
+                      <td className="text-success">{w.approved}</td>
+                      <td className="text-warning">{w.pending}</td>
+                      <td className="text-danger">{w.rejected}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className="progress flex-1" style={{ width: 60 }}>
+                            <div className="progress-bar" style={{ width: `${w.approvalRate}%`, backgroundColor: w.approvalRate >= 80 ? 'var(--success)' : 'var(--warning)' }} />
+                          </div>
+                          <span className="text-xs">{w.approvalRate}%</span>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* ── WEEK COMPARE ── */}
-      {tab === 'compare' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Select up to 5 weeks to compare:</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {last8Weeks.map(w => (
-                <button key={w} className={'chip' + (compareWeeks.includes(w) ? ' active' : '')} onClick={() => toggleCompareWeek(w)}>
-                  {weekRange(w).split('–')[0].trim()}
-                </button>
-              ))}
+      {/* ── PROJECTS TAB ── */}
+      {tab === 'projects' && (
+        <div className="flex flex-col gap-6">
+          <div className="grid-3">
+            {projects.map(p => {
+              const budget = projectBudgets.find(b => b.projectId === p.id)
+              const budgetHrs = budget?.budgetHours || 0
+              // Calculate logged hours for this project in the selected period
+              const loggedHrs = filteredEntries
+                .filter(e => e.project === p.name && e.status === 'approved')
+                .reduce((sum, e) => sum + (e.hours || 0), 0)
+              
+              const percent = budgetHrs > 0 ? Math.min(Math.round((loggedHrs / budgetHrs) * 100), 100) : 0
+              
+              return (
+                <div key={p.id} className="card flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-1 truncate" title={p.name}>{p.name}</h3>
+                    <span className="text-xs font-mono text-3">{loggedHrs}h / {budgetHrs || '∞'}h</span>
+                  </div>
+                  <div className="progress">
+                    <div 
+                      className={`progress-bar ${percent > 90 ? 'danger' : percent > 70 ? 'warning' : ''}`} 
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={percent > 90 ? 'text-danger font-bold' : 'text-3'}>{percent}% used</span>
+                    <span className="text-4">{budgetHrs ? `${budgetHrs - loggedHrs}h left` : 'No budget set'}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="card">
+            <h3 className="text-1 font-bold mb-4">Project Performance Summary</h3>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Project Name</th>
+                    <th>Budget Hours</th>
+                    <th>Actual Logged</th>
+                    <th>Progress</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map(p => {
+                    const budget = projectBudgets.find(b => b.projectId === p.id)
+                    const budgetHrs = budget?.budgetHours || 0
+                    const loggedHrs = filteredEntries
+                      .filter(e => e.project === p.name && e.status === 'approved')
+                      .reduce((sum, e) => sum + (e.hours || 0), 0)
+                    const percent = budgetHrs > 0 ? (loggedHrs / budgetHrs) * 100 : 0
+                    
+                    return (
+                      <tr key={p.id}>
+                        <td className="font-medium">{p.name}</td>
+                        <td className="font-mono text-3">{budgetHrs || '—'}</td>
+                        <td className="font-bold">{loggedHrs}h</td>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <div className="progress flex-1" style={{ minWidth: 100 }}>
+                              <div className="progress-bar" style={{ width: `${Math.min(percent, 100)}%` }} />
+                            </div>
+                            <span className="text-xs w-8">{Math.round(percent)}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          {budgetHrs === 0 ? (
+                            <span className="badge badge-gray">No Budget</span>
+                          ) : percent > 100 ? (
+                            <span className="badge badge-red">Over Budget</span>
+                          ) : percent > 80 ? (
+                            <span className="badge badge-yellow">Near Limit</span>
+                          ) : (
+                            <span className="badge badge-green">On Track</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-          {compareWeeks.length >= 2 ? (
-            <>
-              <div className="chart-wrap">
-                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Side-by-Side Week Comparison</h3>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={compareData}>
-                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                    <Tooltip contentStyle={TT} />
-                    <Bar dataKey="hours" fill="var(--accent)" radius={[4, 4, 0, 0]} name="Approved Hours" />
-                    <Bar dataKey="submissions" fill="var(--success)" radius={[4, 4, 0, 0]} name="Staff Submitted" />
-                    <Bar dataKey="rejected" fill="var(--danger)" radius={[4, 4, 0, 0]} name="Rejected Entries" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div className="table-wrap">
-                  <table>
-                    <thead><tr><th>Week</th><th>Approved Hours</th><th>Staff Submitted</th><th>Approved Entries</th><th>Rejected Entries</th></tr></thead>
-                    <tbody>
-                      {compareData.map((w, i) => (
-                        <tr key={i}>
-                          <td style={{ fontWeight: 600 }}>{w.week}</td>
-                          <td style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{w.hours}h</td>
-                          <td>{w.submissions}</td>
-                          <td style={{ color: 'var(--success)' }}>{w.approved}</td>
-                          <td style={{ color: 'var(--danger)' }}>{w.rejected}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
+        </div>
+      )}
+
+      {/* ── UTILISATION TAB ── */}
+      {tab === 'utilisation' && (
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-1 font-bold">Staff Utilisation (Avg Weekly)</h3>
+            <button className="btn btn-secondary btn-sm" onClick={exportUtilisation}>⬇ Export PDF</button>
+          </div>
+          
+          <div className="card" style={{ padding: 0 }}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff Name</th>
+                    <th>Department</th>
+                    <th>Total Hours</th>
+                    <th>Avg Weekly</th>
+                    <th>Utilisation %</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utilisationData.map(u => (
+                    <tr key={u.id}>
+                      <td className="font-medium">{u.name}</td>
+                      <td className="text-3">{u.department || '—'}</td>
+                      <td className="font-mono">{u.totalHours}h</td>
+                      <td className="font-bold">{u.avgWeekly}h</td>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div className="progress flex-1" style={{ minWidth: 80 }}>
+                            <div 
+                              className={`progress-bar ${u.isOver ? 'danger' : u.isUnder ? 'warning' : ''}`} 
+                              style={{ width: `${Math.min(u.utilization, 100)}%` }} 
+                            />
+                          </div>
+                          <span className="text-xs">{u.utilization}%</span>
+                        </div>
+                      </td>
+                      <td>
+                        {u.isOver && <span className="text-danger font-bold">🚩 Over (&gt;{weekCap}h)</span>}
+                        {u.isUnder && <span className="text-warning font-bold">🚩 Under (&lt;30h)</span>}
+                        {!u.isOver && !u.isUnder && u.totalHours > 0 && <span className="text-success">Optimal</span>}
+                        {u.totalHours === 0 && <span className="text-4 italic">No activity</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF YTD TAB ── */}
+      {tab === 'staff_ytd' && (
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-4">
+              <input 
+                className="form-input" 
+                placeholder="Filter name..." 
+                value={staffFilter} 
+                onChange={e => setStaffFilter(e.target.value)} 
+                style={{ width: 200 }}
+              />
+              <select 
+                className="form-select" 
+                value={deptFilter} 
+                onChange={e => setDeptFilter(e.target.value)}
+                style={{ width: 180 }}
+              >
+                <option value="">All Departments</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={exportYTD}>⬇ Export CSV</button>
+          </div>
+
+          <div className="card" style={{ padding: 0 }}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff Name</th>
+                    <th>Department</th>
+                    <th>YTD Approved Hrs</th>
+                    <th>Weeks Active</th>
+                    <th>Submission Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffYTD
+                    .filter(s => {
+                      const matchName = s.name.toLowerCase().includes(staffFilter.toLowerCase())
+                      const matchDept = !deptFilter || s.department === deptFilter
+                      return matchName && matchDept
+                    })
+                    .map(s => (
+                      <tr key={s.id}>
+                        <td className="font-medium">{s.name}</td>
+                        <td className="text-3">{s.department || '—'}</td>
+                        <td className="font-bold text-accent">{s.ytdHours}h</td>
+                        <td>{s.weeksActive}</td>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <div className="progress flex-1" style={{ minWidth: 80 }}>
+                              <div 
+                                className="progress-bar" 
+                                style={{ width: `${s.submitRate}%`, backgroundColor: s.submitRate >= 80 ? 'var(--success)' : 'var(--warning)' }} 
+                              />
+                            </div>
+                            <span className="text-xs">{s.submitRate}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── COMPARE STAFF TAB ── */}
+      {tab === 'compare_staff' && (
+        <div className="flex flex-col gap-6">
+          <div className="card flex items-center gap-4">
+            <div className="flex-1">
+              <label className="form-label text-xs">Staff 1</label>
+              <select className="form-select" value={compareStaff1} onChange={e => setCompareStaff1(e.target.value)}>
+                <option value="">Select staff...</option>
+                {activeStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="text-4 font-bold">VS</div>
+            <div className="flex-1">
+              <label className="form-label text-xs">Staff 2</label>
+              <select className="form-select" value={compareStaff2} onChange={e => setCompareStaff2(e.target.value)}>
+                <option value="">Select staff...</option>
+                {activeStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {compareStaff1 && compareStaff2 ? (
+            <div className="grid-2">
+              {[compareStaff1, compareStaff2].map((sid, idx) => {
+                const s = staff.find(st => st.id === sid)
+                const sEntries = filteredEntries.filter(e => e.staffId === sid && e.status === 'approved')
+                const hours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
+                return (
+                  <div key={sid} className="card flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center font-bold">
+                        {s?.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-1">{s?.name}</h3>
+                        <p className="text-xs text-3">{s?.department || 'No Dept'}</p>
+                      </div>
+                    </div>
+                    <div className="grid-2 gap-3">
+                      <div className="bg-elevated p-3 rounded-lg text-center">
+                        <div className="text-4 text-xs mb-1">Total Hours</div>
+                        <div className="text-1 font-bold text-xl">{hours}h</div>
+                      </div>
+                      <div className="bg-elevated p-3 rounded-lg text-center">
+                        <div className="text-4 text-xs mb-1">Avg Weekly</div>
+                        <div className="text-1 font-bold text-xl">
+                          {parseFloat((hours / (utilisationData.length > 0 ? 4 : 1)).toFixed(1))}h
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           ) : (
-            <div className="empty-state card">
-              <div className="empty-state-icon">📊</div>
-              <div className="empty-state-title">Select at least 2 weeks</div>
+            <div className="card py-20 text-center opacity-50">
+              <div className="text-4xl mb-4">👥</div>
+              <h3 className="text-1 font-bold">Select two staff members to compare</h3>
             </div>
           )}
         </div>
       )}
 
-      {/* ── PROJECTS + BUDGET ── */}
-      {tab === 'projects' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Budget setter */}
-          <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>Set Project Budgets (hours)</div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
-                <label className="form-label">Project</label>
-                <select className="form-select" value={budgetProject} onChange={e => setBudgetProject(e.target.value)}>
-                  <option value="">Select project…</option>
-                  {projects.filter((p: any) => p.active).map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
-                </select>
+      {/* ── MONTH COMPARE TAB ── */}
+      {tab === 'month_compare' && (
+        <div className="flex flex-col gap-6">
+          <div className="grid-2">
+            <div className="card">
+              <h3 className="text-1 font-bold mb-4">Hours: Current vs Previous</h3>
+              <div className="flex items-end gap-4 h-40">
+                <div className="flex-1 flex flex-col items-center gap-2">
+                  <div className="bg-accent w-full rounded-t-lg transition-all" style={{ height: `${(monthCompareData.current.hours / Math.max(monthCompareData.current.hours, monthCompareData.previous.hours, 1)) * 100}%` }} />
+                  <span className="text-xs font-bold">{monthCompareData.current.hours}h</span>
+                  <span className="text-4 text-xs">{format(dateRange.start, 'MMM yyyy')}</span>
+                </div>
+                <div className="flex-1 flex flex-col items-center gap-2">
+                  <div className="bg-border w-full rounded-t-lg transition-all" style={{ height: `${(monthCompareData.previous.hours / Math.max(monthCompareData.current.hours, monthCompareData.previous.hours, 1)) * 100}%` }} />
+                  <span className="text-xs font-bold">{monthCompareData.previous.hours}h</span>
+                  <span className="text-4 text-xs">Previous</span>
+                </div>
               </div>
-              <div className="form-group" style={{ width: 140 }}>
-                <label className="form-label">Budget (hours)</label>
-                <input className="form-input" type="number" value={budgetHours} onChange={e => setBudgetHours(e.target.value)} placeholder="e.g. 200" />
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={saveBudget} style={{ marginBottom: 0 }}>Set Budget</button>
             </div>
-          </div>
 
-          {/* Budget vs Actual chart */}
-          <div className="chart-wrap">
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Budget vs Actual Hours (Top 10 Projects)</h3>
-            <ResponsiveContainer width="100%" height={360}>
-              <BarChart data={projectData} layout="vertical">
-                <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 11, fill: 'var(--text-2)' }} />
-                <Tooltip contentStyle={TT} />
-                <Bar dataKey="actual" fill="var(--accent)" radius={[0, 4, 4, 0]} name="Actual Hours" />
-                <Bar dataKey="budget" fill="var(--border-light)" radius={[0, 4, 4, 0]} name="Budget Hours" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Budget table */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Project</th><th>Actual Hours</th><th>Budget</th><th>Variance</th><th>Status</th></tr></thead>
-                <tbody>
-                  {projectData.map((p, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{p.actual}h</td>
-                      <td style={{ fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>{p.budget > 0 ? p.budget + 'h' : '—'}</td>
-                      <td style={{ fontFamily: 'var(--mono)', color: p.variance === null ? 'var(--text-3)' : (p.variance > 0 ? 'var(--danger)' : 'var(--success)'), fontWeight: p.variance !== null ? 700 : 400 }}>
-                        {p.variance === null ? '—' : (p.variance > 0 ? '+' : '') + p.variance + 'h'}
-                      </td>
-                      <td>
-                        {p.budget > 0
-                          ? p.actual > p.budget
-                            ? <span className="badge badge-red">Over Budget</span>
-                            : p.actual > p.budget * 0.8
-                              ? <span className="badge badge-yellow">Near Limit</span>
-                              : <span className="badge badge-green">On Track</span>
-                          : <span className="badge badge-gray">No Budget</span>
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="card flex flex-col justify-center gap-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-4 text-sm">Hour Variance</div>
+                  <div className={`text-2xl font-bold ${monthCompareData.current.hours >= monthCompareData.previous.hours ? 'text-success' : 'text-danger'}`}>
+                    {monthCompareData.current.hours >= monthCompareData.previous.hours ? '+' : ''}
+                    {parseFloat((monthCompareData.current.hours - monthCompareData.previous.hours).toFixed(1))}h
+                  </div>
+                </div>
+                <div className="text-4xl">
+                  {monthCompareData.current.hours >= monthCompareData.previous.hours ? '📈' : '📉'}
+                </div>
+              </div>
+              <div className="h-px bg-border" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-4 text-sm">Submission Variance</div>
+                  <div className="text-2xl font-bold text-accent">
+                    {monthCompareData.current.submissions >= monthCompareData.previous.submissions ? '+' : ''}
+                    {monthCompareData.current.submissions - monthCompareData.previous.submissions}
+                  </div>
+                </div>
+                <div className="text-4xl text-3">📋</div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── STAFF YTD ── */}
-      {tab === 'staff_ytd' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <input className="form-input" style={{ maxWidth: 220 }} placeholder="Search staff…" value={staffFilter} onChange={e => setStaffFilter(e.target.value)} />
-              <select className="form-select" style={{ width: 'auto' }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
-                <option value="">All Departments</option>
-                {departments.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>⚙ Columns</button>
-              <button className="btn btn-secondary btn-sm" onClick={exportYTD}>⬇ CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={exportYTDpdf}>PDF</button>
-              {showColPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, zIndex: 50, minWidth: 200, boxShadow: 'var(--shadow)' }}>
-                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 10 }}>Select Columns</div>
-                  {Object.entries(COL_LABELS).map(([k, label]) => (
-                    <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer', fontSize: 13 }}>
-                      <input type="checkbox" checked={reportColumns[k]} onChange={() => setReportColumns(c => ({ ...c, [k]: !c[k] }))} />
-                      {label}
-                    </label>
-                  ))}
-                </div>
+      {/* ── BULK IMPORT TAB ── */}
+      {tab === 'bulk_import' && (
+        <div className="flex flex-col gap-6">
+          <div className="card">
+            <h3 className="text-1 font-bold mb-2">Import Entries from CSV</h3>
+            <p className="text-3 text-sm mb-6">
+              Upload a CSV file with columns: <code className="bg-elevated px-1 rounded">staffId</code> (or email), 
+              <code className="bg-elevated px-1 rounded">project</code>, 
+              <code className="bg-elevated px-1 rounded">date</code> (YYYY-MM-DD), 
+              <code className="bg-elevated px-1 rounded">hours</code>, 
+              <code className="bg-elevated px-1 rounded">category</code>, and 
+              <code className="bg-elevated px-1 rounded">description</code>.
+            </p>
+            
+            <div className="flex items-center gap-4">
+              <input 
+                type="file" 
+                accept=".csv,.xlsx" 
+                onChange={handleFileUpload} 
+                className="form-input" 
+                style={{ width: 'auto' }}
+              />
+              {importPreview.length > 0 && (
+                <button 
+                  className={`btn btn-primary ${importing || importErrors.length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={commitImport}
+                  disabled={importing || importErrors.length > 0}
+                >
+                  {importing ? 'Importing...' : `Import ${importPreview.length} Entries`}
+                </button>
               )}
             </div>
           </div>
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    {reportColumns.name && <th>Name</th>}
-                    {reportColumns.department && <th>Department</th>}
-                    {reportColumns.totalHours && <th>Total Hrs</th>}
-                    {reportColumns.approvedHours && <th>Approved Hrs</th>}
-                    {reportColumns.weeks && <th>Weeks</th>}
-                    {reportColumns.submitRate && <th>Submit Rate</th>}
-                    {reportColumns.utilization && <th>Utilization</th>}
-                    {reportColumns.points && <th>Points</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffYTD.map(s => (
-                    <tr key={s.id}>
-                      {reportColumns.name && <td style={{ fontWeight: 600 }}>{s.name}</td>}
-                      {reportColumns.department && <td style={{ color: 'var(--text-3)' }}>{s.department}</td>}
-                      {reportColumns.totalHours && <td style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{s.totalHours}h</td>}
-                      {reportColumns.approvedHours && <td style={{ fontFamily: 'var(--mono)', color: 'var(--success)' }}>{s.approvedHours}h</td>}
-                      {reportColumns.weeks && <td>{s.weeks}</td>}
-                      {reportColumns.submitRate && (
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div className="progress" style={{ width: 48 }}>
-                              <div className="progress-bar" style={{ width: s.submitRate + '%', background: s.submitRate >= 80 ? 'var(--success)' : 'var(--warning)' }} />
-                            </div>
-                            <span style={{ fontSize: 12 }}>{s.submitRate}%</span>
-                          </div>
-                        </td>
-                      )}
-                      {reportColumns.utilization && (
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div className="progress" style={{ width: 48 }}>
-                              <div className="progress-bar" style={{ width: Math.min(s.utilization, 100) + '%' }} />
-                            </div>
-                            <span style={{ fontSize: 12 }}>{s.utilization}%</span>
-                          </div>
-                        </td>
-                      )}
-                      {reportColumns.points && <td style={{ color: 'var(--gold)', fontWeight: 700 }}>{s.points}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {importErrors.length > 0 && (
+            <div className="card bg-danger-light border-danger text-danger">
+              <h4 className="font-bold mb-2">Validation Errors:</h4>
+              <ul className="list-disc pl-5 text-sm">
+                {importErrors.map((err, i) => <li key={i}>{err}</li>)}
+              </ul>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* ── NOT SUBMITTED ── */}
-      {tab === 'not_submitted' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {notSubmitted.length} staff haven't submitted — {weekRange(currentWeek)}
-            </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => { exportCSV(notSubmitted.map(s => ({ Name: s.name, Email: s.email, Department: s.department, Lead: s.leadName || '' })), 'not_submitted_' + currentWeek + '.csv'); toast.success('Exported') }}>
-              ⬇ Export List
-            </button>
-          </div>
-          {notSubmitted.length === 0 ? (
-            <div className="empty-state card">
-              <div className="empty-state-icon">🎉</div>
-              <div className="empty-state-title">All staff have submitted!</div>
-            </div>
-          ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {importPreview.length > 0 && (
+            <div className="card" style={{ padding: 0 }}>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Lead</th><th>Last Login</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Staff</th>
+                      <th>Project</th>
+                      <th>Date</th>
+                      <th>Hours</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {notSubmitted.map(s => (
-                      <tr key={s.id}>
-                        <td style={{ fontWeight: 600 }}>{s.name}</td>
-                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.email}</td>
-                        <td>{s.department || '—'}</td>
-                        <td>{s.leadName || '—'}</td>
-                        <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{s.last_login ? new Date(s.last_login).toLocaleDateString() : 'Never'}</td>
+                    {importPreview.map((row, i) => (
+                      <tr key={i}>
+                        <td className="font-medium">{row.staffName} <span className="text-4 text-xs">({row.staffId || row.email})</span></td>
+                        <td>{row.projectName}</td>
+                        <td className="font-mono">{row.date}</td>
+                        <td className="font-bold">{row.hours}h</td>
+                        <td className="text-3 text-xs truncate max-w-xs">{row.description}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -535,6 +937,35 @@ export default function AnalyticsPage() {
               </div>
             </div>
           )}
+
+          <div className="card">
+            <h3 className="text-1 font-bold mb-4">Recent Import Logs</h3>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Imported By</th>
+                    <th>Rows</th>
+                    <th>Errors</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkImportLogs.slice().reverse().map(log => (
+                    <tr key={log.id}>
+                      <td className="text-4 text-sm">{fmtDate(log.timestamp)}</td>
+                      <td>{log.importedByName}</td>
+                      <td>{log.totalRows}</td>
+                      <td>{log.failCount > 0 ? <span className="text-danger font-bold">{log.failCount}</span> : 'None'}</td>
+                    </tr>
+                  ))}
+                  {bulkImportLogs.length === 0 && (
+                    <tr><td colSpan={4} className="text-center py-8 text-4">No import history yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

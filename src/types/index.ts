@@ -3,18 +3,21 @@ export interface Staff {
     name: string;
     email: string;
     password: string;
-    role: 'staff' | 'admin' | 'owner' | 'hr';
+    role: 'staff' | 'team_lead' | 'admin' | 'super_admin';
     department: string;
-    suspended?: boolean;
-    first_login?: boolean;
+    jobTitle?: string;
+    status: 'active' | 'suspended';
+    suspended?: boolean; // Keep for compatibility
+    first_login?: boolean; // Keep for compatibility
+    mustChangePassword?: boolean;
     points?: number;
-    badges?: string[];
     last_login?: string;
     createdAt?: string;
     failed_attempts?: number;
     lockout_until?: string;
     password_reset_pending?: boolean;
     force_logout?: boolean;
+    forceLogout?: boolean; // Align with story
     tour_done?: boolean;
     leadId?: string;
     staffType?: 'staff' | 'intern';
@@ -22,11 +25,29 @@ export interface Staff {
     weekly_cap?: number | string;
     streak?: number;
     weekly_goal?: number;
+    
+    // Gamification extension
+    currentWeekPoints?: number;
+    lastSubmittedWeek?: string;
+    badges?: string[];
+    pointsHistory?: PointsHistoryEntry[];
 
     leadName?: string;
     phone?: string;
     photo?: string | null;
+    photoUrl?: string | null; // Align with story
     fontSize?: string | number;
+}
+
+export interface ApprovalHistoryEntry {
+    id: string;
+    action: 'approved' | 'rejected' | 'clarification' | 'correction' | '2nd_level_approved' | '2nd_level_rejected';
+    reviewerId: string;
+    reviewerName: string;
+    reviewerRole: 'task_owner' | 'admin';
+    note?: string;
+    timestamp: string;
+    correctedHours?: number;
 }
 
 export interface Entry {
@@ -39,7 +60,7 @@ export interface Entry {
     category: string;
     description: string;
     hours: number;
-    status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'resubmitted' | 'clarification_needed';
+    status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'resubmitted' | 'clarification_needed' | 'pending_clarification' | 'pending_2nd_approval';
     deleted?: boolean;
     createdAt: string;
     updatedAt?: string;
@@ -51,6 +72,7 @@ export interface Entry {
     overriddenBy?: string;
     overriddenAt?: string;
     overrideHistory?: OverrideLog[];
+    approvalHistory?: ApprovalHistoryEntry[];
     rejectionReason?: string;
     resubmitNote?: string;
     submittedAt?: string;
@@ -59,6 +81,7 @@ export interface Entry {
     rejectedAt?: string;
     correctionNote?: string;
     clarifyNote?: string;
+    clarificationNote?: string;
     corrected?: boolean;
 }
 
@@ -125,12 +148,6 @@ export interface AppSettings {
     approval_reminder_hours?: number;
     second_level_threshold?: number;
     points?: {
-        approved: number;
-        submit_ontime: number;
-        submit_early: number;
-        streak_week: number;
-        complete_45h: number;
-        first_submit: number;
         [key: string]: number | undefined;
     };
     categories?: string[];
@@ -189,6 +206,20 @@ export interface Delegation {
     revokedAt?: string;
 }
 
+export interface ApprovalDelegation {
+    id: string;
+    taskOwnerId: string;
+    taskOwnerName: string;
+    delegateId: string;
+    delegateName: string;
+    startDate: string;
+    endDate: string;
+    isActive: boolean;
+    createdAt: string;
+    revokedAt?: string;
+    reason?: string;
+}
+
 export interface Reward {
     id: string;
     name: string;
@@ -196,6 +227,8 @@ export interface Reward {
     cost: number;
     icon: string;
     active: boolean;
+    stock: number;
+    isEnabled: boolean;
     createdAt: string;
 }
 
@@ -207,12 +240,71 @@ export interface Redemption {
     rewardName: string;
     cost: number;
     createdAt: string;
+    status: 'pending' | 'fulfilled' | 'rejected';
+    fulfilledAt?: string;
+}
+
+export interface StreakRecoveryRequest {
+    id: string;
+    staffId: string;
+    staffName: string;
+    weekId: string;
+    reason: string;
     status: 'pending' | 'approved' | 'rejected';
+    reviewedBy?: string;
+    reviewedAt?: string;
+    createdAt: string;
+}
+
+export interface PointsHistoryEntry {
+    id: string;
+    weekId: string;
+    action: string;
+    points: number;
+    timestamp: string;
 }
 
 export interface HofEntry extends Staff {
     rank: number;
     savedAt: string;
+}
+
+export interface ProjectBudget {
+    id: string;
+    projectId: string;
+    projectName: string;
+    budgetHours: number;
+    loggedHours: number;
+    updatedAt: string;
+}
+
+export interface BulkStaffImportLog {
+    id: string;
+    importedBy: string;
+    timestamp: string;
+    totalRows: number;
+    newCount: number;
+    existingCount: number;
+    invalidCount: number;
+    errors: Array<{
+        row: number;
+        reason: string;
+    }>;
+}
+
+export interface BulkImportLog {
+    id: string;
+    importedBy: string;
+    importedByName: string;
+    timestamp: string;
+    totalRows: number;
+    successCount: number;
+    failCount: number;
+    errors: Array<{
+        row: number;
+        reason: string;
+        data?: any;
+    }>;
 }
 
 export interface AppContextType {
@@ -223,6 +315,7 @@ export interface AppContextType {
     notifications: AppNotification[];
     leaves: Leave[];
     hof: HofEntry[];
+    bulkStaffImportLogs: BulkStaffImportLog[];
     rewards: Reward[];
     redeems: Redemption[];
     settings: AppSettings | null;
@@ -244,10 +337,12 @@ export interface AppContextType {
     saveTemplates: (data: Template[]) => void;
     delegations: Delegation[];
     saveDelegations: (data: Delegation[]) => void;
+    approvalDelegations: ApprovalDelegation[];
+    saveApprovalDelegations: (data: ApprovalDelegation[]) => void;
     notify: (userId: string, message: string, type?: string) => any;
     markRead: (id: string) => void;
     markAllRead: () => void;
-    awardPoints: (staffId: string, points: number, reason: string) => void;
+    awardPoints: (staffId: string, points: number, action: string, weekId?: string) => void;
     grantBadge: (staffId: string, badgeId: string) => void;
     pendingApprovals: () => Entry[];
     sendMessage: (msg: Partial<AppMessage>) => AppMessage;
@@ -261,6 +356,15 @@ export interface AppContextType {
     idleCountdown: number | null;
     showPasswordChange: boolean;
     setShowPasswordChange: (show: boolean) => void;
+    projectBudgets: ProjectBudget[];
+    saveProjectBudgets: (data: ProjectBudget[]) => void;
+    bulkImportLogs: BulkImportLog[];
+    saveBulkImportLogs: (data: BulkImportLog[]) => void;
+    saveBulkStaffImportLogs: (data: BulkStaffImportLog[]) => void;
+    streakRecoveries: StreakRecoveryRequest[];
+    saveStreakRecoveries: (data: StreakRecoveryRequest[]) => void;
+    pointsHistory: PointsHistoryEntry[];
+    savePointsHistory: (data: PointsHistoryEntry[]) => void;
     // Add other fields as needed or use any for complex legacy state
     [key: string]: any;
 }

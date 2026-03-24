@@ -5,7 +5,8 @@ import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSes
 import { getSupabase } from '../lib/supabase'
 import { db } from '../lib/firebase'
 import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission } from '../types'
+import { format, subWeeks } from 'date-fns'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -26,9 +27,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<any[]>([])
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [delegations, setDelegations] = useState<any[]>([])
+  const [approvalDelegations, setApprovalDelegations] = useState<ApprovalDelegation[]>([])
   const [lockedWeeks, setLockedWeeks] = useState<any[]>([])
   const [budgets, setBudgets] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
+  const [projectBudgets, setProjectBudgets] = useState<ProjectBudget[]>([])
+  const [bulkImportLogs, setBulkImportLogs] = useState<BulkImportLog[]>([])
+  const [bulkStaffImportLogs, setBulkStaffImportLogs] = useState<BulkStaffImportLog[]>([])
+  const [streakRecoveries, setStreakRecoveries] = useState<StreakRecoveryRequest[]>([])
+  const [pointsHistory, setPointsHistory] = useState<PointsHistoryEntry[]>([])
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null)
   const [showPasswordChange, setShowPasswordChange] = useState(false)
 
@@ -111,6 +118,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       role: 'admin' as 'admin',
       password: 'admin',
       first_login: true,
+      status: 'active',
       points: 0,
       badges: [],
       suspended: false,
@@ -118,9 +126,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     let staffToLoad = local.get<Staff[]>('staff', [])
 
+    const SEED_STAFF: Staff[] = [
+      { id: 'dsn-001', name: 'Dr. Olubayo Adekanmbi', email: 'bayo@datasciencenigeria.ai', department: 'Leadership', role: 'super_admin', jobTitle: 'Founder', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
+      { id: 'dsn-002', name: 'Oubayo Moses', email: 'moses@datasciencenigeria.ai', department: 'AI Engineering', role: 'admin', jobTitle: 'Lead Engineer', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
+      { id: 'dsn-003', name: 'Jane Analyst', email: 'jane@datasciencenigeria.ai', department: 'Engineering', role: 'staff', jobTitle: 'Data Analyst', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
+    ]
+
     // MIGRATION: If staff list is empty or admin has old PIN, update to Password
-    if (staffToLoad.length === 0) {
-      staffToLoad = [SEED_ADMIN]
+    if (staffToLoad.length <= 1) { // Only seed admin exists
+      staffToLoad = [SEED_ADMIN, ...SEED_STAFF]
     } else {
       staffToLoad = staffToLoad.map(s => {
         // Migration of 'pin' to 'password'
@@ -152,10 +166,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProjects(local.get<any[]>('projects', DEFAULT_PROJECTS))
     setLeaves(local.get<any[]>('leaves', []))
     setDelegations(local.get<any[]>('delegations', []))
+    setApprovalDelegations(local.get<ApprovalDelegation[]>('approval_delegations', []))
     setLockedWeeks(local.get<any[]>('locked_weeks', []))
     setFeatures(local.get<any>('features', DEFAULT_FEATURES))
     setBudgets(local.get<any[]>('budgets', []))
     setTemplates(local.get<any[]>('templates', []))
+    setProjectBudgets(local.get<ProjectBudget[]>('project_budgets', []))
+    setBulkImportLogs(local.get<BulkImportLog[]>('bulk_import_logs', []))
+    setBulkStaffImportLogs(local.get<BulkStaffImportLog[]>('bulk_staff_import_logs', []))
+    setStreakRecoveries(local.get<StreakRecoveryRequest[]>('streak_recoveries', []))
+    setPointsHistory(local.get<PointsHistoryEntry[]>('points_history', []))
     setSettings(local.get<AppSettings>('settings', DEFAULT_SETTINGS))
   }
 
@@ -240,17 +260,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function saveHof(data: HofEntry[]) { setHof(data); local.set('hof', data) }
   function saveLeaves(data: Leave[]) { setLeaves(data); local.set('leaves', data) }
   function saveDelegations(data: any[]) { setDelegations(data); local.set('delegations', data) }
+  function saveApprovalDelegations(data: ApprovalDelegation[]) { setApprovalDelegations(data); local.set('approval_delegations', data) }
   function saveLockedWeeks(data: any[]) { setLockedWeeks(data); local.set('locked_weeks', data) }
   function saveFeatures(data: any) { setFeatures(data); local.set('features', data) }
   function saveSettings(data: AppSettings) { setSettings(data); local.set('settings', data) }
   function saveProjects(data: any[]) { setProjects(data); local.set('projects', data) }
   function saveBudgets(data: any[]) { setBudgets(data); local.set('budgets', data) }
   function saveTemplates(data: any[]) { setTemplates(data); local.set('templates', data) }
+  function saveProjectBudgets(data: ProjectBudget[]) { setProjectBudgets(data); local.set('project_budgets', data) }
+  function saveBulkImportLogs(data: BulkImportLog[]) { setBulkImportLogs(data); local.set('bulk_import_logs', data) }
+  function saveBulkStaffImportLogs(data: BulkStaffImportLog[]) { setBulkStaffImportLogs(data); local.set('bulk_staff_import_logs', data) }
+  function saveStreakRecoveries(data: StreakRecoveryRequest[]) { 
+    setStreakRecoveries(data); 
+    local.set('streak_recoveries', data);
+    data.forEach(r => { setDoc(doc(db, 'streakRecoveries', r.id), r, { merge: true }).catch(() => {}) })
+  }
+  function savePointsHistory(data: PointsHistoryEntry[]) { 
+    setPointsHistory(data); 
+    local.set('points_history', data);
+  }
 
   async function login(staffMember: Staff) {
     // Enforce domain
     if (!staffMember.email.endsWith('@datasciencenigeria.ai')) {
       throw new Error('Unauthorized domain. Please use your @datasciencenigeria.ai email.')
+    }
+
+    // Check status
+    if (staffMember.status === 'suspended' || staffMember.suspended) {
+      throw new Error('Your account has been suspended. Please contact administrator.')
     }
 
     // Check lockout
@@ -328,15 +366,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const myNotifications = notifications.filter(n => n.userId === user?.id)
   const unreadCount = myNotifications.filter(n => !n.read).length
 
-  function awardPoints(staffId: string, points: number, reason: string) {
+  function awardPoints(staffId: string, points: number, action: string, weekId: string = getWeekKey()) {
     const idx = staff.findIndex(s => s.id === staffId)
     if (idx === -1) return
     const updated = [...staff]
-    const newPts = (updated[idx].points || 0) + points
-    updated[idx] = { ...updated[idx], points: newPts }
+    const s = updated[idx]
+    
+    const newTotal = (s.points || 0) + points
+    const newWeekPoints = (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0)
+    
+    updated[idx] = { 
+      ...s, 
+      points: newTotal, 
+      currentWeekPoints: newWeekPoints,
+      lastSubmittedWeek: weekId
+    }
+    
+    const historyEntry: PointsHistoryEntry = {
+      id: genId(),
+      weekId,
+      action,
+      points,
+      timestamp: new Date().toISOString()
+    }
+    
     saveStaff(updated)
-    if (staffId === user?.id) updateUser({ points: newPts })
-    if (newPts >= 100 && !updated[idx].badges?.includes('centurion')) grantBadge(staffId, 'centurion')
+    savePointsHistory([historyEntry, ...pointsHistory])
+    
+    if (staffId === user?.id) updateUser({ points: newTotal, currentWeekPoints: newWeekPoints })
+    
+    // Badge checks could be here or triggered elsewhere
+    if (newTotal >= 100 && !s.badges?.includes('century_club')) grantBadge(staffId, 'century_club')
   }
 
   function grantBadge(staffId: string, badgeId: string) {
@@ -353,23 +413,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function pendingApprovals() {
     if (!user) return []
-    // Check delegations — if admin delegated to this user
-    const delegatedTo = delegations.filter(d => d.delegateeId === user.id && d.active && new Date(d.until) > new Date())
-    const delegatedStaffIds = delegatedTo.flatMap(d => {
-      const delegator = staff.find(s => s.id === d.delegatorId)
-      return staff.filter(s => s.leadId === delegator?.id).map(s => s.id)
-    })
 
-    if (user.role === 'admin') return entries.filter(e => ['submitted', 'resubmitted'].includes(e.status) && !e.deleted)
-    if (user.role === 'owner') {
+    // Check active approval delegations
+    const now = new Date()
+    const activeDelegations = approvalDelegations.filter(d =>
+      d.isActive &&
+      d.delegateId === user.id &&
+      new Date(d.startDate) <= now &&
+      new Date(d.endDate) >= now
+    )
+
+    // Get staff IDs from delegated task owners
+    const delegatedTaskOwnerIds = activeDelegations.map(d => d.taskOwnerId)
+    const delegatedStaffIds = staff
+      .filter(s => delegatedTaskOwnerIds.includes(s.leadId || ''))
+      .map(s => s.id)
+
+    // Admin sees all pending and 2nd-level approvals
+    if (user.role === 'admin') {
+      return entries.filter(e =>
+        ['submitted', 'resubmitted', 'pending_2nd_approval'].includes(e.status) && !e.deleted
+      )
+    }
+
+    // Team Lead layer
+    if (user.role === 'team_lead') {
       const myStaffIds = staff.filter(s => s.leadId === user.id).map(s => s.id)
       const allIds = Array.from(new Set([...myStaffIds, ...delegatedStaffIds]))
-      return entries.filter(e => ['submitted', 'resubmitted'].includes(e.status) && allIds.includes(e.staffId) && !e.deleted)
+      return entries.filter(e =>
+        ['submitted', 'resubmitted'].includes(e.status) &&
+        allIds.includes(e.staffId) &&
+        !e.deleted
+      )
     }
-    // Staff with delegation
+
+    // Staff with delegation only
     if (delegatedStaffIds.length > 0) {
-      return entries.filter(e => ['submitted', 'resubmitted'].includes(e.status) && delegatedStaffIds.includes(e.staffId) && !e.deleted)
+      return entries.filter(e =>
+        ['submitted', 'resubmitted'].includes(e.status) &&
+        delegatedStaffIds.includes(e.staffId) &&
+        !e.deleted
+      )
     }
+
     return []
   }
 
@@ -400,7 +486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (wat.getUTCHours() < reminderHour) return
 
     const currentWeek = getWeekKey()
-    const activeStaff = staff.filter(s => !s.suspended && s.role === 'staff')
+    const activeStaff = staff.filter(s => s.status === 'active' && s.role === 'staff')
     activeStaff.forEach(s => {
       const hasSubmitted = entries.some(e => e.staffId === s.id && e.weekKey === currentWeek && ['submitted', 'approved', 'resubmitted'].includes(e.status))
       if (!hasSubmitted) {
@@ -472,6 +558,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const updatedEntries = entries.map(e => e.id === entryId ? { ...e, ...finalUpdates } : e)
+    
+    // Point Triggers
+    if (updates.status === 'approved') {
+      const p = DEFAULT_POINTS.approved_entry + (entry.hours || 0) * DEFAULT_POINTS.hours_logged_per_hr
+      awardPoints(entry.staffId, p, `Entry approved: ${entry.project}`, entry.weekKey)
+      
+      // Perfect Week Check
+      const weekEntries = updatedEntries.filter(e => e.staffId === entry.staffId && e.weekKey === entry.weekKey)
+      const allApproved = weekEntries.every(e => e.status === 'approved')
+      const noRejections = weekEntries.every(e => !e.approvalHistory?.some(h => h.action === 'rejected'))
+      if (allApproved && noRejections) {
+        awardPoints(entry.staffId, DEFAULT_POINTS.perfect_week, 'Perfect Week Bonus', entry.weekKey)
+        grantBadge(entry.staffId, 'perfect_week')
+      }
+    } else if (updates.status === 'rejected') {
+      awardPoints(entry.staffId, DEFAULT_POINTS.rejection_penalty, `Entry rejected: ${entry.project}`, entry.weekKey)
+    }
+
     saveEntries(updatedEntries)
 
     // Sync to Firestore
@@ -487,31 +591,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = new Date()
     const weekStart = new Date(weekKey)
     const submissionId = `${staffId}_${weekKey}`
-    
-    // Penalty Logic
+
     // Deadline: Tuesday 4:00pm WAT
-    // Tuesday is day 2 (Monday=1, Tuesday=2)
     const deadline = new Date(weekStart)
     deadline.setDate(deadline.getDate() + 1) // Monday
     deadline.setDate(deadline.getDate() + 1) // Tuesday
     deadline.setHours(16, 0, 0, 0) // 4:00pm
-
-    let points = settings?.points?.submit_ontime || 10
-    const diffMs = now.getTime() - deadline.getTime()
     
+    // New Gamification Point Logic
+    const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, 2=Tue...
+    const hour = now.getHours()
+    
+    let totalAward = DEFAULT_POINTS.submit_ontime
+    let bonusDesc = 'On-time submission'
+    
+    if (dayOfWeek === 1) {
+      totalAward += DEFAULT_POINTS.monday_bonus
+      bonusDesc += ' + Monday Bonus'
+    } else if (dayOfWeek === 2 && hour < 10) {
+      totalAward += DEFAULT_POINTS.early_bonus
+      bonusDesc += ' + Early Bonus'
+    }
+
+    const diffMs = now.getTime() - deadline.getTime()
     if (diffMs > 0) {
-      // Past Tuesday 4:00pm
       const hoursLate = diffMs / 3600000
       const periods = Math.floor(hoursLate / 12)
-      points -= periods * 5 // Deduction per 12 hours unfilled (example: 5 pts)
+      totalAward = Math.max(0, totalAward - (periods * 5))
+      bonusDesc = 'Late submission (reduced points)'
       
-      // Past Thursday 12:00pm
       const thursdayDeadline = new Date(weekStart)
-      thursdayDeadline.setDate(thursdayDeadline.getDate() + 3) // Thursday
+      thursdayDeadline.setDate(thursdayDeadline.getDate() + 3)
       thursdayDeadline.setHours(12, 0, 0, 0)
-      if (now > thursdayDeadline) {
-        points = 0
-      }
+      if (now > thursdayDeadline) totalAward = 0
     }
 
     const submission: WeekSubmission = {
@@ -531,19 +643,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       await setDoc(doc(db, 'weekSubmissions', submissionId), submission)
       // Award points
-      if (points > 0) awardPoints(staffId, points, `Timesheet submission for ${weekKey}`)
+      if (totalAward > 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
+      
+      // Update streak
+      const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))
+      const hasLastWeek = entries.some(e => e.staffId === staffId && e.weekKey === lastWeek && ['submitted', 'approved'].includes(e.status))
+      const newStreak = hasLastWeek ? (staffMember.streak || 0) + 1 : 1
+      const updatedStaff = staff.map(s => s.id === staffId ? { ...s, streak: newStreak, lastSubmittedWeek: weekKey } : s)
+      saveStaff(updatedStaff)
+      if (staffId === user?.id) updateUser({ streak: newStreak, lastSubmittedWeek: weekKey })
+
     } catch (e) { console.error('Week submission failed', e) }
   }
 
   const value = {
     user, staff, entries, messages, notifications: myNotifications,
     unreadCount, settings, darkMode, online, features, redeems,
-    rewards, hof, projects, leaves, delegations, lockedWeeks, budgets, templates,
+    rewards, hof, projects, leaves, delegations, approvalDelegations, lockedWeeks, budgets, templates,
+    projectBudgets, bulkImportLogs, bulkStaffImportLogs, streakRecoveries, pointsHistory,
     login, logout, updateUser, toggleDark,
     saveStaff, saveEntries, saveMessages, saveNotifications: saveNots,
     saveRedeems, saveRewards, saveHof, saveLeaves,
-    saveDelegations, saveLockedWeeks, saveFeatures, saveSettings, saveProjects,
-    saveBudgets, saveTemplates,
+    saveDelegations, saveApprovalDelegations, saveLockedWeeks, saveFeatures, saveSettings, saveProjects,
+    saveBudgets, saveTemplates, saveProjectBudgets, saveBulkImportLogs, saveBulkStaffImportLogs,
+    saveStreakRecoveries, savePointsHistory,
     notify, markRead, markAllRead,
     awardPoints, grantBadge,
     pendingApprovals, sendMessage, loadAll, checkReminders,

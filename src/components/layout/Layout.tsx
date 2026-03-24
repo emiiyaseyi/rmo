@@ -32,8 +32,8 @@ function getNavItems(role: string): NavItem[] {
     { id: 'backend', label: 'Backend', icon: '🔧', roles: ['admin'] },
 
     { id: 'settings', label: 'Settings', icon: '⚙️', roles: ['admin'] },
-    { id: 'profile', label: 'My Profile', icon: '👤', roles: ['staff', 'owner', 'admin'] },
-    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'owner', 'admin'] },
+    { id: 'profile', label: 'My Profile', icon: '👤', roles: ['staff', 'team_lead', 'admin', 'super_admin'] },
+    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin', 'super_admin'] },
   ]
   return all.filter(n => n.roles.includes(role))
 }

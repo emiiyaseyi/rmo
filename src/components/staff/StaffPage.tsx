@@ -17,8 +17,8 @@ interface StaffModalProps {
 }
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
-  const leads = allStaff.filter(s => s.role === 'owner' || s.role === 'admin')
-  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', role: 'staff', leadId: '', leadName: '', phone: '', password: 'dsn-staff', first_login: true, weekly_cap: '' })
+  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin' || s.role === 'super_admin')
+  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', photoUrl: '', password: '1234', mustChangePassword: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
 
@@ -60,11 +60,16 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <input className="form-input" value={form.department || ''} onChange={e => F('department', e.target.value)} placeholder="e.g. Engineering" />
             </div>
             <div className="form-group">
+              <label className="form-label">Job Title</label>
+              <input className="form-input" value={form.jobTitle || ''} onChange={e => F('jobTitle', e.target.value)} placeholder="e.g. Data Scientist" />
+            </div>
+            <div className="form-group">
               <label className="form-label">Role</label>
               <select className="form-select" value={form.role} onChange={e => F('role', e.target.value)}>
                 <option value="staff">Staff</option>
-                <option value="owner">Owner / Team Lead</option>
+                <option value="team_lead">Team Lead</option>
                 <option value="admin">Admin</option>
+                <option value="super_admin">Super Admin</option>
               </select>
             </div>
             <div className="form-group">
@@ -86,6 +91,17 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <input className="form-input" type="password" value={form.password} onChange={e => F('password', e.target.value)} />
               {errors.password && <span className="form-error">{errors.password}</span>}
               <span className="form-hint">Default: dsn-staff. Staff will change on first login</span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Profile Photo URL</label>
+              <input className="form-input" value={form.photoUrl || ''} onChange={e => F('photoUrl', e.target.value)} placeholder="https://..." />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Status</label>
+              <select className="form-select" value={form.status} onChange={e => F('status', e.target.value)}>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Weekly Cap Override (hrs)</label>
@@ -111,7 +127,7 @@ interface BulkEditModalProps {
 }
 
 function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps) {
-  const leads = allStaff.filter(s => s.role === 'owner' || s.role === 'admin')
+  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin' || s.role === 'super_admin')
   const [fields, setFields] = useState<any>({ department: '', role: '', leadId: '', leadName: '', weekly_cap: '', password: '' })
   const [checks, setChecks] = useState<any>({ department: false, role: false, leadId: false, weekly_cap: false, password: false })
   const F = (k: string, v: any) => setFields((f: any) => ({ ...f, [k]: v }))
@@ -156,8 +172,9 @@ function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps
             <select className="form-select" value={fields.role} onChange={e => F('role', e.target.value)}>
               <option value="">Select role</option>
               <option value="staff">Staff</option>
-              <option value="owner">Owner / Lead</option>
+              <option value="team_lead">Team Lead</option>
               <option value="admin">Admin</option>
+              <option value="super_admin">Super Admin</option>
             </select>
           </Row>
           <Row field="leadId" label="Reports To">
@@ -194,47 +211,98 @@ interface ImportPreviewModalProps {
 }
 
 function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: ImportPreviewModalProps) {
-  const newRows = rows.filter(r => !existingEmails.has(r.email?.toLowerCase()))
-  const dupeRows = rows.filter(r => existingEmails.has(r.email?.toLowerCase()))
+  const validation = useMemo(() => {
+    return rows.map(r => {
+      const email = r.email?.toLowerCase().trim()
+      const isDupe = existingEmails.has(email)
+      const validRoles = ['staff', 'team_lead', 'admin', 'super_admin']
+      const isValid = r.name && email && validRoles.includes(r.role?.toLowerCase()) && r.department
+      
+      let status: 'new' | 'existing' | 'invalid' = 'new'
+      let reason = ''
+      
+      if (!isValid) {
+        status = 'invalid'
+        reason = !r.name ? 'Missing Name' : !email ? 'Missing Email' : !r.department ? 'Missing Dept' : 'Invalid Role'
+      } else if (isDupe) {
+        status = 'existing'
+        reason = 'Email already exists'
+      }
+      
+      return { ...r, importStatus: status, importReason: reason }
+    })
+  }, [rows, existingEmails])
+
+  const stats = {
+    new: validation.filter(v => v.importStatus === 'new').length,
+    existing: validation.filter(v => v.importStatus === 'existing').length,
+    invalid: validation.filter(v => v.importStatus === 'invalid').length,
+  }
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-xl">
         <div className="modal-header">
-          <span className="modal-title">Import Preview — {rows.length} rows</span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span className="modal-title">Professional Import Preview</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Review data before committing to database</span>
+          </div>
           <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            <span className="badge badge-green">✅ {newRows.length} will be imported</span>
-            <span className="badge badge-yellow">⚠️ {dupeRows.length} duplicates (skipped)</span>
-          </div>
-          {rows.length > 0 && (
-            <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <table>
-                <thead><tr><th>Status</th><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Lead</th></tr></thead>
-                <tbody>
-                  {rows.map((r, i) => {
-                    const isDupe = existingEmails.has(r.email?.toLowerCase())
-                    return (
-                      <tr key={i} style={{ background: isDupe ? 'var(--warning-bg)' : '' }}>
-                        <td>{isDupe ? <span className="badge badge-yellow">Skip</span> : <span className="badge badge-green">New</span>}</td>
-                        <td style={{ fontWeight: 600 }}>{r.name}</td>
-                        <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email}</td>
-                        <td>{r.department}</td>
-                        <td>{r.role}</td>
-                        <td>{r.lead}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+            <div className="card" style={{ padding: '12px', textAlign: 'center', borderTop: '4px solid var(--success)' }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--success)' }}>{stats.new}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>NEW STAFF</div>
             </div>
-          )}
+            <div className="card" style={{ padding: '12px', textAlign: 'center', borderTop: '4px solid var(--warning)' }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--warning)' }}>{stats.existing}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>DUPLICATES</div>
+            </div>
+            <div className="card" style={{ padding: '12px', textAlign: 'center', borderTop: '4px solid var(--danger)' }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--danger)' }}>{stats.invalid}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>INVALID ROWS</div>
+            </div>
+          </div>
+
+          <div className="table-wrap" style={{ maxHeight: 400, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <table>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)' }}>
+                <tr><th>Status</th><th>Validation</th><th>Name</th><th>Email / Job Title</th><th>Dept / Role</th></tr>
+              </thead>
+              <tbody>
+                {validation.map((v, i) => (
+                  <tr key={i} style={{ opacity: v.importStatus === 'new' ? 1 : 0.7, background: v.importStatus === 'invalid' ? '#fff5f5' : '' }}>
+                    <td>
+                      <span className={'badge badge-' + (v.importStatus === 'new' ? 'green' : v.importStatus === 'existing' ? 'yellow' : 'red')}>
+                        {v.importStatus.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 11, color: v.importStatus === 'invalid' ? 'var(--danger)' : 'var(--text-3)' }}>
+                      {v.importReason || 'Ready to import'}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>{v.name || '—'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{v.phone || 'No phone'}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 13 }}>{v.email || '—'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>{v.jobTitle || 'No title'}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 13 }}>{v.department || '—'}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>{v.role}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={newRows.length === 0} onClick={() => onConfirm(newRows)}>
-            Import {newRows.length} Staff
+        <div className="modal-footer" style={{ background: 'var(--bg-app)', borderTop: '1px solid var(--border)' }}>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel Import</button>
+          <button className="btn btn-primary" disabled={stats.new === 0} onClick={() => onConfirm(validation.filter(v => v.importStatus === 'new'))}>
+            Confirm and Import {stats.new} Staff
           </button>
         </div>
       </div>
@@ -369,7 +437,16 @@ export default function StaffPage() {
       if (staff.find(s => s.email?.toLowerCase() === form.email?.toLowerCase())) {
         toast.error('Email already exists'); return
       }
-      const ns = { ...form, id: genId(), points: 0, streak: 0, badges: [], createdAt: new Date().toISOString() }
+      const ns: Staff = { 
+        ...form, 
+        id: genId(), 
+        points: 0, 
+        streak: 0, 
+        badges: [], 
+        status: form.status || 'active',
+        role: form.role as any,
+        createdAt: new Date().toISOString() 
+      }
       saveStaff([...staff, ns])
       logAudit('ADD_STAFF', `${user?.name} added ${form.name}`, user?.id || '', user?.name || '')
       toast.success(form.name + ' added')
@@ -387,15 +464,17 @@ export default function StaffPage() {
   }
 
   function toggleSuspend(s: Staff) {
-    const action = s.suspended ? 'unsuspend' : 'suspend'
+    const action = (s.status === 'suspended' || s.suspended) ? 'unsuspend' : 'suspend'
+    const newStatus = action === 'suspend' ? 'suspended' : 'active'
     if (!window.confirm(`${action} ${s.name}?`)) return
-    saveStaff(staff.map(m => m.id === s.id ? { ...m, suspended: !m.suspended } : m))
+    saveStaff(staff.map(m => m.id === s.id ? { ...m, status: newStatus as any, suspended: newStatus === 'suspended' } : m))
     toast.success(`${s.name} ${action}d`)
   }
 
   function bulkSuspend(suspend: boolean) {
+    const newStatus = suspend ? 'suspended' : 'active'
     if (!window.confirm(`${suspend ? 'Suspend' : 'Unsuspend'} ${selected.size} staff?`)) return
-    saveStaff(staff.map(s => selected.has(s.id) ? { ...s, suspended: suspend } : s))
+    saveStaff(staff.map(s => selected.has(s.id) ? { ...s, status: newStatus as any, suspended: suspend } : s))
     logAudit(suspend ? 'BULK_SUSPEND' : 'BULK_UNSUSPEND', `${user?.name} ${suspend ? 'suspended' : 'unsuspended'} ${selected.size} staff`, user?.id || '', user?.name || '')
     setSelected(new Set()); toast.success(`Done`)
   }
@@ -447,7 +526,7 @@ export default function StaffPage() {
       Name: s.name, Email: s.email, Department: s.department || '',
       Role: s.role, Lead: s.leadName || '', Phone: s.phone || '',
       Points: s.points || 0, Streak: s.streak || 0, Badges: (s.badges || []).length,
-      Suspended: s.suspended ? 'Yes' : 'No', Joined: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
+      Status: s.status || (s.suspended ? 'suspended' : 'active'), Joined: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
     }))
     exportCSV(rows, 'dsn_staff.csv')
     toast.success('Exported ' + rows.length + ' staff')
@@ -456,13 +535,13 @@ export default function StaffPage() {
   async function exportStaffPDF() {
     const rows = staff.map(s => ({
       name: s.name, email: s.email, department: s.department || '-',
-      role: s.role, points: s.points || 0, suspended: s.suspended ? 'Yes' : 'No',
+      role: s.role, points: s.points || 0, status: s.status || (s.suspended ? 'suspended' : 'active'),
     }))
     try {
       await exportPDF(rows, [
         { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' },
         { key: 'department', label: 'Department' }, { key: 'role', label: 'Role' },
-        { key: 'points', label: 'Points' }, { key: 'suspended', label: 'Suspended' },
+        { key: 'points', label: 'Points' }, { key: 'status', label: 'Status' },
       ], 'DSN Staff Directory', 'dsn_staff_directory.pdf')
       toast.success('PDF exported')
     } catch { toast.error('PDF export failed — try CSV instead') }
@@ -485,11 +564,12 @@ export default function StaffPage() {
             name: r.Name || r.name || '',
             email: (r.Email || r.email || '').toLowerCase().trim(),
             department: r.Department || r.department || '',
+            jobTitle: r.JobTitle || r.jobTitle || r['Job Title'] || '',
             role: (r.Role || r.role || 'staff').toLowerCase(),
             lead: r.Lead || r.lead || '',
-            phone: r.Phone || r.phone || '',
-            pin: String(r.PIN || r.pin || '1234'),
-          })).filter(r => r.name && r.email)
+            phone: String(r.Phone || r.phone || ''),
+            password: String(r.Password || r.password || '1234'),
+          })).filter(r => r.name || r.email)
           setImportRows(parsed)
         } catch { toast.error('Failed to parse file') }
       }
@@ -499,12 +579,36 @@ export default function StaffPage() {
   }
 
   function confirmImport(rows: any[]) {
+    const { saveBulkStaffImportLogs, bulkStaffImportLogs } = useApp() // Access from context
     const now = new Date().toISOString()
     const newStaff: Staff[] = rows.map(r => {
       const lead = staff.find(s => s.name === r.lead)
-      return { id: genId(), name: r.name, email: r.email, department: r.department, role: r.role, leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, password: r.password || 'admin', first_login: true, points: 0, streak: 0, badges: [], createdAt: now }
+      return { 
+        id: genId(), name: r.name, email: r.email, department: r.department, 
+        role: r.role as any, jobTitle: r.jobTitle || '', status: 'active' as const,
+        leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, 
+        password: r.password || '1234', first_login: true, mustChangePassword: true,
+        points: 0, streak: 0, badges: [], createdAt: now 
+      }
     })
+
+    // Log the import
+    const logEntry = {
+      id: genId(),
+      importedBy: user?.id || 'admin',
+      timestamp: now,
+      totalRows: rows.length,
+      newCount: rows.length,
+      existingCount: 0, // already filtered out
+      invalidCount: 0, // already filtered out
+      errors: []
+    }
+    
     saveStaff([...staff, ...newStaff])
+    if (saveBulkStaffImportLogs) {
+        saveBulkStaffImportLogs([logEntry, ...bulkStaffImportLogs])
+    }
+    
     logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
     toast.success(`✅ Imported ${rows.length} staff members`)
     setImportRows(null)
@@ -585,8 +689,9 @@ export default function StaffPage() {
             <select className="form-select" style={{ width: 'auto' }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
               <option value="">All Roles</option>
               <option value="staff">Staff</option>
-              <option value="owner">Owner</option>
+              <option value="team_lead">Team Lead</option>
               <option value="admin">Admin</option>
+              <option value="super_admin">Super Admin</option>
             </select>
             <select className="form-select" style={{ width: 'auto' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="">All Status</option>
@@ -653,7 +758,15 @@ export default function StaffPage() {
                         </td>
                         <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.email}</td>
                         <td style={{ fontSize: 12 }}>{s.department || '—'}</td>
-                        <td><span className={'badge badge-' + (s.role === 'admin' ? 'purple' : s.role === 'owner' ? 'blue' : 'gray')}>{s.role}</span></td>
+                        <td>
+                          <span className={'badge badge-' + (
+                            s.role === 'super_admin' ? 'red' : 
+                            s.role === 'admin' ? 'orange' : 
+                            s.role === 'team_lead' ? 'purple' : 'blue'
+                          )}>
+                            {s.role.replace('_', ' ')}
+                          </span>
+                        </td>
                         <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.leadName || '—'}</td>
                         <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{cap}h</td>
                         <td style={{ fontWeight: 700, color: 'var(--gold)' }}>{s.points || 0}</td>
@@ -726,7 +839,15 @@ export default function StaffPage() {
                             </div>
                           </td>
                           <td style={{ color: 'var(--text-3)' }}>{s.department || '—'}</td>
-                          <td><span className={'badge badge-' + (s.role === 'admin' ? 'purple' : s.role === 'owner' ? 'blue' : 'gray')}>{s.role}</span></td>
+                          <td>
+                            <span className={'badge badge-' + (
+                              s.role === 'super_admin' ? 'red' : 
+                              s.role === 'admin' ? 'orange' : 
+                              s.role === 'team_lead' ? 'purple' : 'blue'
+                            )}>
+                              {s.role.replace('_', ' ')}
+                            </span>
+                          </td>
                           <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date(sess.loginAt).toLocaleTimeString()}</td>
                           <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date(sess.lastSeen).toLocaleTimeString()}</td>
                           <td><button className="btn btn-danger btn-sm" onClick={() => forceLogout(s)}>Force Logout</button></td>

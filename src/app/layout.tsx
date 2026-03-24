@@ -21,6 +21,11 @@ const dmsans = DM_Sans({
 export const metadata = {
   title: "DSN Resource Management System",
   description: "Full-featured timesheet, approval, and staff management system",
+  icons: {
+    icon: '/dsn.png',
+    shortcut: '/dsn.png',
+    apple: '/dsn.png',
+  },
 };
 
 export default function RootLayout({ children }) {

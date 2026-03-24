@@ -263,6 +263,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => unsubs.forEach(u => u())
   }, [user?.id])
 
+  // Helper to strip undefined values for Firebase
+  const fbSafe = (obj: any) => {
+    if (!obj || typeof obj !== 'object') return obj
+    // Recursively clean arrays and nested objects if needed, but for now top-level is enough
+    return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined))
+  }
+
   function loadAll() {
     // loadAll is now mostly obsolete as real-time snapshots handle data loading 
     // but we can keep it for any static non-firestore data if needed.
@@ -475,7 +482,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }
   function saveNots(data: AppNotification[]) { 
-    data.forEach(n => { setDoc(doc(db, 'notifications', n.id), n, { merge: true }).catch(() => {}) })
+    setNots(data); 
+    data.forEach(n => { setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) })
   }
   function saveRedeems(data: Redemption[]) {
     data.forEach(r => { setDoc(doc(db, 'redeems', r.id), r, { merge: true }).catch(() => {}) })
@@ -484,19 +492,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(r => { setDoc(doc(db, 'rewards', r.id), r, { merge: true }).catch(() => {}) })
   }
   function saveHof(data: HofEntry[]) {
-    data.forEach(h => { setDoc(doc(db, 'hof', h.id), h, { merge: true }).catch(() => {}) })
+    data.forEach(h => { setDoc(doc(db, 'hof', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
   function saveLeaves(data: Leave[]) {
-    data.forEach(l => { setDoc(doc(db, 'leaves', l.id), l, { merge: true }).catch(() => {}) })
+    setLeaves(data);
+    data.forEach(l => { setDoc(doc(db, 'leaves', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
   }
   function saveSettings(data: AppSettings) {
-    setDoc(doc(db, 'settings', 'global'), data, { merge: true }).catch(() => {})
+    setSettings(data);
+    setDoc(doc(db, 'settings', 'global'), fbSafe(data), { merge: true }).catch(() => {})
   }
   function saveAnnouncements(data: Announcement[]) {
-    data.forEach(a => { setDoc(doc(db, 'announcements', a.id), a, { merge: true }).catch(() => {}) })
+    setAnnouncements(data);
+    data.forEach(a => { setDoc(doc(db, 'announcements', a.id), fbSafe(a), { merge: true }).catch(() => {}) })
   }
   function savePublicHolidays(data: PublicHoliday[]) {
-    data.forEach(h => { setDoc(doc(db, 'publicHolidays', h.id), h, { merge: true }).catch(() => {}) })
+    setPublicHolidays(data);
+    data.forEach(h => { setDoc(doc(db, 'publicHolidays', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
 
   function logAudit(action: AuditLog['action'], targetId: string, metadata: any = {}) {
@@ -526,37 +538,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
      setDoc(doc(db, 'settings', 'lockedWeeks'), { lockedWeeks: data }, { merge: true }).catch(() => {})
   }
   function saveFeatures(data: any) {
-     setDoc(doc(db, 'settings', 'features'), data, { merge: true }).catch(() => {})
+     setDoc(doc(db, 'settings', 'features'), fbSafe(data), { merge: true }).catch(() => {})
   }
   function saveWeekLocks(data: WeekLock[]) {
-    data.forEach(lock => { setDoc(doc(db, 'weekLocks', lock.id), lock, { merge: true }).catch(() => {}) })
+    data.forEach(lock => { setDoc(doc(db, 'weekLocks', lock.id), fbSafe(lock), { merge: true }).catch(() => {}) })
   }
   function saveProjects(data: any[]) {
-    data.forEach(p => { setDoc(doc(db, 'projects', p.id), p, { merge: true }).catch(() => {}) })
+    data.forEach(p => { setDoc(doc(db, 'projects', p.id), fbSafe(p), { merge: true }).catch(() => {}) })
   }
   function saveBudgets(data: any[]) {
-    data.forEach(b => { setDoc(doc(db, 'budgets', b.id), b, { merge: true }).catch(() => {}) })
+    data.forEach(b => { setDoc(doc(db, 'budgets', b.id), fbSafe(b), { merge: true }).catch(() => {}) })
   }
   function saveTemplates(data: any[]) {
-    data.forEach(t => { setDoc(doc(db, 'templates', t.id), t, { merge: true }).catch(() => {}) })
+    data.forEach(t => { setDoc(doc(db, 'templates', t.id), fbSafe(t), { merge: true }).catch(() => {}) })
   }
   function saveProjectBudgets(data: ProjectBudget[]) {
-    data.forEach(b => { setDoc(doc(db, 'projectBudgets', b.id), b, { merge: true }).catch(() => {}) })
+    data.forEach(b => { setDoc(doc(db, 'projectBudgets', b.id), fbSafe(b), { merge: true }).catch(() => {}) })
   }
   function saveBulkImportLogs(data: BulkImportLog[]) {
-    data.forEach(l => { setDoc(doc(db, 'bulkImportLogs', l.id), l, { merge: true }).catch(() => {}) })
+    data.forEach(l => { setDoc(doc(db, 'bulkImportLogs', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
   }
   function saveBulkStaffImportLogs(data: BulkStaffImportLog[]) {
-    data.forEach(l => { setDoc(doc(db, 'bulkStaffImportLogs', l.id), l, { merge: true }).catch(() => {}) })
+    data.forEach(l => { setDoc(doc(db, 'bulkStaffImportLogs', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
   }
   function saveStreakRecoveries(data: StreakRecoveryRequest[]) { 
-    data.forEach(r => { setDoc(doc(db, 'streakRecoveries', r.id), r, { merge: true }).catch(() => {}) })
+    data.forEach(r => { setDoc(doc(db, 'streakRecoveries', r.id), fbSafe(r), { merge: true }).catch(() => {}) })
   }
   function savePointsHistory(data: PointsHistoryEntry[]) { 
-    data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), h, { merge: true }).catch(() => {}) })
+    data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
-    data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), r, { merge: true }).catch(() => {}) })
+    data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {}) })
   }
 
   async function login(staffMember: Staff) {
@@ -625,8 +637,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('dark', next)
   }
 
-  function notify(userId: string, message: string, type = 'info', title?: string, linkedId?: string, linkedType?: string, overrideEmail?: string) {
-    const notif: AppNotification = { id: genId(), userId, message, type, read: false, createdAt: new Date().toISOString(), title, linkedId, linkedType }
+  function notify(userId: string, message: string, type = 'info', title = 'New Notification', linkedId?: string, linkedType?: string, overrideEmail?: string) {
+    // Provide defaults for optional fields to avoid undefined
+    const notif: AppNotification = { 
+      id: genId(), 
+      userId, 
+      message, 
+      type, 
+      read: false, 
+      createdAt: new Date().toISOString(), 
+      title: title || 'New Notification', 
+      linkedId: linkedId || '', 
+      linkedType: linkedType || '' 
+    }
     const updated = [notif, ...local.get<AppNotification[]>('notifications', [])]
     saveNots(updated)
     

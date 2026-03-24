@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { local } from '../../lib/utils'
+import { useApp } from '../../context/AppContext'
 
 const STEPS = [
   { title: 'Welcome to DSN RMS! 👋', desc: 'This quick tour will show you the key features of your Resource Management System. It only takes 60 seconds!', icon: '🎉' },
@@ -17,6 +17,7 @@ interface TourProps {
 }
 
 export default function Tour({ onComplete }: TourProps) {
+  const { updateUser } = useApp()
   const [step, setStep] = useState(0)
   const [animating, setAnimating] = useState(false)
 
@@ -37,7 +38,7 @@ export default function Tour({ onComplete }: TourProps) {
   }
 
   function finish() {
-    local.set('tour_completed', true)
+    updateUser({ tour_done: true })
     onComplete()
   }
 

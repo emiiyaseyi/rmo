@@ -23,7 +23,7 @@ export default function MessagesPage() {
   const [text, setText] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const channels = CHANNELS.filter(c => !c.adminOnly || user?.role === 'admin' || user?.role === 'owner')
+  const channels = CHANNELS.filter(c => !c.adminOnly || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'team_lead')
 
   // DM threads
   const dmContacts = useMemo(() => {
@@ -34,7 +34,7 @@ export default function MessagesPage() {
         if (m.recipientId === user?.id) contactIds.add(m.senderId)
       }
     })
-    return staff.filter(s => s.id !== user?.id && (contactIds.has(s.id) || s.role === 'admin' || s.role === 'owner'))
+    return staff.filter(s => s.id !== user?.id && (contactIds.has(s.id) || s.role === 'admin' || s.role === 'super_admin' || s.role === 'team_lead'))
   }, [messages, staff, user])
 
   const selectedMessages = useMemo(() => {

@@ -20,7 +20,7 @@ function StaffNode({ member, reports }: StaffNodeProps) {
           borderRadius: 12, padding: '12px 16px', textAlign: 'center',
           minWidth: 130, cursor: reports.length > 0 ? 'pointer' : 'default',
           transition: 'all 0.2s', position: 'relative',
-          borderColor: member.role === 'admin' ? 'var(--accent)' : member.role === 'owner' ? 'var(--purple)' : 'var(--border)',
+          borderColor: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--border)',
         }}
         onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
@@ -31,8 +31,12 @@ function StaffNode({ member, reports }: StaffNodeProps) {
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>{member.name}</div>
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{member.department || member.role}</div>
         <div style={{ fontSize: 10, marginTop: 4 }}>
-          <span style={{ background: member.role === 'admin' ? 'var(--accent-subtle)' : member.role === 'owner' ? 'var(--purple-bg)' : 'var(--bg-elevated)', color: member.role === 'admin' ? 'var(--accent)' : member.role === 'owner' ? 'var(--purple)' : 'var(--text-3)', padding: '1px 6px', borderRadius: 99, fontSize: 9, fontWeight: 600 }}>
-            {member.role}
+          <span style={{ 
+            background: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent-subtle)' : member.role === 'team_lead' ? 'var(--purple-bg)' : 'var(--bg-elevated)', 
+            color: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--text-3)', 
+            padding: '1px 6px', borderRadius: 99, fontSize: 9, fontWeight: 600 
+          }}>
+            {member.role.replace('_', ' ')}
           </span>
         </div>
         {reports.length > 0 && (
@@ -75,8 +79,8 @@ export default function OrgChartPage() {
   const filtered = deptFilter ? staff.filter(s => s.department === deptFilter) : staff
 
   // Build tree: admins at top, then owners, then staff by leadId
-  const admins = filtered.filter(s => s.role === 'admin' && !s.suspended)
-  const owners = filtered.filter(s => (s.role === 'owner' || s.role === 'hr') && !s.suspended)
+  const admins = filtered.filter(s => (s.role === 'admin' || s.role === 'super_admin') && !s.suspended)
+  const leads = filtered.filter(s => s.role === 'team_lead' && !s.suspended)
   const regularStaff = filtered.filter(s => s.role === 'staff' && !s.suspended)
 
   function getReports(leadId: string) {
@@ -84,11 +88,11 @@ export default function OrgChartPage() {
   }
 
   // Group by department if no filter
-  const deptGroups = departments.reduce((acc: Record<string, { owners: Staff[], staff: Staff[] }>, dept) => {
-    const deptOwners = owners.filter(s => s.department === dept)
-    const deptStaff = regularStaff.filter(s => s.department === dept && !deptOwners.find(o => o.id === s.leadId))
-    if (deptOwners.length > 0 || deptStaff.length > 0) {
-      acc[dept] = { owners: deptOwners, staff: deptStaff }
+  const deptGroups = departments.reduce((acc: Record<string, { leads: Staff[], staff: Staff[] }>, dept) => {
+    const deptLeads = leads.filter(s => s.department === dept)
+    const deptStaff = regularStaff.filter(s => s.department === dept && !deptLeads.find(l => l.id === s.leadId))
+    if (deptLeads.length > 0 || deptStaff.length > 0) {
+      acc[dept] = { leads: deptLeads, staff: deptStaff }
     }
     return acc
   }, {})
@@ -110,7 +114,7 @@ export default function OrgChartPage() {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {[
           ['Admin', 'var(--accent)'],
-          ['Owner / Lead', 'var(--purple)'],
+          ['Team Lead', 'var(--purple)'],
           ['Staff', 'var(--border)']
         ].map(([label, color]) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -133,14 +137,14 @@ export default function OrgChartPage() {
       )}
 
       {/* Departments */}
-      {Object.entries(deptGroups).map(([dept, { owners: dOwners, staff: dStaff }]) => (
+      {Object.entries(deptGroups).map(([dept, { leads: dLeads, staff: dStaff }]) => (
         <div key={dept} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
             🏢 {dept}
           </div>
           <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {dOwners.map(owner => (
-              <StaffNode key={owner.id} member={owner} reports={getReports(owner.id)} />
+            {dLeads.map(lead => (
+              <StaffNode key={lead.id} member={lead} reports={getReports(lead.id)} />
             ))}
             {/* Staff with no lead */}
             {dStaff.length > 0 && (

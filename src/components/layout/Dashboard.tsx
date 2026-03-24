@@ -92,7 +92,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
   )).length
   const submissionRate = totalStaff > 0 ? Math.round((submittedThisWeek / totalStaff) * 100) : 0
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'owner'
+  const isAdmin = ['admin', 'super_admin', 'team_lead'].includes(user?.role || '')
 
   const recentActivity = entries
     .filter(e => e.staffId === user?.id)
@@ -255,7 +255,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
           { icon: '📊', title: 'Analytics', desc: 'View team performance', page: 'analytics', role: 'admin' },
           { icon: '🏆', title: 'Leaderboard', desc: 'See rankings & badges', page: 'leaderboard' },
           { icon: '💬', title: 'Messages', desc: unreadCount > 0 ? `${unreadCount} unread messages` : 'Team communication', page: 'messages' },
-        ].filter(q => !q.role || user?.role === q.role || user?.role === 'admin' || user?.role === 'owner').map(q => (
+        ].filter(q => !q.role || user?.role === q.role || ['admin', 'super_admin', 'team_lead'].includes(user?.role || '')).map(q => (
           <div
             key={q.page}
             className="card"

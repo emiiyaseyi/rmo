@@ -36,9 +36,10 @@ export function getWeekKey(date: Date = new Date()): string {
   return mon.toISOString().slice(0, 10)
 }
 
-export function fmtDate(iso: string | undefined): string {
+export function fmtDate(iso: string | Date | undefined): string {
   if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const d = typeof iso === 'string' ? new Date(iso) : iso
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export function timeAgo(iso: string | undefined): string {
@@ -74,20 +75,28 @@ export function isSubmissionOpen(): boolean {
 }
 
 export const DEFAULT_POINTS = {
-  submit_ontime: 10, submit_early: 15, approved: 5,
-  streak_week: 8, complete_45h: 12, first_submit: 20,
+  submit_ontime: 15, 
+  monday_bonus: 10,
+  early_bonus: 5, // Submitted before Wednesday (if Tue is deadline, Mon is early)
+  approved_entry: 2,
+  approved_with_correction: 1,
+  hours_logged_per_hr: 0.5,
+  streak_bonus: 20,
+  perfect_week: 25,
+  rejection_penalty: -10,
 }
 
 export const BADGES = [
-  { id: 'first_blood', name: 'First Submit', icon: '🎯', desc: 'Submitted your first timesheet' },
-  { id: 'streak_3', name: '3-Week Streak', icon: '🔥', desc: 'Submitted 3 weeks in a row' },
-  { id: 'streak_5', name: '5-Week Streak', icon: '⚡', desc: 'Submitted 5 weeks in a row' },
-  { id: 'streak_10', name: 'Consistent Pro', icon: '💎', desc: '10-week submission streak' },
-  { id: 'full_house', name: 'Full House', icon: '🏠', desc: 'Hit 45h cap in a week' },
-  { id: 'early_bird', name: 'Early Bird', icon: '🐦', desc: 'Submitted before Monday noon' },
-  { id: 'perfect_week', name: 'Perfect Week', icon: '⭐', desc: 'All entries approved first try' },
-  { id: 'top_3', name: 'Podium Finish', icon: '🏆', desc: 'Ranked in top 3 on leaderboard' },
-  { id: 'centurion', name: 'Centurion', icon: '💯', desc: 'Earned 100+ total points' },
+  { id: 'early_bird', name: 'Early Bird', icon: '🐦', desc: 'Submit before deadline consistently' },
+  { id: 'consistent', name: 'Consistent', icon: '🔁', desc: 'Maintain a multi-week submission streak' },
+  { id: 'zero_defect', name: 'Zero Defect', icon: '✅', desc: 'Multiple approved weeks with no rejections' },
+  { id: 'top_performer', name: 'Top Performer', icon: '🌟', desc: 'Rank in top 5 on leaderboard' },
+  { id: 'speed_logger', name: 'Speed Logger', icon: '⚡', desc: 'Submit within hours of week opening' },
+  { id: 'perfect_week', name: 'Perfect Week', icon: '💯', desc: 'All entries approved, no rejections in a week' },
+  { id: 'century_club', name: 'Century Club', icon: '💯', desc: 'Accumulate 100+ approved entries' },
+  { id: 'mvp', name: 'MVP', icon: '🏆', desc: 'Highest points in a month' },
+  { id: 'dedicated', name: 'Dedicated', icon: '💪', desc: 'Longest active streak' },
+  { id: 'comeback', name: 'Comeback', icon: '🔄', desc: 'Return to submissions after a missed week' },
 ]
 
 export function weekRange(weekKey: string | undefined): string {

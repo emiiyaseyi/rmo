@@ -15,7 +15,7 @@ export default function DelegationPage() {
   const eligibleDelegatees = staff.filter(s =>
     s.id !== user?.id &&
     !s.suspended &&
-    (s.role === 'owner' || s.role === 'admin')
+    (['team_lead', 'admin', 'super_admin'].includes(s.role))
   )
 
   function createDelegation(e: React.FormEvent) {

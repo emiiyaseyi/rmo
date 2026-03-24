@@ -48,35 +48,35 @@
   --purple: #8B5CF6;
   --purple-bg: rgba(139, 92, 246, 0.1);
 
-  --text-1: #18181B;
-  --text-2: #51564E;
-  --text-3: #71717A;
-  --text-4: #A1A1AA;
+  --text-1: #000000;
+  --text-2: #000000;
+  --text-3: #000000;
+  --text-4: #000000;
 
   --sidebar-w: 260px;
   --topbar-h: 70px;
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* We'll make the "light" class inherit these directly or adjust for a darker variant if needed */
+/* Re-defining dark mode for high readability */
 body.dark {
-  --bg-base: #0F1711;
-  --bg-surface: #1A241C;
-  --bg-card: #1C2B1F;
-  --bg-elevated: #243527;
-  --bg-hover: #2A402E;
-  --bg-input: #1A241C;
-  --border: #2D3D30;
-  --border-light: #3A4D3E;
-  --text-1: #F8FAFC;
-  --text-2: #D1D5DB;
-  --text-3: #9CA3AF;
-  --text-4: #6B7280;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --bg-base: #000000;
+  --bg-surface: #0A0A0A;
+  --bg-card: #111111;
+  --bg-elevated: #1A1A1A;
+  --bg-hover: #222222;
+  --bg-input: #0A0A0A;
+  --border: #333333;
+  --border-light: #222222;
+  --text-1: #FFFFFF;
+  --text-2: #FFFFFF;
+  --text-3: #FFFFFF;
+  --text-4: #E0E0E0;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
 }
 
 
@@ -599,15 +599,18 @@ tbody tr:hover td {
 }
 
 .tab {
-  padding: 8px 16px;
+  padding: 8px 20px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-3);
-  border-bottom: 2px solid transparent;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
   margin-bottom: -1px;
-  transition: all 0.15s;
-  border-radius: 6px 6px 0 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px 8px 0 0;
+  outline: none;
 }
 
 .tab:hover {
@@ -617,8 +620,12 @@ tbody tr:hover td {
 
 .tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
   background: var(--accent-subtle);
+  border-bottom-color: var(--accent);
+}
+
+body.dark .tab.active {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Stats cards */

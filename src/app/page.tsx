@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react'
 import { useApp } from '@/context/AppContext'
-import { local } from '@/lib/utils'
 
 import LoginPage from '@/components/auth/LoginPage'
 import Tour from '@/components/auth/Tour'
@@ -44,7 +43,7 @@ const PAGE_ROLES: Record<string, string[]> = {
 }
 
 export default function Home() {
-  const { user, staff, saveStaff, features, checkReminders } = useApp()
+  const { user, staff, saveStaff, features, checkReminders, settings } = useApp()
   const [page, setPage] = useState('dashboard')
   const [showTour, setShowTour] = useState(false)
 
@@ -106,11 +105,12 @@ export default function Home() {
 
   // First-login tour
   useEffect(() => {
-    if (user && !local.get('tour_completed', false)) {
+    const showWalkthrough = settings?.featureToggles?.firstLoginWalkthrough ?? true
+    if (user && !user.tour_done && showWalkthrough) {
       const t = setTimeout(() => setShowTour(true), 800)
       return () => clearTimeout(t)
     }
-  }, [user])
+  }, [user, settings])
 
   // Submission reminders check on login
   useEffect(() => {

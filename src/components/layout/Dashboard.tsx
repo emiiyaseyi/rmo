@@ -39,7 +39,7 @@ function Countdown() {
         const dh = Math.floor(diff / 3600000)
         const dm = Math.floor((diff % 3600000) / 60000)
         const ds = Math.floor((diff % 60000) / 1000)
-        setTimeLeft(`${String(dh).padStart(2, '0')}:${String(dm).padStart(2, '0')}:${String(ds).padStart(2, '0')} remaining`)
+        setTimeLeft(`${String(dh).padStart(2, '0')}:${String(dm).padStart(2, '0')}:${String(ds).padStart(2, '0')}`)
         setStatus(dh < 2 ? 'urgent' : 'safe')
       } else {
         setTimeLeft('Submission closed')
@@ -54,22 +54,84 @@ function Countdown() {
   const isOpen = isSubmissionOpen()
   return (
     <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)',
-      borderRadius: 10, padding: '16px 20px',
-      display: 'flex', alignItems: 'center', gap: 16
+      background: 'var(--bg-card)', 
+      border: '1px solid var(--border)',
+      borderRadius: 16, 
+      padding: '24px 32px',
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'space-between',
+      boxShadow: '0 4px 12px var(--shadow)',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
-      <span style={{ fontSize: 28 }}>{isOpen ? '⏰' : '🔒'}</span>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 4 }}>
-          Submission Window
+      {/* Decorative glows */}
+      <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)', opacity: 0.3, filter: 'blur(30px)' }}></div>
+      <div style={{ position: 'absolute', bottom: -30, left: -30, width: 100, height: 100, borderRadius: '50%', background: 'var(--accent-subtle)', opacity: 0.1, filter: 'blur(30px)' }}></div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, position: 'relative', zIndex: 1 }}>
+        <div style={{ 
+          width: 56, height: 56, borderRadius: 14, 
+          background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 28,
+        }}>
+          {isOpen ? '⏰' : '🔒'}
         </div>
-        <div className={`countdown-chip${status === 'urgent' ? ' urgent' : isOpen ? '' : ' safe'}`}>
-          {isOpen ? '🟢 OPEN' : '🔴 CLOSED'} — {timeLeft}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
-          Mon 8:00am – Tue 4:00pm WAT
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Submission Window
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+             <div style={{ 
+                display: 'flex', alignItems: 'center', gap: 6, 
+                padding: '4px 14px', borderRadius: 20, 
+                background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
+                color: isOpen ? 'var(--success)' : 'var(--danger)',
+                fontSize: 12, fontWeight: 800, 
+                border: `1px solid ${isOpen ? 'var(--success)' : 'var(--danger)'}33`
+             }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', boxShadow: '0 0 8px currentColor' }} />
+                {isOpen ? 'WINDOW OPEN' : 'WINDOW CLOSED'}
+             </div>
+             {!isOpen && timeLeft.startsWith('Opens') && (
+               <span style={{ fontSize: 14, color: 'var(--text-1)', fontWeight: 700 }}>{timeLeft}</span>
+             )}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, fontWeight: 500, opacity: 0.8 }}>
+             Schedule: Mon 8:00am – Tue 4:00pm WAT
+          </div>
         </div>
       </div>
+
+      {isOpen && (
+        <div style={{ 
+          textAlign: 'right',
+          position: 'relative',
+          zIndex: 1
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 2, letterSpacing: '0.1em', opacity: 0.7 }}>
+            Remaining Time
+          </div>
+          <div style={{ 
+            fontSize: 56, 
+            fontWeight: 900, 
+            color: status === 'urgent' ? 'var(--danger)' : 'var(--text-1)',
+            fontFamily: 'var(--mono)',
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+          }}>
+            {timeLeft}
+          </div>
+        </div>
+      )}
+
+      {!isOpen && !timeLeft.startsWith('Opens') && (
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)', opacity: 0.5, fontStyle: 'italic' }}>
+          {timeLeft}
+        </div>
+      )}
     </div>
   )
 }

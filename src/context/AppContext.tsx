@@ -1,12 +1,11 @@
 'use client'
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import toast from 'react-hot-toast'
-import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, syncToSupabase, fetchFromSupabase, sendEmailNotification } from '../lib/utils'
-import { getSupabase } from '../lib/supabase'
+import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
 import { db } from '../lib/firebase'
 import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, MessageThread, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday } from '../types'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, MessageThread, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -50,9 +49,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const userRef = useRef<Staff | null>(null)
 
   useEffect(() => {
+    // ONE-TIME CLEANUP (MIGRATION TO SESSION STORAGE)
+    if (typeof window !== 'undefined') {
+       const migrated = sessionStorage.getItem('dsn_migrated_v3')
+       if (!migrated) {
+          localStorage.clear()
+          sessionStorage.setItem('dsn_migrated_v3', 'true')
+       }
+    }
+
+    // Session is now strictly in sessionStorage (via local helper as updated in Step 1)
     const savedUser = local.get<Staff | null>('session_user', null)
     if (savedUser) { setUser(savedUser); userRef.current = savedUser }
-    loadAll()
+    
+    // Initial fetch of settings and Bootstrapping
+    const init = async () => {
+      // Load Settings
+      const settSnap = await getDoc(doc(db, 'settings', 'global'))
+      if (settSnap.exists()) {
+        const s = settSnap.data() as AppSettings
+        setSettings({ ...DEFAULT_SETTINGS, ...s, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...s.featureToggles } })
+      }
+
+      // Bootstrap Default Admin
+      const adminEmail = 'adeniran@datasciencenigeria.ai'
+      const staffRef = collection(db, 'staff')
+      const q = query(staffRef, where('email', '==', adminEmail))
+      const snap = await getDocs(q)
+      
+      if (snap.empty) {
+        console.log('Bootstrapping default admin...')
+        const adminId = 'admin-seed-001'
+        const adminUser: Staff = {
+          id: adminId,
+          name: 'Adeniran',
+          email: adminEmail,
+          department: 'Administration',
+          role: 'admin',
+          password: 'admin',
+          status: 'active',
+          first_login: true,
+          mustChangePassword: true,
+          points: 0,
+          badges: [],
+          streak: 0,
+          createdAt: new Date().toISOString()
+        }
+        await setDoc(doc(db, 'staff', adminId), adminUser)
+      }
+    }
+    init()
 
     const dm = local.get<boolean>('dark_mode', false)
     setDarkMode(dm)
@@ -90,7 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           type: 'group',
           name: 'Admin Team',
           icon: '🔒',
-          participants: staff.filter(s => ['admin', 'super_admin', 'owner'].includes(s.role)).map(s => s.id),
+          participants: staff.filter(s => ['admin'].includes(s.role)).map(s => s.id),
           lastMessage: null,
           lastMessageAt: null,
           lastMessageBy: null,
@@ -151,98 +197,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [idleCountdown])
 
-  function loadAll() {
-    // Seed the bootstrap admin if staff list is empty
-    const SEED_ADMIN: Staff = {
-      id: 'seed-admin-001',
-      name: 'Adeniran',
-      email: 'adeniran@datasciencenigeria.ai',
-      department: 'Administration',
-      role: 'admin' as 'admin',
-      password: 'admin',
-      first_login: true,
-      status: 'active',
-      points: 0,
-      badges: [],
-      suspended: false,
-      createdAt: new Date().toISOString(),
-    }
-    let staffToLoad = local.get<Staff[]>('staff', [])
+  // REAL-TIME SYNC FOR ALL COLLECTIONS
+  useEffect(() => {
+    if (!user) return
+    const unsubs: Array<() => void> = []
 
-    const SEED_STAFF: Staff[] = [
-      { id: 'dsn-001', name: 'Dr. Olubayo Adekanmbi', email: 'bayo@datasciencenigeria.ai', department: 'Leadership', role: 'super_admin', jobTitle: 'Founder', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
-      { id: 'dsn-002', name: 'Oubayo Moses', email: 'moses@datasciencenigeria.ai', department: 'AI Engineering', role: 'admin', jobTitle: 'Lead Engineer', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
-      { id: 'dsn-003', name: 'Jane Analyst', email: 'jane@datasciencenigeria.ai', department: 'Engineering', role: 'staff', jobTitle: 'Data Analyst', status: 'active', password: '1234', mustChangePassword: true, createdAt: new Date().toISOString() },
-    ]
+    // 1. Staff
+    unsubs.push(onSnapshot(collection(db, 'staff'), (snap) => {
+      const data: Staff[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Staff))
+      setStaff(data)
+    }))
 
-    // MIGRATION: If staff list is empty or admin has old PIN, update to Password
-    if (staffToLoad.length <= 1) { // Only seed admin exists
-      staffToLoad = [SEED_ADMIN, ...SEED_STAFF]
-    } else {
-      staffToLoad = staffToLoad.map(s => {
-        // Migration of 'pin' to 'password'
-        const currentPin = (s as any).pin;
-        if (currentPin && !s.password) {
-          return { ...s, password: currentPin, first_login: true } as Staff
-        }
-        return s
-      })
+    // 2. Entries (User context specific or all if admin)
+    const entriesRef = user.role === 'admin' ? collection(db, 'timesheetEntries') : query(collection(db, 'timesheetEntries'), where('staffId', '==', user.id))
+    unsubs.push(onSnapshot(entriesRef, (snap) => {
+      const data: Entry[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Entry))
+      setEntries(data)
+    }))
 
-      // Force reset for specific seed admin to ensure login works during migration
-      const seedIdx = staffToLoad.findIndex(s => s.email === 'adeniran@datasciencenigeria.ai')
-      if (seedIdx > -1) {
-        staffToLoad[seedIdx].password = 'admin'
-        staffToLoad[seedIdx].first_login = true
-      } else {
-        staffToLoad.unshift(SEED_ADMIN)
+    // 3. Notifications
+    unsubs.push(onSnapshot(query(collection(db, 'notifications'), where('userId', '==', user.id)), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))
+      setNots(data)
+    }))
+
+    // 4. Settings
+    unsubs.push(onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+      if (snap.exists()) {
+        const s = snap.data() as AppSettings
+        setSettings({ ...DEFAULT_SETTINGS, ...s, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...s.featureToggles } })
       }
-    }
+    }))
 
-    setStaff(staffToLoad)
-    local.set('staff', staffToLoad) // Persist migration
-    setEntries(local.get<Entry[]>('entries', []))
-    setMessages(local.get<any[]>('messages', []))
-    setMessageThreads(local.get<MessageThread[]>('message_threads', []))
-    setNots(local.get<any[]>('notifications', []))
-    setRedeems(local.get<any[]>('redeems', []))
-    setRewards(local.get<any[]>('rewards', []))
-    setHof(local.get<any[]>('hof', []))
-    setProjects(local.get<any[]>('projects', DEFAULT_PROJECTS))
-    setLeaves(local.get<any[]>('leaves', []))
-    setDelegations(local.get<any[]>('delegations', []))
-    setApprovalDelegations(local.get<ApprovalDelegation[]>('approval_delegations', []))
-    setLockedWeeks(local.get<any[]>('locked_weeks', []))
-    setFeatures(local.get<any>('features', DEFAULT_FEATURES))
-    setBudgets(local.get<any[]>('budgets', []))
-    setTemplates(local.get<any[]>('templates', []))
-    setProjectBudgets(local.get<ProjectBudget[]>('project_budgets', []))
-    setBulkImportLogs(local.get<BulkImportLog[]>('bulk_import_logs', []))
-    setBulkStaffImportLogs(local.get<BulkStaffImportLog[]>('bulk_staff_import_logs', []))
-    setStreakRecoveries(local.get<StreakRecoveryRequest[]>('streak_recoveries', []))
-    setPointsHistory(local.get<PointsHistoryEntry[]>('points_history', []))
-    setPasswordResetRequests(local.get<PasswordResetRequest[]>('password_reset_requests', []))
-    
-    const setts = local.get<AppSettings>('settings', DEFAULT_SETTINGS)
-    // Merge new defaults into old settings if they exist
-    setSettings({ ...DEFAULT_SETTINGS, ...setts, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...setts.featureToggles } })
-    setAnnouncements(local.get<Announcement[]>('announcements', []))
-    setWeekLocks(local.get<WeekLock[]>('week_locks', []))
-    setAuditLogs(local.get<AuditLog[]>('audit_logs', []))
-    setPublicHolidays(local.get<PublicHoliday[]>('public_holidays', []))
+    // 5. Message Threads
+    unsubs.push(onSnapshot(query(collection(db, 'messageThreads'), where('participants', 'array-contains', user.id)), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageThread))
+      setMessageThreads(data)
+    }))
+
+    // 6. Leaves
+    const leavesRef = user.role === 'admin' ? collection(db, 'leaves') : query(collection(db, 'leaves'), where('staffId', '==', user.id))
+    unsubs.push(onSnapshot(leavesRef, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Leave))
+      setLeaves(data)
+    }))
+
+    // 7. Rewards/Redeems
+    unsubs.push(onSnapshot(collection(db, 'rewards'), (snap) => {
+      setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() } as Reward)))
+    }))
+    unsubs.push(onSnapshot(collection(db, 'redeems'), (snap) => {
+      setRedeems(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)))
+    }))
+
+    // 8. Announcements
+    unsubs.push(onSnapshot(collection(db, 'announcements'), (snap) => {
+      setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() } as Announcement)))
+    }))
+
+    // 9. Public Holidays
+    unsubs.push(onSnapshot(collection(db, 'publicHolidays'), (snap) => {
+      setPublicHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as PublicHoliday)))
+    }))
+
+    return () => unsubs.forEach(u => u())
+  }, [user?.id])
+
+  function loadAll() {
+    // loadAll is now mostly obsolete as real-time snapshots handle data loading 
+    // but we can keep it for any static non-firestore data if needed.
   }
 
-  // Supabase real-time subscription setup
-  useEffect(() => {
-    const sb = getSupabase()
-    if (!sb || !user) return
-    // Subscribe to entries changes
-    const sub = sb.channel('entries-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, (payload: any) => {
-        loadAll() // Reload on any remote change
-      })
-      .subscribe()
-    return () => sb.removeChannel(sub)
-  }, [user])
+
 
   // Firestore real-time listeners for messaging
   useEffect(() => {
@@ -385,7 +411,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function saveStaff(data: Staff[]) {
     const previousStaff = staff
     setStaff(data);
-    local.set('staff', data);
 
     // Sync to Firestore for centralized management
     data.forEach(s => {
@@ -406,7 +431,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // Auto-add new admins to "Admin Team" channel
-      const newAdmins = newStaffMembers.filter(s => ['admin', 'super_admin', 'owner'].includes(s.role))
+      const newAdmins = newStaffMembers.filter(s => ['admin'].includes(s.role))
       if (newAdmins.length > 0) {
         const adminTeamThread = messageThreads.find(t => t.id === 'admin_team')
         if (adminTeamThread) {
@@ -422,8 +447,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   function saveEntries(data: Entry[]) { 
     setEntries(data); 
-    local.set('entries', data); 
-    syncToSupabase('entries', data);
+
     // Sync to Firestore
     data.forEach(e => {
       setDoc(doc(db, 'timesheetEntries', e.id), e, { merge: true }).catch(() => {})
@@ -431,7 +455,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   function saveMessages(data: AppMessage[]) {
     setMessages(data);
-    local.set('messages', data);
     // Sync to Firestore - organized by thread
     data.forEach(msg => {
       const threadId = msg.threadId || msg.channelId || (msg.recipientId ? `dm_${msg.senderId}_${msg.recipientId}` : '')
@@ -446,26 +469,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   function saveMessageThreads(data: MessageThread[]) {
     setMessageThreads(data);
-    local.set('message_threads', data);
     // Sync to Firestore
     data.forEach(thread => {
       setDoc(doc(db, 'messageThreads', thread.id), thread, { merge: true }).catch(() => {})
     })
   }
-  function saveNots(data: AppNotification[]) { setNots(data); local.set('notifications', data) }
-  function saveRedeems(data: Redemption[]) { setRedeems(data); local.set('redeems', data) }
-  function saveRewards(data: Reward[]) { setRewards(data); local.set('rewards', data) }
-  function saveHof(data: HofEntry[]) { setHof(data); local.set('hof', data) }
-  function saveLeaves(data: Leave[]) { setLeaves(data); local.set('leaves', data) }
-  function saveDelegations(data: any[]) { setDelegations(data); local.set('delegations', data) }
-  function saveApprovalDelegations(data: ApprovalDelegation[]) { setApprovalDelegations(data); local.set('approval_delegations', data) }
-  function saveLockedWeeks(data: any[]) { setLockedWeeks(data); local.set('locked_weeks', data) }
-  function saveFeatures(data: any) { setFeatures(data); local.set('features', data) }
-  function saveSettings(data: AppSettings) { setSettings(data); local.set('settings', data) }
-  function saveAnnouncements(data: Announcement[]) { setAnnouncements(data); local.set('announcements', data) }
-  function saveWeekLocks(data: WeekLock[]) { setWeekLocks(data); local.set('week_locks', data) }
-  function saveAuditLogs(data: AuditLog[]) { setAuditLogs(data); local.set('audit_logs', data) }
-  function savePublicHolidays(data: PublicHoliday[]) { setPublicHolidays(data); local.set('public_holidays', data) }
+  function saveNots(data: AppNotification[]) { 
+    data.forEach(n => { setDoc(doc(db, 'notifications', n.id), n, { merge: true }).catch(() => {}) })
+  }
+  function saveRedeems(data: Redemption[]) {
+    data.forEach(r => { setDoc(doc(db, 'redeems', r.id), r, { merge: true }).catch(() => {}) })
+  }
+  function saveRewards(data: Reward[]) {
+    data.forEach(r => { setDoc(doc(db, 'rewards', r.id), r, { merge: true }).catch(() => {}) })
+  }
+  function saveHof(data: HofEntry[]) {
+    data.forEach(h => { setDoc(doc(db, 'hof', h.id), h, { merge: true }).catch(() => {}) })
+  }
+  function saveLeaves(data: Leave[]) {
+    data.forEach(l => { setDoc(doc(db, 'leaves', l.id), l, { merge: true }).catch(() => {}) })
+  }
+  function saveSettings(data: AppSettings) {
+    setDoc(doc(db, 'settings', 'global'), data, { merge: true }).catch(() => {})
+  }
+  function saveAnnouncements(data: Announcement[]) {
+    data.forEach(a => { setDoc(doc(db, 'announcements', a.id), a, { merge: true }).catch(() => {}) })
+  }
+  function savePublicHolidays(data: PublicHoliday[]) {
+    data.forEach(h => { setDoc(doc(db, 'publicHolidays', h.id), h, { merge: true }).catch(() => {}) })
+  }
 
   function logAudit(action: AuditLog['action'], targetId: string, metadata: any = {}) {
     const entry: AuditLog = {
@@ -481,24 +513,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = [entry, ...auditLogs].slice(0, 1000)
     saveAuditLogs(updated)
   }
-  function saveProjects(data: any[]) { setProjects(data); local.set('projects', data) }
-  function saveBudgets(data: any[]) { setBudgets(data); local.set('budgets', data) }
-  function saveTemplates(data: any[]) { setTemplates(data); local.set('templates', data) }
-  function saveProjectBudgets(data: ProjectBudget[]) { setProjectBudgets(data); local.set('project_budgets', data) }
-  function saveBulkImportLogs(data: BulkImportLog[]) { setBulkImportLogs(data); local.set('bulk_import_logs', data) }
-  function saveBulkStaffImportLogs(data: BulkStaffImportLog[]) { setBulkStaffImportLogs(data); local.set('bulk_staff_import_logs', data) }
+  function saveAuditLogs(data: AuditLog[]) {
+    data.forEach(log => { setDoc(doc(db, 'auditLogs', log.id), log, { merge: true }).catch(() => {}) })
+  }
+  function saveDelegations(data: Delegation[]) {
+    data.forEach(d => { setDoc(doc(db, 'delegations', d.id), d, { merge: true }).catch(() => {}) })
+  }
+  function saveApprovalDelegations(data: ApprovalDelegation[]) {
+    data.forEach(d => { setDoc(doc(db, 'approvalDelegations', d.id), d, { merge: true }).catch(() => {}) })
+  }
+  function saveLockedWeeks(data: string[]) {
+     setDoc(doc(db, 'settings', 'lockedWeeks'), { lockedWeeks: data }, { merge: true }).catch(() => {})
+  }
+  function saveFeatures(data: any) {
+     setDoc(doc(db, 'settings', 'features'), data, { merge: true }).catch(() => {})
+  }
+  function saveWeekLocks(data: WeekLock[]) {
+    data.forEach(lock => { setDoc(doc(db, 'weekLocks', lock.id), lock, { merge: true }).catch(() => {}) })
+  }
+  function saveProjects(data: any[]) {
+    data.forEach(p => { setDoc(doc(db, 'projects', p.id), p, { merge: true }).catch(() => {}) })
+  }
+  function saveBudgets(data: any[]) {
+    data.forEach(b => { setDoc(doc(db, 'budgets', b.id), b, { merge: true }).catch(() => {}) })
+  }
+  function saveTemplates(data: any[]) {
+    data.forEach(t => { setDoc(doc(db, 'templates', t.id), t, { merge: true }).catch(() => {}) })
+  }
+  function saveProjectBudgets(data: ProjectBudget[]) {
+    data.forEach(b => { setDoc(doc(db, 'projectBudgets', b.id), b, { merge: true }).catch(() => {}) })
+  }
+  function saveBulkImportLogs(data: BulkImportLog[]) {
+    data.forEach(l => { setDoc(doc(db, 'bulkImportLogs', l.id), l, { merge: true }).catch(() => {}) })
+  }
+  function saveBulkStaffImportLogs(data: BulkStaffImportLog[]) {
+    data.forEach(l => { setDoc(doc(db, 'bulkStaffImportLogs', l.id), l, { merge: true }).catch(() => {}) })
+  }
   function saveStreakRecoveries(data: StreakRecoveryRequest[]) { 
-    setStreakRecoveries(data); 
-    local.set('streak_recoveries', data);
     data.forEach(r => { setDoc(doc(db, 'streakRecoveries', r.id), r, { merge: true }).catch(() => {}) })
   }
   function savePointsHistory(data: PointsHistoryEntry[]) { 
-    setPointsHistory(data); 
-    local.set('points_history', data);
+    data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), h, { merge: true }).catch(() => {}) })
   }
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
-    setPasswordResetRequests(data);
-    local.set('password_reset_requests', data);
     data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), r, { merge: true }).catch(() => {}) })
   }
 
@@ -990,7 +1047,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Notify Task Owners/Admins
       const submittedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'submitted')
       const targetLeads = Array.from(new Set(submittedEntries.map(e => e.leadId || staffMember.leadId).filter(Boolean)))
-      const adminIds = staff.filter(s => s.role === 'admin' || s.role === 'super_admin').map(s => s.id)
+      const adminIds = staff.filter(s => s.role === 'admin').map(s => s.id)
       const allToNotify = Array.from(new Set([...targetLeads, ...adminIds]))
       
       allToNotify.forEach(lId => {

@@ -177,7 +177,7 @@ export default function ApprovalsPage() {
 
   const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 20
   const isAdmin = user?.role === 'admin'
-  const isTaskOwner = ['team_lead', 'admin', 'super_admin'].includes(user?.role || '')
+  const isTaskOwner = ['team_lead', 'admin'].includes(user?.role || '')
 
   // Active delegations for current user
   const now = new Date()
@@ -274,9 +274,9 @@ export default function ApprovalsPage() {
       reviewerId: user.id,
       reviewerName: user.name || '',
       reviewerRole,
-      note,
       timestamp: now,
-      correctedHours: action === 'approve_correction' ? correctedHours : undefined
+      ...(note && { note }), // Only include note if it exists
+      ...(action === 'approve_correction' && correctedHours !== undefined && { correctedHours })
     }
 
     const approvalHistory = [...(entry.approvalHistory || []), historyEntry]
@@ -397,8 +397,8 @@ export default function ApprovalsPage() {
         reviewerId: user.id,
         reviewerName: user.name || '',
         reviewerRole,
-        note: 'Bulk approval',
-        timestamp: now
+        timestamp: now,
+        note: 'Bulk approval'
       }
 
       // Check 2nd-level threshold
@@ -478,7 +478,7 @@ export default function ApprovalsPage() {
   }
 
   const displayPending = getFilteredPending()
-  const taskOwners = staff.filter(s => ['team_lead', 'admin', 'super_admin'].includes(s.role) && s.id !== user?.id)
+  const taskOwners = staff.filter(s => ['team_lead', 'admin'].includes(s.role) && s.id !== user?.id)
 
   function handleBulkApprove() {
     if (selectedIds.length === 0) return
@@ -493,9 +493,7 @@ export default function ApprovalsPage() {
           reviewerName: user?.name || '',
           reviewerRole: user?.role || '',
           action: 'approved',
-          timestamp: now,
-          // The original code had `status: 'approved'` here, which is not part of ApprovalHistoryEntry type.
-          // Removing it to maintain type correctness.
+          timestamp: now
         }
 
         // Award points

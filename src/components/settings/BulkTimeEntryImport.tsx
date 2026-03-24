@@ -265,7 +265,7 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
                   <li>Staff are matched by their <strong>email address</strong> — ensure emails match exactly</li>
                   <li>Dates must be in <strong>YYYY-MM-DD</strong> format (e.g. 2025-01-13)</li>
                   <li>Set Status to <strong>approved</strong> to populate analytics immediately</li>
-                  <li>Set Status to <strong>submitted</strong> for entries that still need owner approval</li>
+                  <li>Set Status to <strong>submitted</strong> for entries that still need team lead approval</li>
                   <li>Duplicate entries (same staff + date + project + hours) will be flagged</li>
                   <li>After import, all affected staff dashboards and reports update instantly</li>
                 </ul>

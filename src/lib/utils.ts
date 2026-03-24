@@ -1,22 +1,20 @@
-import { getSupabase } from './supabase'
-
 const PREFIX = 'dsn_'
 
 export const local = {
   get: <T>(key: string, fallback: T): T => {
     if (typeof window === 'undefined') return fallback;
     try {
-      const v = localStorage.getItem(PREFIX + key)
+      const v = sessionStorage.getItem(PREFIX + key)
       return v ? (JSON.parse(v) as T) : fallback
     } catch { return fallback }
   },
   set: (key: string, val: any): void => {
     if (typeof window === 'undefined') return;
-    try { localStorage.setItem(PREFIX + key, JSON.stringify(val)) } catch { }
+    try { sessionStorage.setItem(PREFIX + key, JSON.stringify(val)) } catch { }
   },
   remove: (key: string): void => {
     if (typeof window === 'undefined') return;
-    localStorage.removeItem(PREFIX + key);
+    sessionStorage.removeItem(PREFIX + key);
   },
 }
 
@@ -146,33 +144,6 @@ export async function exportPDF(rows: any[], columns: any[], title: string, file
   } catch (e) {
     console.error('PDF export failed:', e)
     throw e
-  }
-}
-
-// Supabase real-time sync helper
-export async function syncToSupabase(table: string, data: any): Promise<boolean> {
-  const sb = getSupabase()
-  if (!sb) return false
-  try {
-    const { error } = await sb.from(table).upsert(data, { onConflict: 'id' })
-    if (error) throw error
-    return true
-  } catch (e: any) {
-    console.warn('Supabase sync failed:', e.message)
-    return false
-  }
-}
-
-export async function fetchFromSupabase(table: string): Promise<any[] | null> {
-  const sb = getSupabase()
-  if (!sb) return null
-  try {
-    const { data, error } = await sb.from(table).select('*')
-    if (error) throw error
-    return data
-  } catch (e: any) {
-    console.warn('Supabase fetch failed:', e.message)
-    return null
   }
 }
 

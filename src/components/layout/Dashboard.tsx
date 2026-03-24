@@ -87,9 +87,9 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const submitted = myEntries.some(e => e.status === 'submitted' || e.status === 'approved' || e.status === 'resubmitted')
   const pendingCount = pendingApprovals().length
 
-  const isAdmin = ['admin', 'super_admin', 'team_lead'].includes(user?.role || '')
+  const isAdmin = ['admin', 'team_lead'].includes(user?.role || '')
   const isTeamLead = user?.role === 'team_lead'
-  const isHigherAdmin = ['admin', 'super_admin', 'owner'].includes(user?.role || '')
+  const isHigherAdmin = ['admin'].includes(user?.role || '')
 
   // Filter staff based on role
   const managedStaff = isTeamLead 

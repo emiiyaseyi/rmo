@@ -21,7 +21,7 @@ export default function MessagesPage() {
       // Group channels
       if (thread.type === 'group') {
         if (thread.id === 'admin_team') {
-          return ['admin', 'super_admin', 'owner', 'team_lead'].includes(user.role)
+          return ['admin', 'team_lead'].includes(user.role)
         }
         return true // All staff can see "All Staff"
       }
@@ -37,7 +37,7 @@ export default function MessagesPage() {
   }, [messageThreads, user])
 
   // Staff search for new DMs (admins, task owners, and team leads can message anyone)
-  const canMessageAnyone = user?.role && ['admin', 'super_admin', 'owner', 'team_lead'].includes(user.role)
+  const canMessageAnyone = user?.role && ['admin', 'team_lead'].includes(user.role)
   const availableStaffForDM = useMemo(() => {
     if (!user) return []
 
@@ -47,7 +47,7 @@ export default function MessagesPage() {
       // Regular staff can only message their lead and admins
       staffList = staffList.filter(s =>
         s.id === user.leadId ||
-        ['admin', 'super_admin', 'owner', 'team_lead'].includes(s.role)
+        ['admin', 'team_lead'].includes(s.role)
       )
     }
 

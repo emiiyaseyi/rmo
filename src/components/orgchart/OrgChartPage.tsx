@@ -20,7 +20,7 @@ function StaffNode({ member, reports }: StaffNodeProps) {
           borderRadius: 12, padding: '12px 16px', textAlign: 'center',
           minWidth: 130, cursor: reports.length > 0 ? 'pointer' : 'default',
           transition: 'all 0.2s', position: 'relative',
-          borderColor: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--border)',
+          borderColor: (member.role === 'admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--border)',
         }}
         onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
@@ -32,8 +32,8 @@ function StaffNode({ member, reports }: StaffNodeProps) {
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{member.department || member.role}</div>
         <div style={{ fontSize: 10, marginTop: 4 }}>
           <span style={{ 
-            background: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent-subtle)' : member.role === 'team_lead' ? 'var(--purple-bg)' : 'var(--bg-elevated)', 
-            color: (member.role === 'admin' || member.role === 'super_admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--text-3)', 
+            background: (member.role === 'admin') ? 'var(--accent-subtle)' : member.role === 'team_lead' ? 'var(--purple-bg)' : 'var(--bg-elevated)',
+            color: (member.role === 'admin') ? 'var(--accent)' : member.role === 'team_lead' ? 'var(--purple)' : 'var(--text-3)', 
             padding: '1px 6px', borderRadius: 99, fontSize: 9, fontWeight: 600 
           }}>
             {member.role.replace('_', ' ')}
@@ -78,8 +78,8 @@ export default function OrgChartPage() {
   const departments = Array.from(new Set(staff.map(s => s.department).filter((d): d is string => !!d)))
   const filtered = deptFilter ? staff.filter(s => s.department === deptFilter) : staff
 
-  // Build tree: admins at top, then owners, then staff by leadId
-  const admins = filtered.filter(s => (s.role === 'admin' || s.role === 'super_admin') && !s.suspended)
+  // Build tree: admins at top, then team leads, then staff by leadId
+  const admins = filtered.filter(s => (s.role === 'admin') && !s.suspended)
   const leads = filtered.filter(s => s.role === 'team_lead' && !s.suspended)
   const regularStaff = filtered.filter(s => s.role === 'staff' && !s.suspended)
 

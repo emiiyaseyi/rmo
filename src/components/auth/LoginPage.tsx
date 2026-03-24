@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
 import { local, logAudit, genId } from '../../lib/utils'
 import { db } from '../../lib/firebase'
-import { doc, getDoc, updateDoc, increment, setDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, increment, setDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { Staff } from '../../types'
 import { Eye, EyeOff } from 'lucide-react'
@@ -28,71 +28,83 @@ export default function LoginPage() {
     if (!/[A-Z]/.test(pass)) return 'Password must contain a capital letter'
     if (!/[a-z]/.test(pass)) return 'Password must contain a small letter'
     if (!/[0-9]/.test(pass)) return 'Password must contain a number'
-    if (pass === 'dsn-staff' || pass === '1234') return 'Password is blacklisted'
     return null
   }
 
-  async function handleSignIn(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSignIn(e?: React.FormEvent | React.MouseEvent) {
+    if (e) e.preventDefault()
     setError('')
     setLoading(true)
 
-    if (!email.endsWith('@datasciencenigeria.ai')) {
-      setError('Invalid email. Please use your @datasciencenigeria.ai work email.')
-      setLoading(false)
-      return
-    }
-
-    // Find user
-    const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
-
-    if (!found) {
-      setError('Invalid credentials.')
-      setLoading(false)
-      return
-    }
-
-    // Check persistent lockout from Firestore
     try {
-      const userRef = doc(db, 'staff', found.id)
-      const userSnap = await getDoc(userRef)
-      const securityData = userSnap.data()
+      const emailLower = email.toLowerCase().trim()
       
-      if (securityData?.lockout_until && new Date(securityData.lockout_until) > new Date()) {
-        const remaining = Math.ceil((new Date(securityData.lockout_until).getTime() - Date.now()) / 60000)
-        setError(`Account locked. Try again in ${remaining} minutes.`)
+      // Query Firestore directly for the user by email
+      const staffRef = collection(db, 'staff')
+      const q = query(staffRef, where('email', '==', emailLower))
+      const snap = await getDocs(q)
+      
+      if (snap.empty) {
+        setError('Invalid credentials.')
         setLoading(false)
         return
       }
 
-      if (found.suspended) {
-        setError('Account suspended.')
+      const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as Staff
+      const userRef = doc(db, 'staff', found.id)
+      
+      // Double check lockout/suspension from the same doc or a fresh fetch
+      const userData = snap.docs[0].data() as any
+      
+      // Lockout check
+      if (userData.lockout_until && new Date(userData.lockout_until) > new Date()) {
+        const hours = Math.ceil((new Date(userData.lockout_until).getTime() - Date.now()) / (1000 * 60 * 60))
+        setError(`Account locked. Try again in ${hours} hour(s).`)
         setLoading(false)
         return
       }
 
-      // Check password
-      if (found.password !== password) {
+      // Handle suspension
+      if (userData.suspended) {
+        setError('Account suspended. Contact Admin.')
+        setLoading(false)
+        return
+      }
+
+      // Password Check
+      const isCorrect = (password === (found.password || userData.password) || (found as any).pin === password)
+      
+      if (!isCorrect) {
         // Increment failed attempts
-        const currentFailed = (securityData?.failed_attempts || 0) + 1
-        let lockoutUpdate = {}
-        if (currentFailed >= 5) {
-          const lockoutTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-          lockoutUpdate = { failed_attempts: currentFailed, lockout_until: lockoutTime }
-          setError('Too many failed attempts. Account locked for 30 minutes.')
-          logAudit('LOCKOUT', `${found.name} account locked for 30 min`, found.id, found.name)
+        await updateDoc(userRef, { failed_attempts: increment(1) })
+        
+        // Check for lockout after fresh attempt
+        const freshSnap = await getDoc(userRef)
+        const attempts = freshSnap.data()?.failed_attempts || 0
+        
+        if (attempts >= 5) {
+          const lockout = new Date()
+          lockout.setHours(lockout.getHours() + 24)
+          await updateDoc(userRef, { lockout_until: lockout.toISOString() })
+          setError('Too many failed attempts. Account locked for 24h.')
         } else {
-          lockoutUpdate = { failed_attempts: currentFailed }
-          setError(`Invalid credentials. ${5 - currentFailed} attempts remaining.`)
+          setError(`Invalid credentials. ${5 - attempts} attempts left.`)
         }
-        await setDoc(userRef, lockoutUpdate, { merge: true })
         setLoading(false)
         return
       }
 
-      // Success
+      // Success Logic
+      if (found.first_login || password === '1234' || (found as any).mustChangePassword) {
+        setFoundUser(found)
+        setStep('change_password')
+        setLoading(false)
+        return
+      }
+
+      // Final Login
       await login(found)
-      setLoading(false)
+      
     } catch (e: any) {
       console.error('Login error:', e)
       setError('An error occurred during sign-in. Please try again.')
@@ -100,37 +112,60 @@ export default function LoginPage() {
     }
   }
 
-  function handleChangePassword(e: React.FormEvent) {
+  async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
     if (!foundUser) return
     setError('')
 
-    const validationError = validateNewPassword(newPassword)
-    if (validationError) { setError(validationError); return }
-    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
-    if (newPassword === 'admin') { setError('Cannot use "admin" as new password.'); return }
+    const valErr = validateNewPassword(newPassword)
+    if (valErr) { setError(valErr); return }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match'); return }
 
-    const updatedUser: Staff = { ...foundUser, password: newPassword, first_login: false }
+    setLoading(true)
+    try {
+      const updatedUser = { ...foundUser, password: newPassword, pin: newPassword, first_login: false, mustChangePassword: false }
+      
+      // Update Firebase
+      const userRef = doc(db, 'staff', foundUser.id)
+      await setDoc(userRef, { 
+        password: newPassword, 
+        pin: newPassword, 
+        first_login: false, 
+        mustChangePassword: false,
+        last_password_change: new Date().toISOString()
+      }, { merge: true })
 
-    // Persist change via context
-    saveStaff(staff.map(s => s.id === updatedUser.id ? updatedUser : s))
-
-    login(updatedUser)
-    toast.success('Password updated successfully!')
+      // Update Local State for Session Persistence
+      sessionStorage.setItem('dsn_pin_change', JSON.stringify({ id: foundUser.id, password: newPassword }))
+      
+      await login(updatedUser)
+      toast.success('Password updated successfully!')
+    } catch (e: any) {
+      setError('Failed to update password. Try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleForgot(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     try {
-      const found = staff.find(s => s.email?.toLowerCase() === email.toLowerCase().trim())
-      if (found) {
-        const reqRef = doc(db, 'reset_requests', genId())
+      const emailLower = email.toLowerCase().trim()
+      const staffRef = collection(db, 'staff')
+      const q = query(staffRef, where('email', '==', emailLower))
+      const snap = await getDocs(q)
+      
+      if (!snap.empty) {
+        const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as Staff
+        const reqId = genId()
+        const reqRef = doc(db, 'reset_requests', reqId)
         await setDoc(reqRef, {
-          userId: found.id,
-          userName: found.name,
+          id: reqId,
+          staffId: found.id,
+          staffName: found.name,
           email: found.email,
-          timestamp: new Date().toISOString(),
+          requestedAt: new Date().toISOString(),
           status: 'pending'
         })
       }
@@ -152,39 +187,39 @@ export default function LoginPage() {
       position: 'relative',
       overflow: 'hidden',
       padding: 24,
-      fontFamily: 'var(--font-poppins)',
+      fontFamily: 'Inter, system-ui, sans-serif',
       background: '#0F172A'
     }}>
 
-      {/* Background Image with Clearer Visibility */}
+      {/* BACKGROUND IMAGE and OVERLAYS */}
       <div style={{
-        position: 'fixed', inset: 0, zIndex: 0,
+        position: 'absolute',
+        inset: 0,
         backgroundImage: 'url("/dsnstaff.JPG")',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        filter: 'brightness(0.85) contrast(1.05)',
-        transform: 'scale(1)'
-      }} />
-
-      {/* Subtle Decorative Gradient Overlay */}
+        opacity: 0.8,
+        filter: 'brightness(60%)'
+      }}></div>
+      
       <div style={{
-        position: 'fixed', inset: 0, zIndex: 1,
-        background: 'radial-gradient(circle at center, rgba(7, 108, 4, 0.1) 0%, rgba(15, 23, 42, 0.5) 100%)',
-      }} />
+        position: 'absolute',
+        inset: 0,
+        background: 'radial-gradient(circle at center, transparent 0%, rgba(15, 23, 42, 0.9) 100%)',
+      }}></div>
 
-      <div style={{ width: '100%', maxWidth: 440, position: 'relative', zIndex: 10 }}>
-
-        {/* Branding */}
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        maxWidth: 480,
+        zIndex: 10
+      }}>
+        {/* LOGO AREA */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <img
-            src="/dsn.png"
-            alt="DSN Logo"
-            style={{
-              height: 100,
-              objectFit: 'contain',
-              marginBottom: 16,
-              filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.5))'
-            }}
+          <img 
+            src="/dsn.png" 
+            alt="DSN Logo" 
+            style={{ height: 120, marginBottom: 20, filter: 'drop-shadow(0 0 20px rgba(74, 222, 128, 0.5))' }} 
           />
           <h2 style={{
             fontSize: 14,
@@ -210,20 +245,12 @@ export default function LoginPage() {
           boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.6)',
         }}>
 
-          {/* CENTRALIZED BIG HEADER */}
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <h1 style={{
-              fontSize: 36,
-              fontWeight: 800,
-              color: 'white',
-              letterSpacing: '-0.02em',
-              marginBottom: 8
-            }}>
+            <h1 style={{ fontSize: 36, fontWeight: 800, color: 'white', letterSpacing: '-0.02em', marginBottom: 8 }}>
               Sign In
             </h1>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
-              {step === 'signin' ? 'Access your dashboard' :
-                step === 'change_password' ? 'Update default password' : 'Recover security access'}
+              {step === 'signin' ? 'Access your dashboard' : step === 'change_password' ? 'Update default password' : 'Recover security access'}
             </p>
           </div>
 
@@ -242,9 +269,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* SIGN IN FORM (ONE PAGE) */}
           {step === 'signin' && (
-            <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div className="form-group">
                 <label style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>Work Email</label>
                 <input
@@ -312,7 +338,8 @@ export default function LoginPage() {
               </div>
 
               <button
-                type="submit"
+                type="button"
+                onClick={(e) => handleSignIn(e)}
                 disabled={loading}
                 style={{
                   background: 'var(--brand-primary)',
@@ -339,10 +366,9 @@ export default function LoginPage() {
               >
                 Forgotten your password?
               </button>
-            </form>
+            </div>
           )}
 
-          {/* CHANGE PASSWORD STEP */}
           {step === 'change_password' && (
             <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: 14, borderRadius: 12, marginBottom: 4 }}>
@@ -432,7 +458,6 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* FORGOT STEP */}
           {step === 'forgot' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {!forgotSent ? (

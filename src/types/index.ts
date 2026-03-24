@@ -3,7 +3,7 @@ export interface Staff {
     name: string;
     email: string;
     password: string;
-    role: 'staff' | 'team_lead' | 'admin' | 'super_admin' | 'owner';
+    role: 'staff' | 'team_lead' | 'admin';
     department: string;
     jobTitle?: string;
     status: 'active' | 'suspended';

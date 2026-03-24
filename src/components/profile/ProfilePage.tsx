@@ -179,7 +179,7 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ fontSize: 22, fontWeight: 800 }}>{user?.name}</h1>
-            <span className={`badge badge-${user?.role === 'admin' || user?.role === 'super_admin' ? 'purple' : 'blue'}`} style={{ fontSize: 10 }}>
+            <span className={`badge badge-${user?.role === 'admin' ? 'purple' : 'blue'}`} style={{ fontSize: 10 }}>
               {user?.role?.replace('_', ' ').toUpperCase()}
             </span>
           </div>
@@ -463,8 +463,7 @@ function TemplatesTab({ templates, saveTemplates, userId, settings, onApply }: T
       id: genId(),
       staffId: userId,
       userId,
-      createdAt: new Date().toISOString(),
-      ownerId: userId
+      createdAt: new Date().toISOString()
     }
     saveTemplates([...(templates || []), t])
     setForm({ name: '', project: '', lead: '', description: '', hours: '', category: 'Client Work' })

@@ -19,7 +19,7 @@ export default function SettingsPage() {
     staff, saveStaff, notify
   } = useApp()
 
-  const [tab, setTab] = useState<string>('firebase')
+  const [tab, setTab] = useState<string>('branding')
   const [testingConnection, setTestingConnection] = useState(false)
   
   // Local form state
@@ -30,7 +30,7 @@ export default function SettingsPage() {
   const [toggles, setToggles] = useState(settings?.featureToggles || { gamification: true, leaderboard: true, messaging: true, bulkImports: true, darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true, firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true, profilePhotos: true, streakRecovery: true, duplicateDetection: true, announcements: true, orgChart: true })
   
   const tabs = [
-    { id: 'firebase', label: '🔌 Firebase', icon: '⚡' },
+
     { id: 'branding', label: '🎨 Branding', icon: '✨' },
     { id: 'toggles', label: '🎛️ Toggles', icon: '⚙️' },
     { id: 'points', label: '🏆 Points', icon: '🎯' },
@@ -101,62 +101,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6">
-        {/* FIREBASE CONNECTION */}
-        {tab === 'firebase' && (
-          <div className="card flex flex-col gap-4">
-            <h3 className="font-bold flex items-center gap-2">🔌 Firebase Connectivity</h3>
-            <p className="text-xs text-3">Configure your backend credentials and test connectivity.</p>
-            <div className="grid gap-4">
-              <div className="form-group">
-                <label className="form-label">Firebase URL</label>
-                <input 
-                  className="form-input" 
-                  value={fbForm.url} 
-                  onChange={e => setFbForm({...fbForm, url: e.target.value})}
-                  placeholder="https://your-app.firebaseio.com"
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Anonymous Key</label>
-                <input 
-                  className="form-input" 
-                  type="password"
-                  value={fbForm.anonKey} 
-                  onChange={e => setFbForm({...fbForm, anonKey: e.target.value})}
-                  placeholder="abc123..."
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-2">
-              <button 
-                className="btn btn-primary" 
-                onClick={testFirebase}
-                disabled={testingConnection}
-              >
-                {testingConnection ? 'Testing...' : 'Test Connection'}
-              </button>
-              {fbForm.isConnected && (
-                <button 
-                  className="btn btn-danger-outline"
-                  onClick={() => {
-                    const update = { ...fbForm, isConnected: false, url: '', anonKey: '' }
-                    setFbForm(update)
-                    saveAllSettings({ firebase: update })
-                    toast.success('Disconnected')
-                  }}
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-            {fbForm.isConnected && fbForm.lastTestedAt && (
-              <div className="text-[10px] text-success flex items-center gap-1 mt-1">
-                <span className="w-2 h-2 rounded-full bg-success"></span>
-                Connected — Last tested: {new Date(fbForm.lastTestedAt).toLocaleString()}
-              </div>
-            )}
-          </div>
-        )}
+
 
         {/* BRANDING */}
         {tab === 'branding' && (

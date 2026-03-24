@@ -24,23 +24,23 @@ import BackendPage from '@/components/settings/BackendPage'
 import ResetRequestsPage from '@/components/admin/ResetRequestsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
-  dashboard: ['staff', 'team_lead', 'admin', 'super_admin'],
-  timesheet: ['staff', 'team_lead', 'admin', 'super_admin'],
-  approvals: ['team_lead', 'admin', 'super_admin'],
-  delegation: ['team_lead', 'admin', 'super_admin'],
-  leaderboard: ['staff', 'team_lead', 'admin', 'super_admin'],
-  messages: ['staff', 'team_lead', 'admin', 'super_admin'],
-  analytics: ['team_lead', 'admin', 'super_admin'],
-  staff: ['admin', 'super_admin'],
-  org_chart: ['admin', 'super_admin'],
-  audit: ['admin', 'super_admin'],
-  reset_queue: ['admin', 'super_admin'],
-  settings: ['admin', 'super_admin'],
+  dashboard: ['staff', 'team_lead', 'admin'],
+  timesheet: ['staff', 'team_lead', 'admin'],
+  approvals: ['team_lead', 'admin'],
+  delegation: ['team_lead', 'admin'],
+  leaderboard: ['staff', 'team_lead', 'admin'],
+  messages: ['staff', 'team_lead', 'admin'],
+  analytics: ['team_lead', 'admin'],
+  staff: ['admin'],
+  org_chart: ['admin'],
+  audit: ['admin'],
+  reset_queue: ['admin'],
+  settings: ['admin'],
 
-  backend: ['admin', 'super_admin'],
-  profile: ['staff', 'team_lead', 'admin', 'super_admin'],
-  leave: ['staff', 'team_lead', 'admin', 'super_admin'],
-  help: ['staff', 'team_lead', 'admin', 'super_admin'],
+  backend: ['admin'],
+  profile: ['staff', 'team_lead', 'admin'],
+  leave: ['staff', 'team_lead', 'admin'],
+  help: ['staff', 'team_lead', 'admin'],
 }
 
 export default function Home() {
@@ -48,13 +48,57 @@ export default function Home() {
   const [page, setPage] = useState('dashboard')
   const [showTour, setShowTour] = useState(false)
 
+  // Handle URL segments for SPA routing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Remove the "?" if it exists (happens during some tunnel form submissions)
+      if (window.location.search === '?') {
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+
+      const path = window.location.pathname.replace(/^\//, '')
+      if (path && PAGE_ROLES[path]) {
+        setPage(path)
+      } else if (path && path !== '') {
+        // Fallback to dashboard if path exists but invalid
+        window.history.replaceState({}, '', '/')
+        setPage('dashboard')
+      }
+    }
+
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\//, '')
+      if (path && PAGE_ROLES[path]) setPage(path)
+      else setPage('dashboard')
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  function navigate(target: string) {
+    if (target === 'leaderboard' && features && !features.leaderboard) return
+    if (target === 'messages' && features && !features.messages) return
+    if (target === 'analytics' && features && !features.analytics) return
+    if (target === 'org_chart' && features && !features.org_chart) return
+    if (target === 'delegation' && features && !features.delegation) return
+    
+    setPage(target)
+    if (typeof window !== 'undefined') {
+      const newPath = target === 'dashboard' ? '/' : `/${target}`
+      if (window.location.pathname !== newPath) {
+        window.history.pushState({}, '', newPath)
+      }
+    }
+  }
+
   // Handle PIN change flag from login
   useEffect(() => {
     const pinChange = sessionStorage.getItem('dsn_pin_change')
     if (pinChange && user) {
       try {
         const updated = JSON.parse(pinChange)
-        saveStaff(staff.map(s => s.id === updated.id ? { ...s, pin: updated.pin, first_login: false } : s))
+        saveStaff(staff.map(s => s.id === updated.id ? { ...s, password: updated.password || updated.pin, first_login: false } : s))
         sessionStorage.removeItem('dsn_pin_change')
       } catch { }
     }
@@ -83,16 +127,17 @@ export default function Home() {
     }
   }, [page, user])
 
-  if (!user) return <LoginPage />
+  // Reset URL on logout
+  useEffect(() => {
+    if (!user && typeof window !== 'undefined') {
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/')
+      }
+      setPage('dashboard')
+    }
+  }, [user])
 
-  function navigate(target: string) {
-    if (target === 'leaderboard' && features && !features.leaderboard) return
-    if (target === 'messages' && features && !features.messages) return
-    if (target === 'analytics' && features && !features.analytics) return
-    if (target === 'org_chart' && features && !features.org_chart) return
-    if (target === 'delegation' && features && !features.delegation) return
-    setPage(target)
-  }
+  if (!user) return <LoginPage />
 
   function renderPage() {
     switch (page) {
@@ -116,6 +161,7 @@ export default function Home() {
       default: return <Dashboard setPage={navigate} />
     }
   }
+
 
   return (
     <>

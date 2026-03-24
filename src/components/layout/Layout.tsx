@@ -20,25 +20,25 @@ interface NavItem {
 
 function getNavItems(role: string): NavItem[] {
   const all: NavItem[] = [
-    { id: 'work_header', label: 'MY WORK', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
-    { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'owner', 'admin', 'team_lead'] },
-    { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'owner', 'admin', 'team_lead'] },
-    { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'] },
-    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['owner', 'admin', 'team_lead'], badge: 'approvals' },
+    { id: 'work_header', label: 'MY WORK', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
+    { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'admin', 'team_lead'] },
+    { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'admin', 'team_lead'] },
+    { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin'] },
+    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead'], badge: 'approvals' },
 
-    { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
-    { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['owner', 'admin', 'team_lead'] },
-    { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['owner', 'admin', 'team_lead'] },
-    { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'owner', 'admin', 'team_lead'] },
-    { id: 'staff', label: 'Staff Directory', icon: '👥', roles: ['admin', 'super_admin', 'owner'] },
-    { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin', 'super_admin', 'owner'] },
-    { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin', 'super_admin', 'owner'] },
-    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin', 'super_admin', 'owner'] },
+    { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
+    { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['admin', 'team_lead'] },
+    { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['admin', 'team_lead'] },
+    { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'admin', 'team_lead'] },
+    { id: 'staff', label: 'Staff Directory', icon: '👥', roles: ['admin'] },
+    { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
+    { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
+    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin'] },
 
-    { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
-    { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'owner', 'admin', 'team_lead'], badge: 'messages' },
-    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'] },
-    { id: 'backend', label: 'Backend Docs', icon: '🔧', roles: ['admin', 'super_admin', 'owner'] },
+    { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
+    { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'admin', 'team_lead'], badge: 'messages' },
+    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin'] },
+    { id: 'backend', label: 'Backend Docs', icon: '🔧', roles: ['admin'] },
   ]
   return all.filter(n => n.roles.includes(role))
 }
@@ -236,7 +236,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
             </div>
             
             <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-              {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'owner') && (
+              {(user?.role === 'admin') && (
                 <button 
                   className="btn btn-secondary btn-sm" 
                   onClick={() => setPage('settings')}

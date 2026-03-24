@@ -419,7 +419,7 @@ export default function TimesheetPage() {
   const targetUser = isAdmin && viewingStaffId ? staff.find(s => s.id === viewingStaffId) : user
   const effectiveUserId = targetUser?.id || ''
 
-  const leads = staff.filter(s => s.role === 'owner' || s.role === 'admin')
+  const leads = staff.filter(s => s.role === 'team_lead' || s.role === 'admin')
   const categories = settings?.categories || ['Client Work', 'Internal', 'Training', 'Admin']
   
   const { cap: weekCap, isHoliday, isCDS } = calculateWeekCap(targetUser, selectedWeek)
@@ -556,7 +556,7 @@ export default function TimesheetPage() {
 
   function handleSaveTemplate(tpl: any) {
     if (!user) return
-    const newT = { ...tpl, id: genId(), ownerId: user.id, createdAt: new Date().toISOString() }
+    const newT = { ...tpl, id: genId(), staffId: user.id, createdAt: new Date().toISOString() }
     saveTemplates([...templates, newT])
   }
 

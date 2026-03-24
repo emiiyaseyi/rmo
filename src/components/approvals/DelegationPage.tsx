@@ -15,7 +15,7 @@ export default function DelegationPage() {
   const eligibleDelegatees = staff.filter(s =>
     s.id !== user?.id &&
     !s.suspended &&
-    (['team_lead', 'admin', 'super_admin'].includes(s.role))
+    (['team_lead', 'admin'].includes(s.role))
   )
 
   function createDelegation(e: React.FormEvent) {
@@ -87,7 +87,7 @@ export default function DelegationPage() {
                 <option key={s.id} value={s.id}>{s.name} ({s.role} · {s.department || 'No dept'})</option>
               ))}
             </select>
-            <span className="form-hint">Only owners and admins can receive delegated authority</span>
+            <span className="form-hint">Only team leads and admins can receive delegated authority</span>
           </div>
           <div className="grid-2">
             <div className="form-group">

@@ -17,7 +17,7 @@ interface StaffModalProps {
 }
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
-  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin' || s.role === 'super_admin')
+  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin')
   const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', photoUrl: '', password: '1234', mustChangePassword: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
@@ -69,7 +69,6 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
                 <option value="staff">Staff</option>
                 <option value="team_lead">Team Lead</option>
                 <option value="admin">Admin</option>
-                <option value="super_admin">Super Admin</option>
               </select>
             </div>
             <div className="form-group">
@@ -127,7 +126,7 @@ interface BulkEditModalProps {
 }
 
 function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps) {
-  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin' || s.role === 'super_admin')
+  const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin')
   const [fields, setFields] = useState<any>({ department: '', role: '', leadId: '', leadName: '', weekly_cap: '', password: '' })
   const [checks, setChecks] = useState<any>({ department: false, role: false, leadId: false, weekly_cap: false, password: false })
   const F = (k: string, v: any) => setFields((f: any) => ({ ...f, [k]: v }))
@@ -174,7 +173,6 @@ function BulkEditModal({ count, allStaff, onApply, onClose }: BulkEditModalProps
               <option value="staff">Staff</option>
               <option value="team_lead">Team Lead</option>
               <option value="admin">Admin</option>
-              <option value="super_admin">Super Admin</option>
             </select>
           </Row>
           <Row field="leadId" label="Reports To">
@@ -215,7 +213,7 @@ function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: Import
     return rows.map(r => {
       const email = r.email?.toLowerCase().trim()
       const isDupe = existingEmails.has(email)
-      const validRoles = ['staff', 'team_lead', 'admin', 'super_admin']
+      const validRoles = ['staff', 'team_lead', 'admin']
       const isValid = r.name && email && validRoles.includes(r.role?.toLowerCase()) && r.department
       
       let status: 'new' | 'existing' | 'invalid' = 'new'
@@ -509,10 +507,7 @@ export default function StaffPage() {
       // Set force_logout flag in Firestore
       await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
       
-      // Cleanup local (though AppContext will handle the real logout)
-      const sessions = JSON.parse(localStorage.getItem('dsn_active_sessions') || '{}')
-      delete sessions[s.id]
-      localStorage.setItem('dsn_active_sessions', JSON.stringify(sessions))
+      // Cleanup of local session mirror (if any existed) is handled by Firestore sync logic
       
       logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
       toast.success(s.name + ' logged out')
@@ -696,7 +691,6 @@ export default function StaffPage() {
               <option value="staff">Staff</option>
               <option value="team_lead">Team Lead</option>
               <option value="admin">Admin</option>
-              <option value="super_admin">Super Admin</option>
             </select>
             <select className="form-select" style={{ width: 'auto' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="">All Status</option>
@@ -765,7 +759,7 @@ export default function StaffPage() {
                         <td style={{ fontSize: 12 }}>{s.department || '—'}</td>
                         <td>
                           <span className={'badge badge-' + (
-                            s.role === 'super_admin' ? 'red' : 
+ 
                             s.role === 'admin' ? 'orange' : 
                             s.role === 'team_lead' ? 'purple' : 'blue'
                           )}>
@@ -846,7 +840,7 @@ export default function StaffPage() {
                           <td style={{ color: 'var(--text-3)' }}>{s.department || '—'}</td>
                           <td>
                             <span className={'badge badge-' + (
-                              s.role === 'super_admin' ? 'red' : 
+   
                               s.role === 'admin' ? 'orange' : 
                               s.role === 'team_lead' ? 'purple' : 'blue'
                             )}>

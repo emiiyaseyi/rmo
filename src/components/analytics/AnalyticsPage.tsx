@@ -299,16 +299,19 @@ export default function AnalyticsPage() {
     try {
       const newEntries: Entry[] = importPreview.map(row => {
         const s = staff.find(st => st.id === row.staffId || st.email === row.email)
+        const entryDate = format(new Date(row.date), 'yyyy-MM-dd')
         return {
           id: Math.random().toString(36).substr(2, 9),
           staffId: s?.id || row.staffId,
           staffName: s?.name || 'Unknown',
-          date: format(new Date(row.date), 'yyyy-MM-dd'),
+          date: entryDate,
+          startDate: entryDate,
+          endDate: entryDate,
           hours: parseFloat(row.hours),
           project: row.project,
           category: row.category || 'Client Work',
           description: row.description || 'Bulk imported',
-          status: 'approved',
+          status: 'approved' as const,
           weekKey: getWeekKey(new Date(row.date)),
           createdAt: new Date().toISOString(),
           createdBy: user?.id || 'system'

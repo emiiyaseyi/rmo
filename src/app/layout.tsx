@@ -25,8 +25,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${inter.variable} ${poppins.variable} ${jakarta.variable} ${dmsans.variable}`}>
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} ${poppins.variable} ${jakarta.variable} ${dmsans.variable}`}>
         <AppProvider>
           <Toaster
             position="top-right"

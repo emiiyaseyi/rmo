@@ -77,7 +77,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, unreadCount } = useApp()
+  const { user, entries, staff, pendingApprovals, unreadCount, settings } = useApp()
   const thisWeek = getWeekKey()
 
   const myEntries = entries.filter(e => e.staffId === user?.id && e.weekKey === thisWeek && !e.deleted)
@@ -129,13 +129,13 @@ export default function Dashboard({ setPage }: DashboardProps) {
       {/* My stats */}
       <div className="grid-4">
         <div className="stat-card">
-          <div className="stat-label">Hours This Week</div>
-          <div className="stat-value" style={{ color: myHours >= 45 ? 'var(--success)' : myHours >= 35 ? 'var(--warning)' : 'var(--text-1)' }}>
+          <div className="stat-label">Weekly Hour Goal</div>
+          <div className="stat-value" style={{ color: myHours >= (user?.weeklyHourGoal || user?.weekly_goal || 40) ? 'var(--success)' : 'var(--text-1)' }}>
             {myHours}h
           </div>
-          <div className="stat-sub">of 45h cap</div>
+          <div className="stat-sub">target: {user?.weeklyHourGoal || user?.weekly_goal || 40}h</div>
           <div className="progress" style={{ marginTop: 8 }}>
-            <div className="progress-bar" style={{ width: `${Math.min((myHours / 45) * 100, 100)}%`, background: myHours >= 45 ? 'var(--success)' : myHours >= 35 ? 'var(--warning)' : 'var(--accent)' }} />
+            <div className="progress-bar" style={{ width: `${Math.min((myHours / (user?.weeklyHourGoal || user?.weekly_goal || 40)) * 100, 100)}%`, background: myHours >= (user?.weeklyHourGoal || user?.weekly_goal || 40) ? 'var(--success)' : 'var(--accent)' }} />
           </div>
         </div>
 
@@ -153,28 +153,32 @@ export default function Dashboard({ setPage }: DashboardProps) {
           <div className="stat-sub" style={{ marginTop: 8 }}>{myEntries.length} entries logged</div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-label">Total Points</div>
-          <div className="stat-value" style={{ color: 'var(--gold)' }}>
-            {(user?.points || 0).toLocaleString()}
-          </div>
-          <div className="stat-sub">🔥 Streak: {user?.streak || 0} weeks</div>
-        </div>
+        {settings?.featureToggles?.gamification && (
+          <>
+            <div className="stat-card">
+              <div className="stat-label">Total Points</div>
+              <div className="stat-value" style={{ color: 'var(--gold)' }}>
+                {(user?.points || 0).toLocaleString()}
+              </div>
+              <div className="stat-sub">🔥 Streak: {user?.streak || 0} weeks</div>
+            </div>
 
-        <div className="stat-card">
-          <div className="stat-label">Badges Earned</div>
-          <div className="stat-value">{(user?.badges || []).length}</div>
-          <div className="stat-sub" style={{ marginTop: 4 }}>
-            {(user?.badges || []).slice(0, 3).map(b => {
-              const badge = [
-                { id: 'first_blood', icon: '🎯' }, { id: 'streak_3', icon: '🔥' }, { id: 'streak_5', icon: '⚡' },
-                { id: 'streak_10', icon: '💎' }, { id: 'full_house', icon: '🏠' }, { id: 'early_bird', icon: '🐦' },
-                { id: 'perfect_week', icon: '⭐' }, { id: 'top_3', icon: '🏆' }, { id: 'centurion', icon: '💯' }
-              ].find(x => x.id === b)
-              return <span key={b} style={{ fontSize: 18 }}>{badge?.icon}</span>
-            })}
-          </div>
-        </div>
+            <div className="stat-card">
+              <div className="stat-label">Badges Earned</div>
+              <div className="stat-value">{(user?.badges || []).length}</div>
+              <div className="stat-sub" style={{ marginTop: 4 }}>
+                {(user?.badges || []).slice(0, 3).map(b => {
+                  const badge = [
+                    { id: 'first_blood', icon: '🎯' }, { id: 'streak_3', icon: '🔥' }, { id: 'streak_5', icon: '⚡' },
+                    { id: 'streak_10', icon: '💎' }, { id: 'full_house', icon: '🏠' }, { id: 'early_bird', icon: '🐦' },
+                    { id: 'perfect_week', icon: '⭐' }, { id: 'top_3', icon: '🏆' }, { id: 'centurion', icon: '💯' }
+                  ].find(x => x.id === b)
+                  return <span key={b} style={{ fontSize: 18 }}>{badge?.icon}</span>
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Admin overview */}
@@ -249,13 +253,21 @@ export default function Dashboard({ setPage }: DashboardProps) {
         )}
       </div>
 
-      {/* Quick links */}
       <div className="grid-3">
         {[
-          { icon: '📊', title: 'Analytics', desc: 'View team performance', page: 'analytics', role: 'admin' },
-          { icon: '🏆', title: 'Leaderboard', desc: 'See rankings & badges', page: 'leaderboard' },
-          { icon: '💬', title: 'Messages', desc: unreadCount > 0 ? `${unreadCount} unread messages` : 'Team communication', page: 'messages' },
-        ].filter(q => !q.role || user?.role === q.role || ['admin', 'super_admin', 'team_lead'].includes(user?.role || '')).map(q => (
+          { id: 'analytics', icon: '📊', title: 'Analytics', desc: 'View team performance', page: 'analytics', role: 'admin' },
+          { id: 'leaderboard', icon: '🏆', title: 'Leaderboard', desc: 'See rankings & badges', page: 'leaderboard' },
+          { id: 'messages', icon: '💬', title: 'Messages', desc: unreadCount > 0 ? `${unreadCount} unread messages` : 'Team communication', page: 'messages' },
+        ].filter(q => {
+          if (q.role && !['admin', 'super_admin', 'team_lead'].includes(user?.role || '')) return false
+          const toggleKey = q.id === 'leaderboard' ? 'leaderboard' : 
+                           q.id === 'messages' ? 'messaging' :
+                           q.id === 'analytics' ? 'analytics' : null
+          if (toggleKey && settings?.featureToggles) {
+            return (settings.featureToggles as any)[toggleKey] !== false
+          }
+          return true
+        }).map(q => (
           <div
             key={q.page}
             className="card"

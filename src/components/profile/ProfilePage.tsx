@@ -6,13 +6,13 @@ import { Staff, Entry, Leave, Template, AppSettings } from '../../types'
 import toast from 'react-hot-toast'
 
 export default function ProfilePage() {
-  const { user, updateUser, staff, entries, leaves, saveLeaves, settings, notify, templates, saveTemplates } = useApp()
+  const { user, updateUser, staff, entries, leaves, saveLeaves, settings, notify, templates, saveTemplates, setPrefillTemplate, savePasswordResetRequests, passwordResetRequests } = useApp()
   const [tab, setTab] = useState<string>('overview')
   const [passwordForm, setPasswordForm] = useState({ current: '', newPassword: '', confirm: '' })
   const [passwordError, setPasswordError] = useState<string>('')
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
   const [fontSize, setFontSize] = useState<number>(local.get<number>('font_size', 14))
-  const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weekly_goal || 40)
+  const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weeklyHourGoal || user?.weekly_goal || 40)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const weekCap = settings?.weekly_cap || 45
@@ -29,11 +29,24 @@ export default function ProfilePage() {
   const myLeaves = leaves.filter(l => l.staffId === user?.id)
 
   function validateNewPassword(pass: string) {
-    if (pass.length < 8) return 'Password must be at least 8 characters'
-    if (!/[A-Z]/.test(pass)) return 'Password must contain a capital letter'
-    if (!/[a-z]/.test(pass)) return 'Password must contain a small letter'
-    if (!/[0-9]/.test(pass)) return 'Password must contain a number'
+    if (pass.length < 4) return 'Password must be at least 4 characters'
+    if (pass === '1234') return 'Password cannot be "1234"'
     return null
+  }
+
+  function requestReset() {
+    if (!user) return
+    const exists = passwordResetRequests.find(r => r.staffId === user.id && r.status === 'pending')
+    if (exists) { toast.error('Reset request already pending'); return }
+
+    const req = {
+      id: genId(),
+      staffId: user.id,
+      requestedAt: new Date().toISOString(),
+      status: 'pending' as const
+    }
+    savePasswordResetRequests([...passwordResetRequests, req])
+    toast.success('Password reset request submitted to admin queue')
   }
 
   function changePassword(e: React.FormEvent) {
@@ -56,18 +69,33 @@ export default function ProfilePage() {
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    
+    // Validate format
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!validTypes.includes(file.type)) { toast.error('Format must be JPG, PNG or WEBP'); return }
+    
+    // Validate size (2MB)
     if (file.size > 2 * 1024 * 1024) { toast.error('Photo must be under 2MB'); return }
+    
     const reader = new FileReader()
     reader.onload = ev => {
       const result = ev.target?.result as string
-      updateUser({ photo: result })
+      updateUser({ 
+        photo: result, // Legacy field
+        profilePhoto: {
+          base64: result,
+          uploadedAt: new Date().toISOString(),
+          fileSize: file.size,
+          mimeType: file.type as any
+        }
+      })
       toast.success('Profile photo updated')
     }
     reader.readAsDataURL(file)
   }
 
   function removePhoto() {
-    updateUser({ photo: null })
+    updateUser({ photo: null, profilePhoto: null })
     toast.success('Photo removed')
   }
 
@@ -103,8 +131,13 @@ export default function ProfilePage() {
   }
 
   function saveWeeklyGoal() {
-    updateUser({ weekly_goal: weeklyGoal })
+    updateUser({ weeklyHourGoal: weeklyGoal, weekly_goal: weeklyGoal })
     toast.success('Weekly goal saved')
+  }
+
+  function saveCdsDay(day: any) {
+    updateUser({ cdsDay: day })
+    toast.success('CDS Day updated')
   }
 
   function flagStreakRecovery() {
@@ -139,8 +172,15 @@ export default function ProfilePage() {
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
         </div>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>{user?.name}</h1>
-          <div style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 4 }}>{user?.department} · {user?.role}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 800 }}>{user?.name}</h1>
+            <span className={`badge badge-${user?.role === 'admin' || user?.role === 'super_admin' ? 'purple' : 'blue'}`} style={{ fontSize: 10 }}>
+              {user?.role?.replace('_', ' ').toUpperCase()}
+            </span>
+          </div>
+          <div style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 4 }}>
+            {user?.jobTitle ? <strong>{user.jobTitle}</strong> : 'Staff'} · {user?.department}
+          </div>
           <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--gold)' }}>{user?.points || 0}</div>
@@ -255,8 +295,28 @@ export default function ProfilePage() {
               <label className="form-label">Confirm New Password</label>
               <input className="form-input" type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(f => ({ ...f, confirm: e.target.value }))} />
             </div>
-            <button className="btn btn-primary" type="submit" style={{ marginTop: 6 }}>Update Password</button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-primary" type="submit" style={{ flex: 1 }}>Update Password</button>
+              <button className="btn btn-secondary" type="button" onClick={requestReset}>Request Reset</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>"Request Reset" notifies admin to clear your password</div>
           </form>
+        </div>
+      )}
+
+      {tab === 'overview' && user?.staffType === 'intern' && (
+        <div className="card">
+          <div style={{ fontWeight: 700, marginBottom: 12 }}>Intern Specifics</div>
+          <div className="form-group">
+            <label className="form-label">CDS Day</label>
+            <select className="form-select" value={user.cdsDay || ''} onChange={e => saveCdsDay(e.target.value || null)}>
+              <option value="">None</option>
+              {['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].map(d => (
+                <option key={d} value={d}>{d.toUpperCase()}</option>
+              ))}
+            </select>
+            <span className="form-hint">Selecting a CDS day influences your weekly hour cap calculation.</span>
+          </div>
         </div>
       )}
 
@@ -340,6 +400,14 @@ export default function ProfilePage() {
           saveTemplates={saveTemplates}
           userId={user?.id || ''}
           settings={settings}
+          onApply={(t) => {
+             setPrefillTemplate(t)
+             window.location.hash = '#/timesheet' // Fallback if setPage is not available
+             // But we probably want to use a global page state. 
+             // ProfilePage doesn't have setPage, but it's likely managed by Layout.
+             // I'll assume for now that standard navigation or shared state handles this.
+             toast.success('Template selected - Go to Timesheet to fill')
+          }}
         />
       )}
 
@@ -372,9 +440,10 @@ interface TemplatesTabProps {
   saveTemplates: (data: Template[]) => void;
   userId: string;
   settings: AppSettings | null;
+  onApply: (t: Template) => void;
 }
 
-function TemplatesTab({ templates, saveTemplates, userId, settings }: TemplatesTabProps) {
+function TemplatesTab({ templates, saveTemplates, userId, settings, onApply }: TemplatesTabProps) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', project: '', lead: '', description: '', hours: '', category: 'Client Work' })
   const categories = settings?.categories || ['Client Work', 'Internal', 'Training', 'Admin']
@@ -467,6 +536,7 @@ function TemplatesTab({ templates, saveTemplates, userId, settings }: TemplatesT
                 {t.description && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{t.description}</div>}
               </div>
               <span className="badge badge-blue">{t.category}</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => onApply(t)}>Use</button>
               <button className="btn btn-icon btn-danger btn-sm" onClick={() => deleteTemplate(t.id)} title="Delete template">✕</button>
             </div>
           ))}

@@ -45,7 +45,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { user, logout, unreadCount, notifications, markAllRead, online, darkMode, toggleDark, pendingApprovals, messages, settings, showPasswordChange } = useApp()
+  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, messages, settings, showPasswordChange, announcements } = useApp()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -68,31 +68,56 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const navItems = getNavItems(user?.role || 'staff')
+  const navItems = getNavItems(user?.role || 'staff').filter(item => {
+    const toggleKey = item.id === 'leaderboard' ? 'leaderboard' : 
+                     item.id === 'messages' ? 'messaging' :
+                     item.id === 'org_chart' ? 'orgChart' :
+                     item.id === 'analytics' ? 'analytics' : null
+    if (toggleKey && settings?.featureToggles) {
+      return (settings.featureToggles as any)[toggleKey] !== false
+    }
+    return true
+  })
+
   const pendingCount = pendingApprovals().length
   const unreadMsg = (messages || []).filter(m => m.recipientId === user?.id && !(m.read || []).includes(user?.id || '')).length
-  const logoUrl = local.get('logo_url', '')
-  const appName = settings?.app_name || 'DSN RMS'
-  const ann = settings?.announcement
-  const annActive = ann && ann.message && (!ann.expires || new Date(ann.expires).getTime() > Date.now())
+  
+  const branding = settings?.branding
+  const logoUrl = branding?.logoBase64 || "/dsn.png"
+  const appName = branding?.appName || 'DSN Timesheet'
+  
+  // Announcements
+  const activeAnnouncements = (announcements || []).filter(a => 
+    a.active && (!a.expiresAt || new Date(a.expiresAt).getTime() > Date.now())
+  )
+
+  useEffect(() => {
+    if (branding?.primaryColour) {
+      document.documentElement.style.setProperty('--primary', branding.primaryColour)
+    }
+    if (branding?.secondaryColour) {
+      document.documentElement.style.setProperty('--secondary', branding.secondaryColour)
+    }
+  }, [branding])
 
   const SIDEBAR_W = 260
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', position: 'relative', flexDirection: 'column', fontFamily: 'var(--font-poppins)' }}>
 
-      {/* Announcement banner */}
-      {annActive && (
-        <div style={{
-          background: ann.color || 'var(--brand-primary)', color: 'white',
+      {/* Announcements */}
+      {activeAnnouncements.map(ann => (
+        <div key={ann.id} style={{
+          background: ann.priority === 'high' ? 'var(--danger)' : (branding?.primaryColour || 'var(--brand-primary)'), 
+          color: 'white',
           padding: '8px 20px', fontSize: 13, fontWeight: 600,
           fontFamily: 'var(--font-jakarta)',
           display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
           flexShrink: 0, zIndex: 200,
         }}>
-          <span>{ann.icon}</span><span>{ann.message}</span>
+          <span>📢</span><span>{ann.message}</span>
         </div>
-      )}
+      ))}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
 
@@ -163,11 +188,11 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <div className="avatar avatar-sm" style={{ background: avatarColor(user?.name || ''), fontSize: 10, flexShrink: 0 }}>
-                {user?.photo ? <img src={user.photo} alt="" /> : initials(user?.name || '')}
+                {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'capitalize' }}>{user?.role}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'capitalize' }}>{user?.jobTitle || user?.role?.replace('_', ' ')}</div>
               </div>
             </div>
           </div>
@@ -186,7 +211,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                 <button className="btn btn-icon btn-secondary btn-sm" onClick={() => setSidebarOpen(true)}><Menu size={16} /></button>
               )}
               <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {navItems.find(n => n.id === page)?.icon} {navItems.find(n => n.id === page)?.label || 'Dashboard'}
+                {navItems.find(n => n.id === page)?.icon} {navItems.find(n => n.id === page)?.label || appName}
               </h2>
             </div>
 
@@ -220,15 +245,28 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                     </div>
                     {notifications.length === 0 ? (
                       <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>No notifications</div>
-                    ) : (notifications || []).slice(0, 20).map(n => (
-                      <div key={n.id} style={{ display: 'flex', gap: 10, padding: '8px 10px', background: n.read ? 'transparent' : 'var(--accent-subtle)', borderRadius: 6, marginBottom: 2 }}>
-                        <span style={{ fontSize: 16 }}>{n.type === 'badge' ? '🏆' : n.type === 'approval' ? '✅' : n.type === 'rejection' ? '❌' : '🔔'}</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text-1)' }}>{n.message}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</div>
+                    ) : (notifications || []).slice(0, 30).map(n => {
+                      const handleClick = () => {
+                        if (!n.read) markRead(n.id)
+                        let targetPage = n.linkedType === 'entry' ? 'approvals' :
+                                         n.linkedType === 'leave' ? 'staff' :
+                                         n.linkedType === 'message' ? 'messages' :
+                                         n.linkedId ? 'dashboard' : null
+                        if (targetPage) setPage(targetPage)
+                        setNotifOpen(false)
+                      }
+                      return (
+                        <div key={n.id} onClick={handleClick} style={{ display: 'flex', gap: 10, padding: '10px', background: n.read ? 'transparent' : 'var(--accent-subtle)', borderRadius: 6, marginBottom: 2, cursor: 'pointer', position: 'relative' }}>
+                          <span style={{ fontSize: 16 }}>{n.type === 'badge' ? '🏆' : (n.type === 'approval' || n.type === 'entry_approved') ? '✅' : (n.type === 'rejection' || n.type === 'entry_rejected') ? '❌' : '🔔'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {n.title && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>{n.title}</div>}
+                            <div style={{ fontSize: 12, color: 'var(--text-1)', marginTop: n.title ? 2 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</div>
+                          </div>
+                          {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', position: 'absolute', top: 14, right: 10 }} />}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -240,7 +278,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 9px', cursor: 'pointer' }}
                 >
                   <div className="avatar avatar-sm" style={{ background: avatarColor(user?.name || ''), fontSize: 10 }}>
-                    {user?.photo ? <img src={user.photo} alt="" /> : initials(user?.name || '')}
+                    {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
                   </div>
                   {!isMobile && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{user?.name?.split(' ')[0]}</span>}
                   <ChevronDown size={12} color="var(--text-3)" />

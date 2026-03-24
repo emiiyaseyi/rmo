@@ -173,7 +173,7 @@ export default function ApprovalsPage() {
   const [filterWeek, setFilterWeek] = useState<string>('')
   const [showDelegationModal, setShowDelegationModal] = useState(false)
 
-  const secondLevelThreshold = (settings?.second_level_threshold as number) || 20
+  const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 20
   const isAdmin = user?.role === 'admin'
   const isTaskOwner = ['team_lead', 'admin', 'super_admin'].includes(user?.role || '')
 
@@ -461,7 +461,7 @@ export default function ApprovalsPage() {
     }
 
     saveApprovalDelegations([...approvalDelegations, delegation])
-    notify(form.delegateId, `📋 ${user.name} has delegated approval duties to you from ${form.startDate} to ${form.endDate}`, 'info')
+    notify(form.delegateId, `📋 ${user.name} has delegated approval duties to you from ${form.startDate} to ${form.endDate}`, 'delegation_assigned', 'Delegation Assigned', delegation.id, 'message')
     toast.success('Delegation created')
     setShowDelegationModal(false)
   }

@@ -449,6 +449,7 @@ export default function StaffPage() {
       }
       saveStaff([...staff, ns])
       logAudit('ADD_STAFF', `${user?.name} added ${form.name}`, user?.id || '', user?.name || '')
+      notify(ns.id, `Welcome to Data Science Nigeria RMO! Your account has been created with default password "1234" or as specified by your admin. Please change it on your first login.`, 'info', 'Welcome to DSN-RMO', ns.id, 'message', ns.email)
       toast.success(form.name + ' added')
     }
     setShowModal(false); setEditStaff(null)
@@ -495,7 +496,7 @@ export default function StaffPage() {
         password_reset_pending: true
       })
       saveStaff(staff.map(m => m.id === s.id ? { ...m, password: '1234', first_login: true, password_reset_pending: true } : m))
-      notify(s.id, 'Your password has been reset by admin to "1234". Please change it on next login.', 'info')
+      notify(s.id, 'Your password has been reset by admin to "1234". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
       toast.success('Password reset for ' + s.name)
     } catch (e: any) {
       toast.error('Failed to reset password.')
@@ -609,6 +610,10 @@ export default function StaffPage() {
         saveBulkStaffImportLogs([logEntry, ...bulkStaffImportLogs])
     }
     
+    newStaff.forEach(s => {
+      notify(s.id, `Welcome to Data Science Nigeria RMO! Your account has been created with default password "${s.password}". Please change it on your first login.`, 'info', 'Welcome to DSN-RMO', s.id, 'message', s.email)
+    })
+    
     logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
     toast.success(`✅ Imported ${rows.length} staff members`)
     setImportRows(null)
@@ -618,13 +623,13 @@ export default function StaffPage() {
   function approveLeave(id: string) {
     const l = leaves.find((x: any) => x.id === id)
     saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, status: 'approved', approvedBy: user?.name, approvedAt: new Date().toISOString() } : x))
-    if (l) notify(l.staffId, '✅ Your leave request has been approved', 'approval')
+    if (l) notify(l.staffId, '✅ Your leave request has been approved', 'leave_approved', 'Leave Approved', id, 'leave')
     toast.success('Leave approved')
   }
   function rejectLeave(id: string, reason: string) {
     const l = leaves.find((x: any) => x.id === id)
     saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, status: 'rejected', rejectionReason: reason } : x))
-    if (l) notify(l.staffId, `❌ Leave request rejected: ${reason}`, 'rejection')
+    if (l) notify(l.staffId, `❌ Leave request rejected: ${reason}`, 'leave_declined', 'Leave Declined', id, 'leave')
     toast.success('Leave rejected')
   }
 
@@ -750,7 +755,7 @@ export default function StaffPage() {
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 10, position: 'relative' }}>
-                              {s.photo ? <img src={s.photo} alt="" /> : initials(s.name)}
+                              {s.profilePhoto?.base64 || s.photo ? <img src={s.profilePhoto?.base64 || s.photo || ''} alt="" /> : initials(s.name)}
                               {isOnline && <div style={{ position: 'absolute', bottom: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', border: '1.5px solid var(--bg-card)' }} />}
                             </div>
                             <span style={{ fontWeight: 600 }}>{s.name}</span>

@@ -3,7 +3,7 @@ export interface Staff {
     name: string;
     email: string;
     password: string;
-    role: 'staff' | 'team_lead' | 'admin' | 'super_admin';
+    role: 'staff' | 'team_lead' | 'admin' | 'super_admin' | 'owner';
     department: string;
     jobTitle?: string;
     status: 'active' | 'suspended';
@@ -36,6 +36,14 @@ export interface Staff {
     phone?: string;
     photo?: string | null;
     photoUrl?: string | null; // Align with story
+    profilePhoto?: {
+        base64: string;
+        uploadedAt: string;
+        fileSize: number;
+        mimeType: "image/jpeg" | "image/png" | "image/webp";
+    } | null;
+    cdsDay?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | null;
+    weeklyHourGoal?: number;
     fontSize?: string | number;
 }
 
@@ -54,7 +62,9 @@ export interface Entry {
     id: string;
     staffId: string;
     staffName: string;
-    date: string;
+    date: string;     // kept for backwards compat — equals startDate for new entries
+    startDate: string;
+    endDate: string;
     weekKey: string;
     project: string;
     category: string;
@@ -112,6 +122,9 @@ export interface AppNotification {
     type: string;
     read: boolean;
     createdAt: string;
+    title?: string;
+    linkedId?: string;
+    linkedType?: 'entry' | 'leave' | 'message' | 'redemption' | 'request' | 'streak_recovery' | 'project' | string;
 }
 
 export interface AppMessage {
@@ -139,26 +152,110 @@ export interface FAQ {
 }
 
 export interface AppSettings {
-    app_name: string;
-    welcome_message: string;
-    accent_color: string;
-    weekly_cap: number;
-    idle_minutes: number;
-    submission_reminder_hour?: number;
-    approval_reminder_hours?: number;
-    second_level_threshold?: number;
-    points?: {
-        [key: string]: number | undefined;
+    firebase?: {
+        url: string;
+        anonKey: string;
+        isConnected: boolean;
+        lastTestedAt?: string;
     };
-    categories?: string[];
+    branding?: {
+        appName: string;
+        welcomeMessage: string;
+        primaryColour: string;
+        secondaryColour: string;
+        logoBase64: string | null;
+        logoUploadedAt?: string;
+    };
+    featureToggles: {
+        gamification: boolean;
+        leaderboard: boolean;
+        messaging: boolean;
+        bulkImports: boolean;
+        darkMode: boolean;
+        twoFactorAdminsLeads: boolean;
+        deadlineCountdown: boolean;
+        firstLoginWalkthrough: boolean;
+        approvalDelegation: boolean;
+        pdfExport: boolean;
+        profilePhotos: boolean;
+        streakRecovery: boolean;
+        duplicateDetection: boolean;
+        announcements: boolean;
+        orgChart: boolean;
+    };
+    pointsConfig: {
+        onTimeSubmission: number;
+        mondayBonus: number;
+        earlyBonus: number;
+        approvedEntry: number;
+        approvedWithNote: number;
+        perfectWeek: number;
+        hoursBonus: number; // per hour
+        streakBonus: number;
+        rejectionDeduction: number;
+    };
+    hourCaps: {
+        defaultStaffCap: number;
+        internCap: number;
+        cdsVisibility: boolean;
+        customCaps: { staffId: string; cap: number; label: string }[];
+        deadlineOverride?: string | null;
+    };
+    approvalWorkflow: {
+        secondLevelEnabled: boolean;
+        secondLevelThreshold: number;
+    };
+    idleTimeout: {
+        minutes: number;
+    };
+    categories: string[];
+    // Keep legacy fields for compatibility during migration if needed
+    app_name?: string;
+    welcome_message?: string;
+    accent_color?: string;
+    weekly_cap?: number;
+    idle_minutes?: number;
+    points?: { [key: string]: number | undefined };
     holidays?: Holiday[];
-    announcement?: {
-        message: string;
-        icon: string;
-        color: string;
-        expires?: string;
-    } | null;
-    faqs?: FAQ[];
+    announcement?: { message: string, icon: string, color: string, expires?: string } | null;
+}
+
+export interface PublicHoliday {
+    id: string;
+    name: string;
+    date: string;
+    capReduction: number;
+}
+
+export interface Announcement {
+    id: string;
+    message: string;
+    icon: string;
+    colour: string;
+    expiryDate: string;
+    createdBy: string;
+    dismissedBy: string[];
+}
+
+export interface WeekLock {
+    id: string;
+    weekId: string;
+    isLocked: boolean;
+    lockedBy: string;
+    lockedAt: string;
+}
+
+export interface AuditLog {
+    id: string;
+    action: 'login' | 'logout' | 'submit' | 'approve' | 'reject' |
+            'override' | 'import' | 'password_reset' | 'force_logout' |
+            'settings_change' | 'delete' | 'restore';
+    performedBy: string;
+    targetId: string;
+    device: string;
+    ipAddress: string;
+    timestamp: string;
+    metadata: any;
 }
 
 export interface Leave {
@@ -174,6 +271,15 @@ export interface Leave {
     approvedBy?: string;
     approvedAt?: string;
     rejectionReason?: string;
+}
+
+export interface PasswordResetRequest {
+    id: string;
+    staffId: string;
+    requestedAt: string;
+    status: 'pending' | 'resolved';
+    resolvedBy?: string;
+    resolvedAt?: string;
 }
 
 export interface Template {
@@ -339,7 +445,7 @@ export interface AppContextType {
     saveDelegations: (data: Delegation[]) => void;
     approvalDelegations: ApprovalDelegation[];
     saveApprovalDelegations: (data: ApprovalDelegation[]) => void;
-    notify: (userId: string, message: string, type?: string) => any;
+    notify: (userId: string, message: string, type?: string, title?: string, linkedId?: string, linkedType?: string, overrideEmail?: string) => any;
     markRead: (id: string) => void;
     markAllRead: () => void;
     awardPoints: (staffId: string, points: number, action: string, weekId?: string) => void;
@@ -356,6 +462,10 @@ export interface AppContextType {
     idleCountdown: number | null;
     showPasswordChange: boolean;
     setShowPasswordChange: (show: boolean) => void;
+    prefillTemplate: any;
+    setPrefillTemplate: (data: any) => void;
+    passwordResetRequests: PasswordResetRequest[];
+    savePasswordResetRequests: (data: PasswordResetRequest[]) => void;
     projectBudgets: ProjectBudget[];
     saveProjectBudgets: (data: ProjectBudget[]) => void;
     bulkImportLogs: BulkImportLog[];

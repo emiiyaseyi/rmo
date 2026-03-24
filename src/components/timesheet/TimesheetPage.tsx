@@ -21,8 +21,9 @@ interface EntryFormProps {
 /*  Entry Form                                                    */
 /* ────────────────────────────────────────────────────────────── */
 function EntryForm({ entry, onSave, onClose, projects, leads, categories, templates, onSaveTemplate }: EntryFormProps) {
+  const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState<any>({
-    project: '', lead: '', description: '', date: new Date().toISOString().slice(0, 10),
+    project: '', lead: '', description: '', startDate: today, endDate: today,
     hours: '', category: categories[0] || 'Client Work',
     ...(entry || {})
   })
@@ -35,7 +36,9 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
     const e: any = {}
     if (!form.project) e.project = 'Required'
     if (!form.description) e.description = 'Required'
-    if (!form.date) e.date = 'Required'
+    if (!form.startDate) e.startDate = 'Required'
+    if (!form.endDate) e.endDate = 'Required'
+    if (form.startDate && form.endDate && form.endDate < form.startDate) e.endDate = 'End must be ≥ start'
     if (!form.hours || parseFloat(form.hours) <= 0 || parseFloat(form.hours) > 24) e.hours = 'Must be 0.5–24'
     return e
   }
@@ -107,12 +110,19 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
             {errors.description && <span className="form-error">{errors.description}</span>}
           </div>
 
-          <div className="grid-3">
+          <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Date *</label>
-              <input className="form-input" type="date" value={form.date} onChange={e => F('date', e.target.value)} />
-              {errors.date && <span className="form-error">{errors.date}</span>}
+              <label className="form-label">Start Date *</label>
+              <input className="form-input" type="date" value={form.startDate || ''} onChange={e => { F('startDate', e.target.value); if (!form.endDate || form.endDate < e.target.value) F('endDate', e.target.value) }} />
+              {errors.startDate && <span className="form-error">{errors.startDate}</span>}
             </div>
+            <div className="form-group">
+              <label className="form-label">End Date *</label>
+              <input className="form-input" type="date" value={form.endDate || ''} min={form.startDate || ''} onChange={e => F('endDate', e.target.value)} />
+              {errors.endDate && <span className="form-error">{errors.endDate}</span>}
+            </div>
+          </div>
+          <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Hours *</label>
               <input className="form-input" type="number" step="0.5" min="0.5" max="24" placeholder="e.g. 4" value={form.hours} onChange={e => F('hours', e.target.value)} />
@@ -336,14 +346,33 @@ function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onCl
 /*  Main Page                                                     */
 /* ────────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
-  const { user, entries, saveEntries, staff, projects, settings, notify, awardPoints, grantBadge, templates, saveTemplates, calculateWeekCap, submitWeekEntries } = useApp()
+  const { 
+    user, entries, saveEntries, staff, projects, settings, 
+    notify, awardPoints, grantBadge, templates, saveTemplates, 
+    calculateWeekCap, submitWeekEntries, prefillTemplate, setPrefillTemplate,
+    weekLocks
+  } = useApp()
   const [selectedWeek, setSelectedWeek] = useState(getWeekKey())
   const [viewingStaffId, setViewingStaffId] = useState<string | null>(null) // admin: view another staff's sheet
   const [showForm, setShowForm] = useState(false)
-  const [editEntry, setEditEntry] = useState<Entry | null>(null)
+  const [editEntry, setEditEntry] = useState<Partial<Entry> | null>(null)
   const [overrideEntry, setOverrideEntry] = useState<Entry | null>(null)
   const [resubmitEntry, setResubmitEntry] = useState<Entry | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
+
+  useEffect(() => {
+    if (prefillTemplate) {
+      setEditEntry({
+        project: prefillTemplate.project,
+        lead: prefillTemplate.lead,
+        description: prefillTemplate.description,
+        hours: prefillTemplate.hours,
+        category: prefillTemplate.category,
+      })
+      setShowForm(true)
+      setPrefillTemplate(null)
+    }
+  }, [prefillTemplate])
 
   const isAdmin = user?.role === 'admin'
   const targetUser = isAdmin && viewingStaffId ? staff.find(s => s.id === viewingStaffId) : user
@@ -354,11 +383,7 @@ export default function TimesheetPage() {
   
   const { cap: weekCap, isHoliday, isCDS } = calculateWeekCap(targetUser, selectedWeek)
 
-  const [lockedWeeks] = useState(() => {
-    if (typeof window === 'undefined') return []
-    return JSON.parse(localStorage.getItem('dsn_locked_weeks') || '[]')
-  })
-  const isLocked = lockedWeeks.includes(selectedWeek)
+  const isLocked = (weekLocks || []).some(l => l.weekId === selectedWeek && l.isLocked)
 
   const weeks = useMemo(() => {
     const r = []
@@ -455,6 +480,7 @@ export default function TimesheetPage() {
   function markNoWork() {
     if (!user) return
     if (!window.confirm('Mark this week as No Work?')) return
+    const today = new Date().toISOString().slice(0, 10)
     const ne: Entry = {
       id: genId(),
       staffId: user.id || '',
@@ -463,7 +489,9 @@ export default function TimesheetPage() {
       project: 'N/A',
       lead: '',
       description: 'No work this week',
-      date: selectedWeek,
+      date: today,
+      startDate: today,
+      endDate: today,
       hours: 0,
       category: 'Admin',
       status: 'submitted',
@@ -501,21 +529,27 @@ export default function TimesheetPage() {
           const wb = XLSX.read(ev.target?.result as string, { type: 'binary' })
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as any[]
           const now = new Date().toISOString()
-          const newEntries: Entry[] = rows.map(r => ({
-            id: genId(),
-            staffId: effectiveUserId,
-            staffName: targetUser?.name || '',
-            weekKey: selectedWeek,
-            project: r.Project || r.project || '',
-            lead: r.Lead || r.lead || '',
-            description: r.Description || r.description || '',
-            date: r.Date || r.date || selectedWeek,
-            hours: parseFloat(r.Hours || r.hours || 0),
-            category: r.Category || r.category || 'Client Work',
-            status: 'draft' as const,
-            createdAt: now,
-            updatedAt: now
-          })).filter(r => r.project && r.hours && r.hours > 0)
+          const newEntries: Entry[] = rows.map(r => {
+            const startDate = r['Start Date'] || r.startDate || r.Date || r.date || selectedWeek
+            const endDate = r['End Date'] || r.endDate || startDate
+            return {
+              id: genId(),
+              staffId: effectiveUserId,
+              staffName: targetUser?.name || '',
+              weekKey: selectedWeek,
+              project: r.Project || r.project || '',
+              lead: r.Lead || r.lead || '',
+              description: r.Description || r.description || '',
+              date: startDate,
+              startDate,
+              endDate,
+              hours: parseFloat(r.Hours || r.hours || 0),
+              category: r.Category || r.category || 'Client Work',
+              status: 'draft' as const,
+              createdAt: now,
+              updatedAt: now
+            }
+          }).filter(r => r.project && r.hours && r.hours > 0)
 
           // Duplicate check
           const existing = entries.filter(e => e.staffId === effectiveUserId && e.weekKey === selectedWeek && !e.deleted)
@@ -638,7 +672,7 @@ export default function TimesheetPage() {
         </div>
       )}
       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Project, Lead, Description, Date, Hours, Category)
+        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Project, Lead, Description, Start Date, End Date, Hours, Category)
       </div>
 
       {/* Entries table */}
@@ -654,7 +688,7 @@ export default function TimesheetPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Date</th><th>Project</th><th>Lead</th><th>Description</th>
+                  <th>Dates</th><th>Project</th><th>Lead</th><th>Description</th>
                   <th>Category</th><th>Hours</th><th>Status</th>
                   {isAdmin && <th>Override</th>}
                   <th>Actions</th>
@@ -663,7 +697,12 @@ export default function TimesheetPage() {
               <tbody>
                 {weekEntries.map(e => (
                   <tr key={e.id} style={{ background: e.overriddenBy ? 'rgba(245,158,11,0.04)' : '' }}>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(e.date)}</td>
+                    <td style={{ fontFamily: 'var(--mono)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {fmtDate(e.startDate || e.date)}
+                      {e.endDate && e.endDate !== (e.startDate || e.date) && (
+                        <div style={{ fontSize: 10, color: 'var(--text-3)' }}>→ {fmtDate(e.endDate)}</div>
+                      )}
+                    </td>
                     <td style={{ fontWeight: 600, maxWidth: 140 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
                       {e.overriddenBy && <div style={{ fontSize: 10, color: 'var(--warning)' }}>⚡ Overridden by {e.overriddenBy}</div>}

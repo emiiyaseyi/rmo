@@ -213,10 +213,22 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>{online ? '🟢 Online' : '🔴 Offline'}</div>
               <button 
                 onClick={toggleDark}
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                style={{ 
+                  background: darkMode ? 'rgba(255,255,255,0.1)' : 'var(--bg-elevated)', 
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, 
+                  color: darkMode ? '#fff' : 'var(--text-2)',
+                  borderRadius: 20, 
+                  padding: '5px 12px', 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 6,
+                  transition: 'all 0.2s',
+                  boxShadow: darkMode ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                }}
               >
-                {darkMode ? <Sun size={12} /> : <Moon size={12} />}
-                <span style={{ fontSize: 10, fontWeight: 600 }}>{darkMode ? 'Light' : 'Dark'}</span>
+                {darkMode ? <Sun size={12} color="#fbbf24" strokeWidth={3} /> : <Moon size={12} color="var(--accent)" strokeWidth={3} />}
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.02em' }}>{darkMode ? 'LIGHT MODE' : 'DARK MODE'}</span>
               </button>
             </div>
             

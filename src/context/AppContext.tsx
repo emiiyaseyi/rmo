@@ -1,12 +1,12 @@
 'use client'
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import toast from 'react-hot-toast'
-import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, syncToSupabase, fetchFromSupabase } from '../lib/utils'
+import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, syncToSupabase, fetchFromSupabase, sendEmailNotification } from '../lib/utils'
 import { getSupabase } from '../lib/supabase'
 import { db } from '../lib/firebase'
 import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry } from '../types'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -17,18 +17,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [messages, setMessages] = useState<AppMessage[]>([])
   const [notifications, setNots] = useState<AppNotification[]>([])
-  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [darkMode, setDarkMode] = useState<boolean>(false)
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
-  const [features, setFeatures] = useState<any>(null)
+  const [features, setFeatures] = useState<any>(DEFAULT_FEATURES)
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [weekLocks, setWeekLocks] = useState<WeekLock[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([])
+  const [projects, setProjects] = useState<any[]>(DEFAULT_PROJECTS)
   const [redeems, setRedeems] = useState<Redemption[]>([])
   const [rewards, setRewards] = useState<Reward[]>([])
   const [hof, setHof] = useState<HofEntry[]>([])
-  const [projects, setProjects] = useState<any[]>([])
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [delegations, setDelegations] = useState<any[]>([])
   const [approvalDelegations, setApprovalDelegations] = useState<ApprovalDelegation[]>([])
-  const [lockedWeeks, setLockedWeeks] = useState<any[]>([])
+  const [lockedWeeks, setLockedWeeks] = useState<any[]>([]) // Legacy, to be replaced by weekLocks
   const [budgets, setBudgets] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
   const [projectBudgets, setProjectBudgets] = useState<ProjectBudget[]>([])
@@ -38,6 +42,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pointsHistory, setPointsHistory] = useState<PointsHistoryEntry[]>([])
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null)
   const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const [prefillTemplate, setPrefillTemplate] = useState<any>(null)
+  const [passwordResetRequests, setPasswordResetRequests] = useState<PasswordResetRequest[]>([])
 
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const userRef = useRef<Staff | null>(null)
@@ -176,7 +182,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBulkStaffImportLogs(local.get<BulkStaffImportLog[]>('bulk_staff_import_logs', []))
     setStreakRecoveries(local.get<StreakRecoveryRequest[]>('streak_recoveries', []))
     setPointsHistory(local.get<PointsHistoryEntry[]>('points_history', []))
-    setSettings(local.get<AppSettings>('settings', DEFAULT_SETTINGS))
+    setPasswordResetRequests(local.get<PasswordResetRequest[]>('password_reset_requests', []))
+    
+    const setts = local.get<AppSettings>('settings', DEFAULT_SETTINGS)
+    // Merge new defaults into old settings if they exist
+    setSettings({ ...DEFAULT_SETTINGS, ...setts, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...setts.featureToggles } })
+    setAnnouncements(local.get<Announcement[]>('announcements', []))
+    setWeekLocks(local.get<WeekLock[]>('week_locks', []))
+    setAuditLogs(local.get<AuditLog[]>('audit_logs', []))
+    setPublicHolidays(local.get<PublicHoliday[]>('public_holidays', []))
   }
 
   // Supabase real-time subscription setup
@@ -264,6 +278,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function saveLockedWeeks(data: any[]) { setLockedWeeks(data); local.set('locked_weeks', data) }
   function saveFeatures(data: any) { setFeatures(data); local.set('features', data) }
   function saveSettings(data: AppSettings) { setSettings(data); local.set('settings', data) }
+  function saveAnnouncements(data: Announcement[]) { setAnnouncements(data); local.set('announcements', data) }
+  function saveWeekLocks(data: WeekLock[]) { setWeekLocks(data); local.set('week_locks', data) }
+  function saveAuditLogs(data: AuditLog[]) { setAuditLogs(data); local.set('audit_logs', data) }
+  function savePublicHolidays(data: PublicHoliday[]) { setPublicHolidays(data); local.set('public_holidays', data) }
+
+  function logAudit(action: AuditLog['action'], targetId: string, metadata: any = {}) {
+    const entry: AuditLog = {
+      id: genId(),
+      action,
+      performedBy: user?.name || 'System',
+      targetId,
+      device: navigator.userAgent.slice(0, 50),
+      ipAddress: '127.0.0.1', // Placeholder for frontend-only
+      timestamp: new Date().toISOString(),
+      metadata
+    }
+    const updated = [entry, ...auditLogs].slice(0, 1000)
+    saveAuditLogs(updated)
+  }
   function saveProjects(data: any[]) { setProjects(data); local.set('projects', data) }
   function saveBudgets(data: any[]) { setBudgets(data); local.set('budgets', data) }
   function saveTemplates(data: any[]) { setTemplates(data); local.set('templates', data) }
@@ -278,6 +311,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function savePointsHistory(data: PointsHistoryEntry[]) { 
     setPointsHistory(data); 
     local.set('points_history', data);
+  }
+  function savePasswordResetRequests(data: PasswordResetRequest[]) {
+    setPasswordResetRequests(data);
+    local.set('password_reset_requests', data);
+    data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), r, { merge: true }).catch(() => {}) })
   }
 
   async function login(staffMember: Staff) {
@@ -302,7 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userRef.current = updated
     local.set('session_user', updated)
     registerSession(staffMember.id)
-    logAudit('LOGIN', `${staffMember.name} logged in`, staffMember.id, staffMember.name)
+    logAudit('login', staffMember.id, { name: staffMember.name })
     resetIdle()
 
     // Clear failed attempts on success
@@ -318,7 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function logoutFn(u?: Staff | null) {
     const target = u || userRef.current
     if (target) {
-      logAudit('LOGOUT', `${target.name} logged out`, target.id, target.name)
+      logAudit('logout', target.id, { name: target.name })
       removeSession(target.id)
     }
     setUser(null)
@@ -346,10 +384,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('dark', next)
   }
 
-  function notify(userId: string, message: string, type = 'info') {
-    const notif: AppNotification = { id: genId(), userId, message, type, read: false, createdAt: new Date().toISOString() }
+  function notify(userId: string, message: string, type = 'info', title?: string, linkedId?: string, linkedType?: string, overrideEmail?: string) {
+    const notif: AppNotification = { id: genId(), userId, message, type, read: false, createdAt: new Date().toISOString(), title, linkedId, linkedType }
     const updated = [notif, ...local.get<AppNotification[]>('notifications', [])]
     saveNots(updated)
+    
+    // Simulate email send
+    const targetUser = staff.find(s => s.id === userId)
+    const targetEmail = overrideEmail || targetUser?.email
+    if (targetEmail && targetEmail.endsWith('@datasciencenigeria.ai')) {
+       let link = ''
+       if (linkedType === 'entry') link = `/approvals`
+       else if (linkedType === 'leave') link = `/staff`
+       else if (linkedType === 'message') link = `/messages`
+       else if (linkedId) link = `/dashboard` // generic fallback
+       sendEmailNotification(targetUser.email, title || 'New Notification', message, link)
+    }
+
     return notif
   }
 
@@ -473,6 +524,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const updated = [newMsg, ...messages]
     saveMessages(updated)
+    
+    // Notify recipient of DM
+    if (newMsg.recipientId) {
+      notify(newMsg.recipientId, `You have a new message from ${newMsg.senderName}`, 'message_received', 'New Message', newMsg.id, 'message')
+    }
+    
     return newMsg
   }
 
@@ -482,7 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = new Date()
     const wat = new Date(now.getTime() + 3600000)
     if (wat.getUTCDay() !== 1) return // Only Monday
-    const reminderHour = settings?.submission_reminder_hour || 10
+    const reminderHour = 10 // Hardcoded default or move to settings if needed
     if (wat.getUTCHours() < reminderHour) return
 
     const currentWeek = getWeekKey()
@@ -498,38 +555,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Timesheet Core Logic
   function calculateWeekCap(target: Staff | null, weekKey: string): { cap: number, isHoliday: boolean, isCDS: boolean } {
-    if (!target) return { cap: settings?.weekly_cap || 40, isHoliday: false, isCDS: false }
+    const caps = settings?.hourCaps
+    let baseCap = target?.weekly_cap ? Number(target.weekly_cap) : (caps?.defaultStaffCap || 40)
     
-    let cap = target.staffType === 'intern' ? 32 : (settings?.weekly_cap || 40)
-    let isHoliday = false
-    let isCDS = target.staffType === 'intern' 
-    
-    if (isCDS) cap = 24 // "Given an intern logs hours in a CDS week -> THEN reduce their cap to 24h"
-    
-    // Check holidays
-    const holidays = settings?.holidays || []
-    const weekStart = new Date(weekKey)
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekEnd.getDate() + 6)
-    
-    const weekHolidays = holidays.filter(h => {
-      const d = new Date(h.date)
-      return d >= weekStart && d <= weekEnd
-    })
-    
-    if (weekHolidays.length > 0) {
-      cap -= 8 * weekHolidays.length
-      isHoliday = true
+    // Check if target is intern and has intern cap
+    if (target?.staffType === 'intern' && caps?.internCap) {
+       baseCap = caps.internCap
     }
 
-    // CDS deduction for interns
-    // Assuming we need a way to flag a week as CDS week, or if it's every week.
-    // Prompt says "Given an intern logs hours in a CDS week". I'll assume for now interns always have this deduction unless specified.
-    // Actually, I'll add a check if the week is a CDS week (maybe via a setting or hardcoded logic for now).
-    // Let's assume it's a deduction from the 32h if it's a CDS week.
-    // If I don't have a "CDS week" flag, I'll just use the 32h as the base for interns as requested.
+    // Check custom caps (per staff)
+    const customCap = caps?.customCaps?.find(c => c.staffId === target?.id)
+    if (customCap) baseCap = customCap.cap
+
+    if (!target) return { cap: baseCap, isHoliday: false, isCDS: false }
     
-    return { cap, isHoliday, isCDS: target.staffType === 'intern' }
+    let cap = baseCap
+    const isIntern = target.staffType === 'intern'
+    const isCDS = isIntern && !!target.cdsDay
+    
+    if (isCDS) cap -= 8 // Deduct 8h for CDS day (could also be dynamic if needed)
+    
+    let isHoliday = false
+    
+    // Check holidays
+    const holidays = publicHolidays || []
+    const weekStart = new Date(weekKey)
+    if (!isNaN(weekStart.getTime())) {
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      
+      const weekHolidays = holidays.filter(h => {
+        const d = new Date(h.date)
+        return d >= weekStart && d <= weekEnd
+      })
+      
+      if (weekHolidays.length > 0) {
+        weekHolidays.forEach(h => {
+          cap -= (h.capReduction || 8)
+        })
+        isHoliday = true
+      }
+    }
+
+    return { cap, isHoliday, isCDS }
   }
 
   async function updateEntry(entryId: string, updates: Partial<Entry>, adminOverride: boolean = false) {
@@ -560,8 +628,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updatedEntries = entries.map(e => e.id === entryId ? { ...e, ...finalUpdates } : e)
     
     // Point Triggers
+    const pConfig = settings?.pointsConfig
     if (updates.status === 'approved') {
-      const p = DEFAULT_POINTS.approved_entry + (entry.hours || 0) * DEFAULT_POINTS.hours_logged_per_hr
+      const isCorrected = updates.correctionNote || updates.corrected
+      notify(entry.staffId, `Your timesheet entry for ${entry.project} was approved${isCorrected ? ' with corrections' : ''}.`, 'entry_approved', 'Entry Approved', entry.id, 'entry')
+
+      const p = (pConfig?.approvedEntry || 0) + (entry.hours || 0) * (pConfig?.hoursBonus || 0)
       awardPoints(entry.staffId, p, `Entry approved: ${entry.project}`, entry.weekKey)
       
       // Perfect Week Check
@@ -569,11 +641,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const allApproved = weekEntries.every(e => e.status === 'approved')
       const noRejections = weekEntries.every(e => !e.approvalHistory?.some(h => h.action === 'rejected'))
       if (allApproved && noRejections) {
-        awardPoints(entry.staffId, DEFAULT_POINTS.perfect_week, 'Perfect Week Bonus', entry.weekKey)
+        awardPoints(entry.staffId, pConfig?.perfectWeek || 0, 'Perfect Week Bonus', entry.weekKey)
         grantBadge(entry.staffId, 'perfect_week')
       }
     } else if (updates.status === 'rejected') {
-      awardPoints(entry.staffId, DEFAULT_POINTS.rejection_penalty, `Entry rejected: ${entry.project}`, entry.weekKey)
+      notify(entry.staffId, `Your timesheet entry for ${entry.project} was rejected.`, 'entry_rejected', 'Entry Rejected', entry.id, 'entry')
+      awardPoints(entry.staffId, pConfig?.rejectionDeduction || 0, `Entry rejected: ${entry.project}`, entry.weekKey)
+    } else if (updates.status === 'pending_clarification' || updates.status === 'clarification_needed') {
+      notify(entry.staffId, `Clarification requested for your entry on ${entry.project}.`, 'clarification_requested', 'Clarification Requested', entry.id, 'entry')
     }
 
     saveEntries(updatedEntries)
@@ -592,24 +667,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const weekStart = new Date(weekKey)
     const submissionId = `${staffId}_${weekKey}`
 
-    // Deadline: Tuesday 4:00pm WAT
-    const deadline = new Date(weekStart)
+    // Deadline Override Logic
+    let deadline = new Date(weekStart)
     deadline.setDate(deadline.getDate() + 1) // Monday
     deadline.setDate(deadline.getDate() + 1) // Tuesday
     deadline.setHours(16, 0, 0, 0) // 4:00pm
+
+    const caps = settings?.hourCaps
+    if (caps?.deadlineOverride) {
+       const override = new Date(caps.deadlineOverride)
+       if (!isNaN(override.getTime())) deadline = override
+    }
     
     // New Gamification Point Logic
+    const pConfig = settings?.pointsConfig || DEFAULT_POINTS
     const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, 2=Tue...
     const hour = now.getHours()
     
-    let totalAward = DEFAULT_POINTS.submit_ontime
+    let totalAward = pConfig.onTimeSubmission || 0
     let bonusDesc = 'On-time submission'
     
-    if (dayOfWeek === 1) {
-      totalAward += DEFAULT_POINTS.monday_bonus
+    if (dayOfWeek === 1) { // Monday
+      totalAward += (pConfig.mondayBonus || 0)
       bonusDesc += ' + Monday Bonus'
-    } else if (dayOfWeek === 2 && hour < 10) {
-      totalAward += DEFAULT_POINTS.early_bonus
+    } else if (dayOfWeek === 2 && hour < 10) { // Tuesday Early
+      totalAward += (pConfig.earlyBonus || 0)
       bonusDesc += ' + Early Bonus'
     }
 
@@ -620,10 +702,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       totalAward = Math.max(0, totalAward - (periods * 5))
       bonusDesc = 'Late submission (reduced points)'
       
-      const thursdayDeadline = new Date(weekStart)
-      thursdayDeadline.setDate(thursdayDeadline.getDate() + 3)
-      thursdayDeadline.setHours(12, 0, 0, 0)
-      if (now > thursdayDeadline) totalAward = 0
+      const extendedDeadline = new Date(deadline)
+      extendedDeadline.setHours(extendedDeadline.getHours() + 48) // 2 days grace
+      if (now > extendedDeadline) totalAward = 0
     }
 
     const submission: WeekSubmission = {
@@ -642,6 +723,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Save submission record
     try {
       await setDoc(doc(db, 'weekSubmissions', submissionId), submission)
+      
+      // Notify Task Owners/Admins
+      const submittedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'submitted')
+      const targetLeads = Array.from(new Set(submittedEntries.map(e => e.leadId || staffMember.leadId).filter(Boolean)))
+      const adminIds = staff.filter(s => s.role === 'admin' || s.role === 'super_admin').map(s => s.id)
+      const allToNotify = Array.from(new Set([...targetLeads, ...adminIds]))
+      
+      allToNotify.forEach(lId => {
+         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
+      })
+
       // Award points
       if (totalAward > 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
       
@@ -672,6 +764,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pendingApprovals, sendMessage, loadAll, checkReminders,
     idleCountdown, showPasswordChange, setShowPasswordChange,
     calculateWeekCap, updateEntry, submitWeekEntries,
+    prefillTemplate, setPrefillTemplate,
+    passwordResetRequests, savePasswordResetRequests,
+    announcements, saveAnnouncements,
+    weekLocks, saveWeekLocks,
+    auditLogs, saveAuditLogs,
+    publicHolidays, savePublicHolidays,
+    logAudit,
   }
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
@@ -683,19 +782,58 @@ const DEFAULT_FEATURES = {
   dark_mode: true, pdf_export: true, org_chart: true, delegation: true,
 }
 
-const DEFAULT_SETTINGS = {
-  app_name: 'DSN Resource Management',
-  welcome_message: 'Welcome back! Ready to log your hours?',
-  accent_color: '#076C04',
-  weekly_cap: 45,
-  idle_minutes: 2,
-  submission_reminder_hour: 10,
-  approval_reminder_hours: 24,
-  second_level_threshold: 60,
-  points: DEFAULT_POINTS,
+const DEFAULT_POINTS_CONFIG = {
+  onTimeSubmission: 10,
+  mondayBonus: 5,
+  earlyBonus: 5,
+  approvedEntry: 10,
+  approvedWithNote: 5,
+  perfectWeek: 20,
+  hoursBonus: 1,
+  streakBonus: 15,
+  rejectionDeduction: -5
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  branding: {
+    appName: 'DSN Resource Management',
+    welcomeMessage: 'Welcome back! Ready to log your hours?',
+    primaryColour: '#076C04',
+    secondaryColour: '#10B981',
+    logoBase64: null,
+  },
+  featureToggles: {
+    gamification: true,
+    leaderboard: true,
+    messaging: true,
+    bulkImports: true,
+    darkMode: true,
+    twoFactorAdminsLeads: true,
+    deadlineCountdown: true,
+    firstLoginWalkthrough: true,
+    approvalDelegation: true,
+    pdfExport: true,
+    profilePhotos: true,
+    streakRecovery: true,
+    duplicateDetection: true,
+    announcements: true,
+    orgChart: true,
+  },
+  pointsConfig: DEFAULT_POINTS_CONFIG,
+  hourCaps: {
+    defaultStaffCap: 45,
+    internCap: 32,
+    cdsVisibility: true,
+    customCaps: []
+  },
+  approvalWorkflow: {
+    secondLevelEnabled: true,
+    secondLevelThreshold: 60
+  },
+  idleTimeout: {
+    minutes: 30
+  },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],
-  holidays: [],
-  announcement: null,
 }
 
 const DEFAULT_PROJECTS = [

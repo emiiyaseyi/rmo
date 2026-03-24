@@ -75,15 +75,15 @@ export function isSubmissionOpen(): boolean {
 }
 
 export const DEFAULT_POINTS = {
-  submit_ontime: 15, 
-  monday_bonus: 10,
-  early_bonus: 5, // Submitted before Wednesday (if Tue is deadline, Mon is early)
-  approved_entry: 2,
-  approved_with_correction: 1,
-  hours_logged_per_hr: 0.5,
-  streak_bonus: 20,
-  perfect_week: 25,
-  rejection_penalty: -10,
+  onTimeSubmission: 15, 
+  mondayBonus: 10,
+  earlyBonus: 5,
+  approvedEntry: 2,
+  approvedWithNote: 1,
+  hoursBonus: 0.5,
+  streakBonus: 20,
+  perfectWeek: 25,
+  rejectionDeduction: -10,
 }
 
 export const BADGES = [
@@ -201,4 +201,31 @@ export function getActiveSessions(): any[] {
   const sessions = local.get<any>('active_sessions', {}) || {}
   const cutoff = Date.now() - 5 * 60 * 1000 // 5 min inactivity = offline
   return Object.values(sessions).filter((s: any) => new Date(s.lastSeen).getTime() > cutoff)
+}
+
+// Real Email Notification Sender
+export async function sendEmailNotification(to: string, title: string, message: string, link?: string): Promise<void> {
+  let html = `<div style="font-family: sans-serif; padding: 20px;">
+    <h2>${title}</h2>
+    <p>${message}</p>`
+  
+  if (link) {
+    // Determine base URL depending on window / environment
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const fullLink = link.startsWith('http') ? link : `${baseUrl}${link}`
+    html += `<p><a href="${fullLink}" style="display:inline-block; padding: 10px 15px; background: #076C04; color: #fff; text-decoration: none; border-radius: 5px;">View Details</a></p>`
+  }
+  html += `</div>`
+
+  try {
+    const res = await fetch('/api/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject: title, text: message, html })
+    })
+    const data = await res.json()
+    if (!res.ok) console.warn('Email dispatch failed:', data.message || data.error)
+  } catch (err) {
+    console.error('Failed to send email:', err)
+  }
 }

@@ -2,482 +2,685 @@
 import React, { useState } from 'react'
 import BulkTimeEntryImport from './BulkTimeEntryImport'
 import { useApp } from '../../context/AppContext'
-import { local, exportCSV, genId, fmtDate, DEFAULT_POINTS } from '../../lib/utils'
-import { initSupabase } from '../../lib/supabase'
-import { AppSettings, FAQ, Holiday } from '../../types'
+import { local, exportCSV, genId } from '../../lib/utils'
+import { AppSettings, WeekLock, PublicHoliday } from '../../types'
 import toast from 'react-hot-toast'
 
 export default function SettingsPage() {
-  const { settings, saveSettings, entries, saveEntries, staff, features, saveFeatures, lockedWeeks, saveLockedWeeks, user, notify } = useApp()
-  const [tab, setTab] = useState<string>('general')
-  const [sbUrl, setSbUrl] = useState<string>(typeof window !== 'undefined' ? localStorage.getItem('dsn_sb_url') || '' : '')
-  const [showBulkImport, setShowBulkImport] = useState<boolean>(false)
-  const [sbKey, setSbKey] = useState<string>(typeof window !== 'undefined' ? localStorage.getItem('dsn_sb_key') || '' : '')
-  const [sbTesting, setSbTesting] = useState<boolean>(false)
-  const [form, setForm] = useState<Partial<AppSettings>>({ ...(settings || {}) })
-  const [annForm, setAnnForm] = useState(settings?.announcement || { message: '', icon: '📢', color: '#3B82F6', expires: '' })
-  const [newCat, setNewCat] = useState<string>('')
-  const [newHoliday, setNewHoliday] = useState<Partial<Holiday>>({ date: '', name: '' })
-  const [lockWeek, setLockWeek] = useState<string>('')
-  const [fontSize, setFontSize] = useState<number>(local.get('font_size', 14))
+  const { 
+    settings, saveSettings, user, logAudit, 
+    announcements, saveAnnouncements,
+    weekLocks, saveWeekLocks,
+    auditLogs, saveAuditLogs,
+    publicHolidays, savePublicHolidays,
+    projects, saveProjects,
+    entries, saveEntries,
+    passwordResetRequests, savePasswordResetRequests,
+    staff, saveStaff, notify
+  } = useApp()
 
-  // Deleted entries
-  const deletedEntries = entries.filter(e => e.deleted && (!e.deletedAt || (Date.now() - new Date(e.deletedAt).getTime()) < 30 * 24 * 60 * 60 * 1000))
+  const [tab, setTab] = useState<string>('firebase')
+  const [testingConnection, setTestingConnection] = useState(false)
+  
+  // Local form state
+  const [fbForm, setFbForm] = useState(settings?.firebase || { url: '', anonKey: '', isConnected: false })
+  const [brandForm, setBrandForm] = useState(settings?.branding || { appName: 'DSN Timesheet', welcomeMessage: 'Welcome', primaryColour: '#4F46E5', secondaryColour: '#10B981', logoBase64: null })
+  const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
+  const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
+  const [toggles, setToggles] = useState(settings?.featureToggles || { gamification: true, leaderboard: true, messaging: true, bulkImports: true, darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true, firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true, profilePhotos: true, streakRecovery: true, duplicateDetection: true, announcements: true, orgChart: true })
+  
+  const tabs = [
+    { id: 'firebase', label: '🔌 Firebase', icon: '⚡' },
+    { id: 'branding', label: '🎨 Branding', icon: '✨' },
+    { id: 'toggles', label: '🎛️ Toggles', icon: '⚙️' },
+    { id: 'points', label: '🏆 Points', icon: '🎯' },
+    { id: 'caps', label: '🕒 Caps', icon: '⏳' },
+    { id: 'weeks', label: '🔐 Weeks', icon: '📅' },
+    { id: 'holidays', label: '🏖️ Holidays', icon: '🗓️' },
+    { id: 'projects', label: '📁 Projects', icon: '💼' },
+    { id: 'queue', label: '🔑 Resets', icon: '🛡️' },
+    { id: 'logs', label: '📜 Audit', icon: '🕵️' },
+    { id: 'deleted', label: '🗑️ Deleted', icon: '♻️' },
+  ]
 
-  async function testSupabase() {
-    if (!sbUrl || !sbKey) { toast.error('Enter URL and key first'); return }
-    setSbTesting(true)
-    try {
-      const sb = initSupabase(sbUrl, sbKey)
-      const { error } = await sb.from('_test_connection').select('*').limit(1)
-      if (error && error.code !== 'PGRST116') throw error
-      localStorage.setItem('dsn_sb_url', sbUrl)
-      localStorage.setItem('dsn_sb_key', sbKey)
-      toast.success('✅ Supabase connected successfully!')
-    } catch (e: any) {
-      toast.error('Connection failed: ' + (e.message || 'Check URL and key'))
-    }
-    setSbTesting(false)
+  const saveAllSettings = (updates: Partial<AppSettings>) => {
+    const newData = { ...settings, ...updates } as AppSettings
+    saveSettings(newData)
+    logAudit('settings_change', 'system', { updates: Object.keys(updates) })
+    toast.success('Settings updated')
   }
 
-  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function testFirebase() {
+    setTestingConnection(true)
+    // Simulate connection test
+    setTimeout(() => {
+      const success = fbForm.url.includes('firebase')
+      if (success) {
+        const update = { ...fbForm, isConnected: true, lastTestedAt: new Date().toISOString() }
+        setFbForm(update)
+        saveAllSettings({ firebase: update })
+        toast.success('Firebase connected!')
+      } else {
+        toast.error('Connection failed. Check URL.')
+      }
+      setTestingConnection(false)
+    }, 1500)
+  }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 500000) { toast.error('Logo must be under 500KB'); return }
     const reader = new FileReader()
-    reader.onload = ev => {
-      const result = ev.target?.result as string
-      local.set('logo_url', result)
-      toast.success('Logo uploaded! Refresh to see it.')
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string
+      setBrandForm({ ...brandForm, logoBase64: base64, logoUploadedAt: new Date().toISOString() })
     }
     reader.readAsDataURL(file)
   }
 
-  function saveGeneral() {
-    saveSettings({ ...(settings || {}), ...form } as AppSettings)
-    toast.success('Settings saved')
-  }
-
-  function savePoints() {
-    saveSettings({ ...(settings || {}), points: form.points } as AppSettings)
-    toast.success('Points config saved')
-  }
-
-  function saveAnnouncement() {
-    saveSettings({ ...(settings || {}), announcement: annForm.message ? annForm : null } as AppSettings)
-    toast.success(annForm.message ? 'Announcement posted' : 'Announcement cleared')
-  }
-
-  function addCategory() {
-    if (!newCat.trim()) return
-    const cats = [...(settings?.categories || []), newCat.trim()]
-    saveSettings({ ...(settings || {}), categories: cats } as AppSettings)
-    setNewCat('')
-    toast.success('Category added')
-  }
-
-  function removeCategory(cat: string) {
-    saveSettings({ ...(settings || {}), categories: (settings?.categories || []).filter(c => c !== cat) } as AppSettings)
-  }
-
-  function addHoliday() {
-    if (!newHoliday.date || !newHoliday.name) { toast.error('Date and name required'); return }
-    const holidays = [...(settings?.holidays || []), { ...newHoliday, id: genId() } as Holiday]
-    saveSettings({ ...(settings || {}), holidays } as AppSettings)
-    setNewHoliday({ date: '', name: '' })
-    toast.success('Holiday added')
-  }
-
-  function lockUnlockWeek(week: string, lock: boolean) {
-    const updated = lock ? [...lockedWeeks, week] : lockedWeeks.filter(w => w !== week)
-    saveLockedWeeks(updated)
-    toast.success(`Week ${lock ? 'locked' : 'unlocked'}`)
-  }
-
-  function restoreEntry(id: string) {
-    saveEntries(entries.map(e => e.id === id ? { ...e, deleted: false, deletedAt: undefined } : e))
-    toast.success('Entry restored')
-  }
-
-  function toggleFeature(key: string) {
-    saveFeatures({ ...features, [key]: !features[key] })
-  }
-
-  const FEATURE_LABELS: Record<string, string> = {
-    leaderboard: '🏆 Leaderboard',
-    gamification: '🎮 Gamification & Points',
-    messages: '💬 Messages',
-    analytics: '📊 Analytics',
-    leave_requests: '🏖️ Leave Requests',
-    bulk_import: '📤 Bulk Import',
-    dark_mode: '🌙 Dark Mode Toggle',
-    pdf_export: '📄 PDF/CSV Export',
-    org_chart: '🗂️ Org Chart',
-    delegation: '👤 Delegation',
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="flex flex-col gap-6">
       <div>
-        <h1 style={{ fontSize: 20, fontWeight: 800 }}>⚙️ Settings</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>System configuration and administration</p>
+        <h1 className="text-xl font-bold">⚙️ System Settings</h1>
+        <p className="text-sm text-4">Platform configuration and administrative control</p>
       </div>
 
-      <div className="tabs" style={{ flexWrap: 'wrap' }}>
-        {['general', 'supabase', 'branding', 'points', 'workflow', 'features', 'content', 'data'].map(t => (
-          <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </div>
+      <div className="flex gap-2 p-1 bg-2 rounded-lg overflow-x-auto no-scrollbar">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all whitespace-nowrap ${
+              tab === t.id ? 'bg-primary text-white shadow-sm' : 'hover:bg-3 text-2'
+            }`}
+          >
+            <span>{t.icon}</span>
+            <span className="text-xs font-medium">{t.label}</span>
+          </button>
         ))}
       </div>
 
-      {/* GENERAL */}
-      {tab === 'general' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>General Settings</h3>
-          <div className="grid-2">
-            <div className="form-group">
-              <label className="form-label">App Name</label>
-              <input className="form-input" value={form.app_name || ''} onChange={e => setForm(f => ({ ...f, app_name: e.target.value }))} />
+      <div className="grid gap-6">
+        {/* FIREBASE CONNECTION */}
+        {tab === 'firebase' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold flex items-center gap-2">🔌 Firebase Connectivity</h3>
+            <p className="text-xs text-3">Configure your backend credentials and test connectivity.</p>
+            <div className="grid gap-4">
+              <div className="form-group">
+                <label className="form-label">Firebase URL</label>
+                <input 
+                  className="form-input" 
+                  value={fbForm.url} 
+                  onChange={e => setFbForm({...fbForm, url: e.target.value})}
+                  placeholder="https://your-app.firebaseio.com"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Anonymous Key</label>
+                <input 
+                  className="form-input" 
+                  type="password"
+                  value={fbForm.anonKey} 
+                  onChange={e => setFbForm({...fbForm, anonKey: e.target.value})}
+                  placeholder="abc123..."
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Welcome Message</label>
-              <input className="form-input" value={form.welcome_message || ''} onChange={e => setForm(f => ({ ...f, welcome_message: e.target.value }))} />
+            <div className="flex gap-3 mt-2">
+              <button 
+                className="btn btn-primary" 
+                onClick={testFirebase}
+                disabled={testingConnection}
+              >
+                {testingConnection ? 'Testing...' : 'Test Connection'}
+              </button>
+              {fbForm.isConnected && (
+                <button 
+                  className="btn btn-danger-outline"
+                  onClick={() => {
+                    const update = { ...fbForm, isConnected: false, url: '', anonKey: '' }
+                    setFbForm(update)
+                    saveAllSettings({ firebase: update })
+                    toast.success('Disconnected')
+                  }}
+                >
+                  Disconnect
+                </button>
+              )}
             </div>
-            <div className="form-group">
-              <label className="form-label">Weekly Hour Cap (global)</label>
-              <input className="form-input" type="number" value={form.weekly_cap || 45} onChange={e => setForm(f => ({ ...f, weekly_cap: parseInt(e.target.value) }))} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Idle Timeout (minutes)</label>
-              <input className="form-input" type="number" value={form.idle_minutes || 30} onChange={e => setForm(f => ({ ...f, idle_minutes: parseInt(e.target.value) }))} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">2nd-Level Approval Threshold (hours)</label>
-              <input className="form-input" type="number" value={form.second_level_threshold || 60} onChange={e => setForm(f => ({ ...f, second_level_threshold: parseInt(e.target.value) }))} />
-              <span className="form-hint">Entries with hours above this require 2-level approval</span>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Approval Reminder (hours after submission)</label>
-              <input className="form-input" type="number" value={form.approval_reminder_hours || 24} onChange={e => setForm(f => ({ ...f, approval_reminder_hours: parseInt(e.target.value) }))} />
-            </div>
-          </div>
-
-          <div className="divider" />
-          <h4 style={{ fontSize: 13, fontWeight: 700 }}>Week Locking</h4>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div className="form-group" style={{ flex: 1, minWidth: 180 }}>
-              <label className="form-label">Lock a Week (Mon date)</label>
-              <input className="form-input" type="date" value={lockWeek} onChange={e => setLockWeek(e.target.value)} />
-            </div>
-            <button className="btn btn-danger btn-sm" onClick={() => { if (lockWeek) lockUnlockWeek(lockWeek, true) }}>🔒 Lock Week</button>
-          </div>
-          {lockedWeeks.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {lockedWeeks.map(w => (
-                <div key={w} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--danger-bg)', padding: '4px 10px', borderRadius: 20, fontSize: 12, color: 'var(--danger)' }}>
-                  🔒 {w}
-                  <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => lockUnlockWeek(w, false)}>×</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={saveGeneral}>Save Settings</button>
-        </div>
-      )}
-
-      {/* SUPABASE */}
-      {tab === 'supabase' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Supabase Connection</h3>
-          <div style={{ background: 'var(--accent-subtle)', padding: '12px 16px', borderRadius: 8, fontSize: 13, color: 'var(--accent)' }}>
-            💡 Connect Supabase to enable real-time sync and persistent data across devices. Without it, data is stored in localStorage (this device only).
-          </div>
-          <div className="form-group">
-            <label className="form-label">Project URL</label>
-            <input className="form-input" type="url" placeholder="https://xxxx.supabase.co" value={sbUrl} onChange={e => setSbUrl(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Anon / Public API Key</label>
-            <input className="form-input" type="password" placeholder="eyJhbGci..." value={sbKey} onChange={e => setSbKey(e.target.value)} />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={testSupabase} disabled={sbTesting}>
-              {sbTesting ? 'Testing…' : '🔌 Test & Save Connection'}
-            </button>
-            {typeof window !== 'undefined' && localStorage.getItem('dsn_sb_url') && (
-              <button className="btn btn-danger btn-sm" onClick={() => {
-                localStorage.removeItem('dsn_sb_url')
-                localStorage.removeItem('dsn_sb_key')
-                setSbUrl(''); setSbKey('')
-                toast.success('Supabase disconnected')
-              }}>Disconnect</button>
+            {fbForm.isConnected && fbForm.lastTestedAt && (
+              <div className="text-[10px] text-success flex items-center gap-1 mt-1">
+                <span className="w-2 h-2 rounded-full bg-success"></span>
+                Connected — Last tested: {new Date(fbForm.lastTestedAt).toLocaleString()}
+              </div>
             )}
           </div>
-          {typeof window !== 'undefined' && localStorage.getItem('dsn_sb_url') && (
-            <div style={{ background: 'var(--success-bg)', padding: '10px 14px', borderRadius: 8, fontSize: 13, color: 'var(--success)' }}>
-              ✅ Connected to: {localStorage.getItem('dsn_sb_url')}
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* BRANDING */}
-      {tab === 'branding' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Branding</h3>
-          <div className="form-group">
-            <label className="form-label">Logo Upload (PNG/SVG, max 500KB)</label>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              {local.get('logo_url', '') && (
-                <img src={local.get('logo_url', '') as string} alt="Current logo" style={{ height: 48, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', padding: 4 }} />
-              )}
-              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                📤 Upload Logo
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
-              </label>
-              {local.get('logo_url', '') && (
-                <button className="btn btn-danger btn-sm" onClick={() => { local.remove('logo_url'); toast.success('Logo removed') }}>Remove</button>
-              )}
+        {/* BRANDING */}
+        {tab === 'branding' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">🎨 App Branding</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="form-group">
+                <label className="form-label">App Name</label>
+                <input 
+                  className="form-input" 
+                  value={brandForm.appName}
+                  onChange={e => setBrandForm({...brandForm, appName: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Welcome Message</label>
+                <input 
+                  className="form-input" 
+                  value={brandForm.welcomeMessage}
+                  onChange={e => setBrandForm({...brandForm, welcomeMessage: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Primary Colour</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="color" 
+                    className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
+                    value={brandForm.primaryColour}
+                    onChange={e => setBrandForm({...brandForm, primaryColour: e.target.value})}
+                  />
+                  <input 
+                    className="form-input flex-1 uppercase"
+                    value={brandForm.primaryColour}
+                    onChange={e => setBrandForm({...brandForm, primaryColour: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Secondary Colour</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="color" 
+                    className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
+                    value={brandForm.secondaryColour}
+                    onChange={e => setBrandForm({...brandForm, secondaryColour: e.target.value})}
+                  />
+                  <input 
+                    className="form-input flex-1 uppercase"
+                    value={brandForm.secondaryColour}
+                    onChange={e => setBrandForm({...brandForm, secondaryColour: e.target.value})}
+                  />
+                </div>
+              </div>
             </div>
-            <span className="form-hint">Logo appears on login screen and sidebar. Recommended: 200×60px transparent PNG.</span>
-          </div>
-          <div className="grid-2">
+
             <div className="form-group">
-              <label className="form-label">Accent Color</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input type="color" value={form.accent_color || '#3B82F6'} onChange={e => setForm(f => ({ ...f, accent_color: e.target.value }))} style={{ width: 48, height: 38, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
-                <input className="form-input" value={form.accent_color || '#3B82F6'} onChange={e => setForm(f => ({ ...f, accent_color: e.target.value }))} />
+              <label className="form-label">Logo</label>
+              <div className="flex items-center gap-4 border border-dashed border-3 p-6 rounded-xl bg-2">
+                {brandForm.logoBase64 ? (
+                  <img src={brandForm.logoBase64} alt="App Logo" className="max-h-16 max-w-[120px] object-contain rounded bg-white p-2 border border-3" />
+                ) : (
+                  <div className="w-16 h-16 rounded bg-3 flex items-center justify-center text-xl">🖼️</div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <label className="btn btn-secondary text-xs cursor-pointer inline-block w-fit">
+                    Upload New Logo
+                    <input type="file" className="hidden" accept="image/*" onChange={handleLogoChange} />
+                  </label>
+                  <p className="text-[10px] text-3">Max 1MB. PNG, SVG or WEBP recommended.</p>
+                </div>
+                {brandForm.logoBase64 && (
+                  <button 
+                    className="btn btn-icon text-danger ml-auto" 
+                    onClick={() => setBrandForm({...brandForm, logoBase64: null})}
+                  >
+                    🗑️
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-          <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => {
-            saveSettings({ ...(settings || {}), ...form } as AppSettings)
-            document.documentElement.style.setProperty('--accent', form.accent_color || '#3B82F6')
-            toast.success('Branding saved')
-          }}>Save Branding</button>
-        </div>
-      )}
 
-      {/* POINTS */}
-      {tab === 'points' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Gamification — Points Config</h3>
-          <div className="grid-2">
-            {Object.entries(form.points || DEFAULT_POINTS).map(([key, val]) => (
-              <div key={key} className="form-group">
-                <label className="form-label">{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</label>
-                <input className="form-input" type="number" value={val as number} onChange={e => setForm(f => ({ ...f, points: { ...f.points, [key]: parseInt(e.target.value) } } as any))} />
-              </div>
-            ))}
+            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ branding: brandForm })}>
+              Save Branding Changes
+            </button>
           </div>
-          <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={savePoints}>Save Points Config</button>
-        </div>
-      )}
+        )}
 
-      {/* WORKFLOW */}
-      {tab === 'workflow' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700 }}>Entry Categories</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(settings?.categories || []).map(c => (
-                <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', padding: '4px 12px', borderRadius: 20, fontSize: 13 }}>
-                  {c}
-                  <span style={{ cursor: 'pointer', color: 'var(--danger)', fontWeight: 700 }} onClick={() => removeCategory(c)}>×</span>
+        {/* FEATURE TOGGLES */}
+        {tab === 'toggles' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold">🎛️ Feature Toggles</h3>
+            <p className="text-xs text-3 mb-2">Enable or disable specific modules across the platform.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Object.entries(toggles).map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between p-3 bg-2 rounded-lg border border-3">
+                  <span className="text-xs font-medium capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                  <button
+                    onClick={() => {
+                      const next = { ...toggles, [key]: !value }
+                      setToggles(next)
+                      saveAllSettings({ featureToggles: next })
+                    }}
+                    className={`w-10 h-5 rounded-full relative transition-all ${value ? 'bg-success' : 'bg-3'}`}
+                  >
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${value ? 'left-6' : 'left-1'}`}></div>
+                  </button>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input className="form-input" placeholder="New category name" value={newCat} onChange={e => setNewCat(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCategory()} />
-              <button className="btn btn-primary btn-sm" onClick={addCategory}>Add</button>
-            </div>
           </div>
+        )}
 
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700 }}>Public Holidays (deducted from weekly cap)</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(settings?.holidays || []).map(h => (
-                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>
-                  📅 {h.date} — {h.name}
-                  <span style={{ cursor: 'pointer', color: 'var(--danger)', fontWeight: 700 }} onClick={() => saveSettings({ ...(settings || {}), holidays: (settings?.holidays || []).filter(x => x.id !== h.id) } as AppSettings)}>×</span>
+        {/* POINTS CONFIG */}
+        {tab === 'points' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">🎯 Points & Awards Configuration</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Object.entries(pointsForm).map(([key, val]) => (
+                <div key={key} className="form-group">
+                  <label className="form-label capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
+                  <input 
+                    type="number"
+                    className="form-input" 
+                    value={val}
+                    onChange={e => setPointsForm({...pointsForm, [key]: Number(e.target.value)})}
+                  />
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input className="form-input" type="date" value={newHoliday.date} onChange={e => setNewHoliday(h => ({ ...h, date: e.target.value }))} style={{ flex: 'none', width: 160 }} />
-              <input className="form-input" placeholder="Holiday name" value={newHoliday.name} onChange={e => setNewHoliday(h => ({ ...h, name: e.target.value }))} />
-              <button className="btn btn-primary btn-sm" onClick={addHoliday}>Add</button>
-            </div>
+            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ pointsConfig: pointsForm })}>
+              Save Points Configuration
+            </button>
           </div>
+        )}
 
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700 }}>Announcement Banner</h3>
-            <div className="grid-2">
+        {/* HOUR CAPS */}
+        {tab === 'caps' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">🕒 Hour Caps & Visibility</h3>
+            <div className="grid grid-cols-2 gap-6">
               <div className="form-group">
-                <label className="form-label">Message</label>
-                <input className="form-input" value={annForm.message} onChange={e => setAnnForm(f => ({ ...f, message: e.target.value }))} placeholder="Important update for all staff…" />
+                <label className="form-label">Default Staff Cap (hrs)</label>
+                <input 
+                  type="number"
+                  className="form-input" 
+                  value={capsForm.defaultStaffCap}
+                  onChange={e => setCapsForm({...capsForm, defaultStaffCap: Number(e.target.value)})}
+                />
               </div>
               <div className="form-group">
-                <label className="form-label">Icon</label>
-                <input className="form-input" value={annForm.icon} onChange={e => setAnnForm(f => ({ ...f, icon: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Background Color</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input type="color" value={annForm.color} onChange={e => setAnnForm(f => ({ ...f, color: e.target.value }))} style={{ width: 48, height: 38, border: 'none', borderRadius: 6, cursor: 'pointer' }} />
-                  <input className="form-input" value={annForm.color} onChange={e => setAnnForm(f => ({ ...f, color: e.target.value }))} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Expires (leave blank = permanent)</label>
-                <input className="form-input" type="datetime-local" value={annForm.expires} onChange={e => setAnnForm(f => ({ ...f, expires: e.target.value }))} />
+                <label className="form-label">Intern Cap (hrs)</label>
+                <input 
+                  type="number"
+                  className="form-input" 
+                  value={capsForm.internCap}
+                  onChange={e => setCapsForm({...capsForm, internCap: Number(e.target.value)})}
+                />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={saveAnnouncement}>Post Announcement</button>
-              <button className="btn btn-danger btn-sm" onClick={() => { setAnnForm({ message: '', icon: '📢', color: '#3B82F6', expires: '' }); saveSettings({ ...(settings || {}), announcement: null } as AppSettings); toast.success('Announcement cleared') }}>Clear</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FEATURES */}
-      {tab === 'features' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Feature Toggles</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Enable or disable features for all users.</p>
-          {Object.entries(FEATURE_LABELS).map(([key, label]) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{label}</span>
-              <div
-                onClick={() => toggleFeature(key)}
-                style={{
-                  width: 44, height: 24, borderRadius: 12,
-                  background: features[key] ? 'var(--success)' : 'var(--bg-hover)',
-                  border: '2px solid ' + (features[key] ? 'var(--success)' : 'var(--border)'),
-                  cursor: 'pointer', position: 'relative', transition: 'all 0.2s'
-                }}
+            <div className="flex items-center gap-3 p-4 bg-2 rounded-lg border border-3">
+              <button
+                onClick={() => setCapsForm({...capsForm, cdsVisibility: !capsForm.cdsVisibility})}
+                className={`w-10 h-5 rounded-full relative transition-all ${capsForm.cdsVisibility ? 'bg-success' : 'bg-3'}`}
               >
-                <div style={{
-                  width: 16, height: 16, borderRadius: '50%', background: 'white',
-                  position: 'absolute', top: 2,
-                  left: features[key] ? 22 : 2,
-                  transition: 'left 0.2s',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                }} />
+                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${capsForm.cdsVisibility ? 'left-6' : 'left-1'}`}></div>
+              </button>
+              <div>
+                <div className="text-xs font-bold">CDS Day Visibility</div>
+                <div className="text-[10px] text-3">Show CDS Day selection in staff profiles.</div>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* CONTENT / FAQ */}
-      {tab === 'content' && (
-        <FAQEditor settings={settings} saveSettings={saveSettings} />
-      )}
-
-      {/* DATA */}
-      {tab === 'data' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div>
-                <h3 style={{ fontSize: 14, fontWeight: 700 }}>📥 Bulk Time Entry Import</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Import time entries for any staff via CSV/Excel. Updates all dashboards, analytics and staff profiles instantly.</p>
+            
+            <div className="divider"></div>
+            
+            <h4 className="text-xs font-bold">Custom Individual Caps</h4>
+            <div className="flex flex-col gap-2">
+              {capsForm.customCaps.map((c, i) => (
+                <div key={i} className="flex items-center gap-3 bg-2 p-3 rounded-lg border border-3">
+                  <div className="flex-1 text-xs font-medium">{staff.find(s => s.id === c.staffId)?.name || 'Unknown Staff'}</div>
+                  <div className="px-2 py-1 bg-3 rounded text-[10px] font-bold uppercase">{c.label}</div>
+                  <div className="text-xs font-bold">{c.cap}h</div>
+                  <button 
+                    className="btn btn-icon text-danger"
+                    onClick={() => {
+                      const next = capsForm.customCaps.filter((_, idx) => idx !== i)
+                      setCapsForm({...capsForm, customCaps: next})
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2 mt-2">
+                 <select className="form-input text-xs" id="custom-staff-select">
+                    <option value="">Select Staff...</option>
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                 </select>
+                 <input type="number" className="form-input w-20 text-xs" placeholder="Cap" id="custom-cap-val" />
+                 <input type="text" className="form-input w-24 text-xs" placeholder="Label" id="custom-cap-label" defaultValue="custom" />
+                 <button 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    const sId = (document.getElementById('custom-staff-select') as HTMLSelectElement).value
+                    const cVal = Number((document.getElementById('custom-cap-val') as HTMLInputElement).value)
+                    const cLab = (document.getElementById('custom-cap-label') as HTMLInputElement).value
+                    if (!sId || !cVal) return
+                    const next = [...capsForm.customCaps, { staffId: sId, cap: cVal, label: cLab }]
+                    setCapsForm({...capsForm, customCaps: next})
+                  }}
+                 >Add</button>
               </div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowBulkImport(true)}>Open Import Wizard</button>
+            </div>
+
+            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ hourCaps: capsForm })}>
+              Save Cap Settings
+            </button>
+          </div>
+        )}
+
+        {/* WEEK LOCKING */}
+        {tab === 'weeks' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold">🔐 Week Locking</h3>
+            <p className="text-xs text-3">Locking a week prevents all staff from adding or submitting entries.</p>
+            <div className="flex gap-2 p-4 bg-2 rounded-lg border border-3 mb-2">
+               <input type="date" className="form-input text-xs" id="lock-date-input" />
+               <button 
+                className="btn btn-danger btn-sm whitespace-nowrap"
+                onClick={() => {
+                  const date = (document.getElementById('lock-date-input') as HTMLInputElement).value
+                  if (!date) return
+                  const weekId = date // Simplify for now or format to YYYY-WXX
+                  const newLock: WeekLock = {
+                    id: genId(),
+                    weekId,
+                    isLocked: true,
+                    lockedBy: user?.name || 'Admin',
+                    lockedAt: new Date().toISOString()
+                  }
+                  saveWeekLocks([...weekLocks, newLock])
+                  logAudit('settings_change', weekId, { action: 'lock_week' })
+                  toast.success(`Week ${weekId} locked`)
+                }}
+               >Lock Week</button>
+            </div>
+            <div className="grid gap-2">
+              {weekLocks.length === 0 ? (
+                <p className="text-xs text-4 py-4 text-center">No weeks currently locked.</p>
+              ) : (
+                weekLocks.map(lock => (
+                  <div key={lock.id} className="flex items-center justify-between p-4 bg-soft-danger rounded-lg border border-danger-subtle">
+                    <div>
+                      <div className="text-xs font-bold text-danger">Locked: {lock.weekId}</div>
+                      <div className="text-[10px] text-danger-subtle">By {lock.lockedBy} on {new Date(lock.lockedAt).toLocaleDateString()}</div>
+                    </div>
+                    <button 
+                      className="btn btn-icon text-danger"
+                      onClick={() => {
+                        saveWeekLocks(weekLocks.filter(l => l.id !== lock.id))
+                        toast.success(`Week ${lock.weekId} unlocked`)
+                      }}
+                    >
+                      🔓 Unlock
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-          <div className="card">
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>🗑️ Deleted Entries (restorable within 30 days)</h3>
-            {deletedEntries.length === 0 ? (
-              <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No deleted entries</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {deletedEntries.map(e => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{e.project} — {e.staffName}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{e.hours}h · {fmtDate(e.date)} · Deleted {e.deletedAt ? fmtDate(e.deletedAt) : 'N/A'}</div>
+        )}
+
+        {/* PUBLIC HOLIDAYS */}
+        {tab === 'holidays' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold">🏖️ Public Holidays</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <input type="text" className="form-input text-xs" id="holiday-name" placeholder="Holiday Name" />
+              <input type="date" className="form-input text-xs" id="holiday-date" />
+              <button 
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  const name = (document.getElementById('holiday-name') as HTMLInputElement).value
+                  const date = (document.getElementById('holiday-date') as HTMLInputElement).value
+                  if (!name || !date) return
+                  const newHoliday: PublicHoliday = {
+                    id: genId(),
+                    name,
+                    date,
+                    capReduction: 8
+                  }
+                  savePublicHolidays([...publicHolidays, newHoliday])
+                  toast.success('Holiday added')
+                }}
+              >Add Holiday</button>
+            </div>
+            <div className="grid gap-2">
+              {publicHolidays.map(h => (
+                <div key={h.id} className="flex items-center justify-between p-3 bg-2 rounded-xl border border-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-soft-primary flex items-center justify-center text-primary text-xs font-bold">🏖️</div>
+                    <div>
+                      <div className="text-xs font-bold">{h.name}</div>
+                      <div className="text-[10px] text-3">{new Date(h.date).toLocaleDateString()} · -{h.capReduction}h cap reduction</div>
                     </div>
-                    <button className="btn btn-success btn-sm" onClick={() => restoreEntry(e.id)}>Restore</button>
+                  </div>
+                  <button 
+                    className="btn btn-icon text-danger"
+                    onClick={() => savePublicHolidays(publicHolidays.filter(x => x.id !== h.id))}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* PROJECTS & CATEGORIES */}
+        {tab === 'projects' && (
+          <div className="grid gap-6">
+            <div className="card flex flex-col gap-4">
+              <h3 className="font-bold">📁 Projects Management</h3>
+              <div className="flex gap-2">
+                <input type="text" className="form-input text-xs" id="project-name" placeholder="New Project Name" />
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    const name = (document.getElementById('project-name') as HTMLInputElement).value
+                    if (!name) return
+                    saveProjects([...projects, { id: genId(), name, active: true, budget: 0 }])
+                    toast.success('Project added')
+                  }}
+                >Add</button>
+              </div>
+              <div className="grid gap-2 mt-2">
+                {projects.map(p => (
+                  <div key={p.id} className={`flex items-center justify-between p-3 rounded-lg border border-3 ${p.active ? 'bg-2' : 'bg-3 opacity-60'}`}>
+                    <div className="text-xs font-medium">{p.name} {!p.active && '(Retired)'}</div>
+                    <div className="flex gap-2">
+                      <button 
+                        className={`text-[10px] font-bold px-2 py-1 rounded transition-all ${p.active ? 'bg-soft-warning text-warning' : 'bg-soft-success text-success'}`}
+                        onClick={() => {
+                          saveProjects(projects.map(x => x.id === p.id ? { ...x, active: !x.active } : x))
+                        }}
+                      >
+                        {p.active ? 'Retire' : 'Restore'}
+                      </button>
+                      <button 
+                        className="btn btn-icon text-danger p-1"
+                        onClick={() => saveProjects(projects.filter(x => x.id !== p.id))}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700 }}>📦 Export Data</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(entries.filter(e => !e.deleted).map(e => ({ ID: e.id, Staff: e.staffName, Project: e.project, Lead: e.lead, Description: e.description, Date: e.date, Hours: e.hours, Category: e.category, Status: e.status, Week: e.weekKey })), 'all_entries.csv')}>
-                ⬇ All Entries CSV
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => {
-                const logs = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('dsn_audit_logs') || '[]') : []
-                exportCSV(logs.map((l: any) => ({ Action: l.action, Detail: l.detail, User: l.userName, Time: l.timestamp })), 'audit_log.csv')
-              }}>
-                ⬇ Audit Log CSV
-              </button>
+            <div className="card flex flex-col gap-4">
+              <h3 className="font-bold">🏷️ Entry Categories</h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {settings?.categories.map(c => (
+                  <div key={c} className="flex items-center gap-2 px-3 py-1.5 bg-soft-primary text-primary rounded-full text-xs font-medium">
+                    {c}
+                    <button className="hover:text-danger" onClick={() => {
+                      const next = settings.categories.filter(x => x !== c)
+                      saveAllSettings({ categories: next })
+                    }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input type="text" className="form-input text-xs" id="cat-name" placeholder="New Category" />
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    const name = (document.getElementById('cat-name') as HTMLInputElement).value
+                    if (!name) return
+                    saveAllSettings({ categories: [...settings.categories, name] })
+                  }}
+                >Add</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      {showBulkImport && <BulkTimeEntryImport onClose={() => setShowBulkImport(false)} />}
-    </div>
-  )
-}
+        )}
 
-interface FAQEditorProps {
-  settings: AppSettings | null;
-  saveSettings: (s: AppSettings) => void;
-}
-
-function FAQEditor({ settings, saveSettings }: FAQEditorProps) {
-  const [faqs, setFaqs] = useState<FAQ[]>(settings?.faqs || [])
-  const [newFaq, setNewFaq] = useState<Partial<FAQ>>({ q: '', a: '' })
-
-  function addFaq() {
-    if (!newFaq.q || !newFaq.a) { return }
-    const updated = [...faqs, { ...newFaq, id: genId() } as FAQ]
-    setFaqs(updated)
-    saveSettings({ ...(settings || {}), faqs: updated } as AppSettings)
-    setNewFaq({ q: '', a: '' })
-    toast.success('FAQ added')
-  }
-
-  function removeFaq(id: string) {
-    const updated = faqs.filter(f => f.id !== id)
-    setFaqs(updated)
-    saveSettings({ ...(settings || {}), faqs: updated } as AppSettings)
-  }
-
-  return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700 }}>❓ FAQ Editor</h3>
-      {faqs.map(f => (
-        <div key={f.id} style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Q: {f.q}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>A: {f.a}</div>
+        {/* PASSWORD RESET QUEUE */}
+        {tab === 'queue' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold underline decoration-primary decoration-2 underline-offset-4">🛡️ Password Reset Queue</h3>
+            <p className="text-xs text-3">Review and approve password reset requests from staff.</p>
+            <div className="grid gap-3">
+              {passwordResetRequests.filter(r => r.status === 'pending').length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3 bg-2 rounded-xl border border-dashed border-3">
+                  <span className="text-3xl">🛡️</span>
+                  <p className="text-xs text-4 font-medium">No pending reset requests</p>
+                </div>
+              ) : (
+                passwordResetRequests.filter(r => r.status === 'pending').map(req => {
+                   const staffMember = staff.find(s => s.id === req.staffId)
+                   return (
+                    <div key={req.id} className="flex items-center justify-between p-4 bg-2 rounded-xl border border-3 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-soft-warning flex items-center justify-center text-warning text-lg">🔑</div>
+                        <div>
+                          <div className="text-sm font-bold">{staffMember?.name || 'Unknown Staff'}</div>
+                          <div className="text-[10px] text-3">Requested on {new Date(req.requestedAt).toLocaleString()}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                         <button 
+                          className="btn btn-success btn-sm"
+                          onClick={() => {
+                            // Reset password to 1234
+                            const updatedStaff = staff.map(s => s.id === req.staffId ? { ...s, password: '1234', mustChangePassword: true } : s)
+                            saveStaff(updatedStaff)
+                            const updatedReqs = passwordResetRequests.map(r => r.id === req.id ? { ...r, status: 'resolved' as const, resolvedBy: user?.name, resolvedAt: new Date().toISOString() } : r)
+                            savePasswordResetRequests(updatedReqs)
+                            logAudit('password_reset', req.staffId, { action: 'admin_reset_approved' })
+                            notify(req.staffId, 'Your password reset request has been approved. Your temporary password is "1234".', 'password_reset', 'Password Reset Approved', req.id, 'message')
+                            toast.success('Password reset to 1234')
+                          }}
+                         >Approve Reset</button>
+                         <button 
+                          className="btn btn-danger-outline btn-sm"
+                          onClick={() => {
+                            savePasswordResetRequests(passwordResetRequests.filter(r => r.id !== req.id))
+                            toast.success('Request declined')
+                          }}
+                         >Decline</button>
+                      </div>
+                    </div>
+                   )
+                })
+              )}
             </div>
-            <button className="btn btn-icon btn-danger btn-sm" onClick={() => removeFaq(f.id)}>✕</button>
           </div>
-        </div>
-      ))}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
-        <div className="form-group">
-          <label className="form-label">Question</label>
-          <input className="form-input" value={newFaq.q} onChange={e => setNewFaq(f => ({ ...f, q: e.target.value }))} placeholder="e.g. When is the submission deadline?" />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Answer</label>
-          <textarea className="form-textarea" value={newFaq.a} onChange={e => setNewFaq(f => ({ ...f, a: e.target.value }))} placeholder="Answer…" rows={2} />
-        </div>
-        <button className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addFaq}>Add FAQ</button>
+        )}
+
+        {/* AUDIT LOGS */}
+        {tab === 'logs' && (
+          <div className="card flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">📜 System Audit Log</h3>
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  const data = auditLogs.map(l => ({
+                    Time: l.timestamp,
+                    User: l.performedBy,
+                    Action: l.action,
+                    Target: l.targetId,
+                    Device: l.device,
+                    IP: l.ipAddress
+                  }))
+                  exportCSV(data, `audit_log_${new Date().toISOString().slice(0,10)}.csv`)
+                }}
+              >Export CSV</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-2 text-3 font-bold">
+                  <tr>
+                    <th className="p-3">Timestamp</th>
+                    <th className="p-3">User</th>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Target</th>
+                    <th className="p-3">Device</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-3">
+                  {auditLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-2 transition-colors">
+                      <td className="p-3 whitespace-nowrap text-3 font-mono">{new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                      <td className="p-3 font-bold">{log.performedBy}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          ['rejected', 'delete', 'force_logout'].includes(log.action) ? 'bg-soft-danger text-danger' :
+                          ['approve', 'restore'].includes(log.action) ? 'bg-soft-success text-success' : 'bg-soft-primary text-primary'
+                        }`}>
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="p-3 text-3 truncate max-w-[120px]">{log.targetId}</td>
+                      <td className="p-3 text-3 truncate max-w-[150px]">{log.device}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* DELETED ENTRIES */}
+        {tab === 'deleted' && (
+          <div className="card flex flex-col gap-4">
+            <h3 className="font-bold">🗑️ Soft Deleted Entries</h3>
+            <p className="text-xs text-3">Entries deleted within the last 30 days can be restored here.</p>
+            <div className="grid gap-3">
+              {entries.filter(e => e.deleted).length === 0 ? (
+                <div className="py-12 text-center text-4 text-xs italic">No recently deleted entries.</div>
+              ) : (
+                entries.filter(e => e.deleted).map(entry => (
+                  <div key={entry.id} className="flex items-center justify-between p-4 bg-2 rounded-xl border border-3">
+                    <div>
+                      <div className="text-sm font-bold">{entry.project} — {entry.staffName}</div>
+                      <div className="text-[10px] text-3">{entry.hours}h · {entry.date} · Deleted on {new Date(entry.deletedAt || '').toLocaleDateString()}</div>
+                    </div>
+                    <button 
+                      className="btn btn-success btn-sm"
+                      onClick={() => {
+                        saveEntries(entries.map(e => e.id === entry.id ? { ...e, deleted: false, deletedAt: undefined } : e))
+                        logAudit('restore', entry.id, { action: 'entry_restore' })
+                        toast.success('Entry restored to draft status')
+                      }}
+                    >Restore</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

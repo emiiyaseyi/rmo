@@ -21,7 +21,7 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff } = useApp()
+  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
@@ -142,6 +142,7 @@ export default function LeaderboardPage() {
     
     const updated = streakRecoveries.map(r => r.id === reqId ? { ...r, status, reviewedBy: user?.name, reviewedAt: new Date().toISOString() } : r)
     saveStreakRecoveries(updated)
+    notify(req.staffId, `Your streak recovery request was ${status}.`, status === 'approved' ? 'streak_recovery_approved' : 'streak_recovery_declined', `Streak Recovery ${status === 'approved' ? 'Approved' : 'Declined'}`, reqId, 'message')
     
     if (status === 'approved') {
       const sIdx = staff.findIndex(s => s.id === req.staffId)
@@ -158,6 +159,8 @@ export default function LeaderboardPage() {
   function fulfillRedeem(id: string) {
     const updated = redeems.map(r => r.id === id ? { ...r, status: 'fulfilled' as const, fulfilledAt: new Date().toISOString() } : r)
     saveRedeems(updated)
+    const r = redeems.find(x => x.id === id)
+    if (r) notify(r.staffId, `Your redemption for ${r.rewardName} has been fulfilled!`, 'redemption_fulfilled', 'Reward Fulfilled', id, 'message')
     toast.success('Reward fulfilled!')
   }
 
@@ -255,7 +258,9 @@ export default function LeaderboardPage() {
                         </td>
                         <td>
                           <div className="flex items-center gap-2">
-                            <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>{s.name?.[0]}</div>
+                             <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>
+                                {s.profilePhoto?.base64 || s.photo ? <img src={s.profilePhoto?.base64 || s.photo || ''} alt="" /> : s.name?.[0]}
+                             </div>
                             <span className="font-bold">{s.name}{isMe ? ' (You)' : ''}</span>
                           </div>
                           <div className="text-4 text-xs">{s.department}</div>

@@ -2,12 +2,20 @@
 import React, { useState } from 'react'
 import { local } from '../../lib/utils'
 import toast from 'react-hot-toast'
+import PageHeader from '../common/PageHeader'
+import { Search } from 'lucide-react'
 
 export default function HelpPage() {
-  const [openId, setOpenId] = useState(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  const [search, setSearch] = useState('')
   const faqItems = local.get('faq_items', DEFAULT_FAQ)
+
+  const filteredFaqs = faqItems.filter((f: any) => 
+    f.q.toLowerCase().includes(search.toLowerCase()) || 
+    f.a.toLowerCase().includes(search.toLowerCase())
+  )
 
   function handleForgot(e) {
     e.preventDefault()
@@ -22,11 +30,24 @@ export default function HelpPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 720 }}>
-      <div>
-        <h1 style={{ fontSize: 20, fontWeight: 800 }}>❓ Help & FAQ</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Quick answers to common questions</p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 800 }}>
+      <PageHeader 
+        title="Help & FAQ"
+        icon="❓"
+        subtitle="Quick answers to common questions"
+        actions={
+          <div style={{ position: 'relative', width: 280 }}>
+            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
+            <input 
+              className="form-input"
+              style={{ paddingLeft: 38 }}
+              placeholder="Search help articles..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+        }
+      />
 
       {/* Forgot PIN card */}
       <div className="card" style={{ borderColor: 'var(--accent)', borderWidth: 1.5 }}>
@@ -55,8 +76,19 @@ export default function HelpPage() {
       </div>
 
       {/* FAQ */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {faqItems.map((item, i) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+          <span>Frequently Asked Questions</span>
+          {search && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-3)' }}>{filteredFaqs.length} results</span>}
+        </div>
+        
+        {filteredFaqs.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--bg-elevated)', borderRadius: 12, color: 'var(--text-3)' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>No matching help articles found</div>
+            <div style={{ fontSize: 12 }}>Try searching for simpler keywords like "PIN" or "hours"</div>
+          </div>
+        ) : filteredFaqs.map((item: any, i: number) => (
           <div
             key={item.id || i}
             style={{

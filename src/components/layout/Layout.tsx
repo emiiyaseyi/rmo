@@ -15,26 +15,30 @@ interface NavItem {
   icon: string;
   roles: string[];
   badge?: string;
+  isHeader?: boolean;
 }
 
 function getNavItems(role: string): NavItem[] {
   const all: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'owner', 'admin'] },
-    { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'owner', 'admin'] },
-    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['owner', 'admin'], badge: 'approvals' },
-    { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['owner', 'admin'] },
-    { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'owner', 'admin'] },
-    { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'owner', 'admin'], badge: 'messages' },
-    { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['owner', 'admin'] },
-    { id: 'staff', label: 'Staff', icon: '👥', roles: ['admin'] },
-    { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
-    { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
-    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin'] },
-    { id: 'backend', label: 'Backend', icon: '🔧', roles: ['admin'] },
+    { id: 'work_header', label: 'MY WORK', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
+    { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'owner', 'admin', 'team_lead'] },
+    { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'owner', 'admin', 'team_lead'] },
+    { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'] },
+    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['owner', 'admin', 'team_lead'], badge: 'approvals' },
 
-    { id: 'settings', label: 'Settings', icon: '⚙️', roles: ['admin'] },
-    { id: 'profile', label: 'My Profile', icon: '👤', roles: ['staff', 'team_lead', 'admin', 'super_admin'] },
-    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin', 'super_admin'] },
+    { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
+    { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['owner', 'admin', 'team_lead'] },
+    { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['owner', 'admin', 'team_lead'] },
+    { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'owner', 'admin', 'team_lead'] },
+    { id: 'staff', label: 'Staff Directory', icon: '👥', roles: ['admin', 'super_admin', 'owner'] },
+    { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin', 'super_admin', 'owner'] },
+    { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin', 'super_admin', 'owner'] },
+    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin', 'super_admin', 'owner'] },
+
+    { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'], isHeader: true },
+    { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'owner', 'admin', 'team_lead'], badge: 'messages' },
+    { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin', 'super_admin', 'owner'] },
+    { id: 'backend', label: 'Backend Docs', icon: '🔧', roles: ['admin', 'super_admin', 'owner'] },
   ]
   return all.filter(n => n.roles.includes(role))
 }
@@ -50,9 +54,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
-  const userRef = useRef<HTMLDivElement>(null)
 
   // Close sidebar on navigation (mobile)
   useEffect(() => { if (isMobile) setSidebarOpen(false) }, [page, isMobile])
@@ -63,7 +65,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
-      if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -71,8 +72,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
   const navItems = getNavItems(user?.role || 'staff').filter(item => {
     const toggleKey = item.id === 'leaderboard' ? 'leaderboard' : 
-                     item.id === 'messages' ? 'messaging' :
-                     item.id === 'org_chart' ? 'orgChart' :
+                     item.id === 'messages' ? 'messages' :
+                     item.id === 'org_chart' ? 'org_chart' :
                      item.id === 'analytics' ? 'analytics' : null
     if (toggleKey && settings?.featureToggles) {
       return (settings.featureToggles as any)[toggleKey] !== false
@@ -151,8 +152,33 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </div>
 
           {/* Nav */}
-          <nav style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-            {navItems.map(item => {
+          <nav style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column' }}>
+            {navItems.map((item, idx) => {
+              if (item.isHeader) {
+                // Peek next to see if there are any items in this section for this user
+                const nextItems = navItems.slice(idx + 1)
+                const sectionItems = []
+                for (const next of nextItems) {
+                  if (next.isHeader) break
+                  sectionItems.push(next)
+                }
+                if (sectionItems.length === 0) return null
+                
+                return (
+                  <div key={item.id} style={{ 
+                    fontSize: 10, 
+                    fontWeight: 700, 
+                    color: 'var(--text-4)', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.08em',
+                    padding: '16px 12px 6px',
+                    marginTop: idx === 0 ? 0 : 4
+                  }}>
+                    {item.label}
+                  </div>
+                )
+              }
+              
               const badge = item.badge === 'approvals' ? pendingCount : item.badge === 'messages' ? unreadMsg : 0
               const active = page === item.id
               return (
@@ -161,16 +187,17 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   onClick={() => setPage(item.id)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                    padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
                     color: active ? 'var(--accent)' : 'var(--text-2)',
                     background: active ? 'var(--accent-subtle)' : 'transparent',
                     fontSize: 13, fontWeight: 500, marginBottom: 2,
-                    transition: 'background 0.12s, color 0.12s',
+                    transition: 'all 0.12s ease',
+                    border: active ? '1px solid var(--accent-subtle)' : '1px solid transparent'
                   }}
                   onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)' }}
                   onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
                 >
-                  <span style={{ fontSize: 16, width: 20, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {badge > 0 && (
                     <span style={{ background: 'var(--danger)', color: 'white', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{badge}</span>
@@ -180,21 +207,51 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
             })}
           </nav>
 
-          {/* User card */}
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          {/* User card & Toggle */}
+          <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>{online ? '🟢 Online' : '🔴 Offline'}</div>
+              <button 
+                onClick={toggleDark}
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                {darkMode ? <Sun size={12} /> : <Moon size={12} />}
+                <span style={{ fontSize: 10, fontWeight: 600 }}>{darkMode ? 'Light' : 'Dark'}</span>
+              </button>
+            </div>
+            
             <div
               onClick={() => setPage('profile')}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.12s' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', transition: 'background 0.12s', background: page === 'profile' ? 'var(--bg-elevated)' : 'transparent' }}
+              onMouseEnter={e => { if (page !== 'profile') e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { if (page !== 'profile') e.currentTarget.style.background = 'transparent' }}
             >
               <div className="avatar avatar-sm" style={{ background: avatarColor(user?.name || ''), fontSize: 10, flexShrink: 0 }}>
                 {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
                 <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'capitalize' }}>{user?.jobTitle || user?.role?.replace('_', ' ')}</div>
               </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'owner') && (
+                <button 
+                  className="btn btn-secondary btn-sm" 
+                  onClick={() => setPage('settings')}
+                  style={{ flex: 1, background: 'transparent', borderColor: 'var(--border)' }}
+                >
+                  ⚙️ Settings
+                </button>
+              )}
+              <button 
+                className="btn btn-secondary btn-sm" 
+                onClick={logout}
+                style={{ flex: 1, background: 'transparent', borderColor: 'var(--border)', color: 'var(--danger)' }}
+              >
+                Sign Out 🚪
+              </button>
             </div>
           </div>
         </aside>
@@ -216,21 +273,10 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               </h2>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {/* Online indicator */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: online ? 'var(--success)' : 'var(--danger)' }}>
-                {online ? <Wifi size={13} /> : <WifiOff size={13} />}
-                {!isMobile && <span>{online ? 'Online' : 'Offline'}</span>}
-              </div>
-
-              {/* Dark mode */}
-              <button className="btn btn-icon btn-secondary btn-sm" onClick={toggleDark} title="Toggle theme">
-                {darkMode ? <Sun size={15} /> : <Moon size={15} />}
-              </button>
-
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               {/* Notifications */}
               <div style={{ position: 'relative' }} ref={notifRef}>
-                <button className="btn btn-icon btn-secondary btn-sm" style={{ position: 'relative' }} onClick={() => { setNotifOpen(v => !v); setUserMenuOpen(false) }}>
+                <button className="btn btn-icon btn-secondary btn-sm" style={{ position: 'relative' }} onClick={() => setNotifOpen(v => !v)}>
                   <Bell size={15} />
                   {unreadCount > 0 && (
                     <span style={{ position: 'absolute', top: -2, right: -2, background: 'var(--danger)', color: 'white', fontSize: 9, fontWeight: 700, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -250,10 +296,10 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                       const handleClick = () => {
                         if (!n.read) markRead(n.id)
                         let targetPage = n.linkedType === 'entry' ? 'approvals' :
-                                         n.linkedType === 'leave' ? 'staff' :
+                                         n.linkedType === 'leave' ? 'profile' :
                                          n.linkedType === 'message' ? 'messages' :
                                          n.linkedId ? 'dashboard' : null
-                        if (targetPage) setPage(targetPage)
+                        if (targetPage) setPage(targetPage as any)
                         setNotifOpen(false)
                       }
                       return (
@@ -268,28 +314,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                         </div>
                       )
                     })}
-                  </div>
-                )}
-              </div>
-
-              {/* User menu */}
-              <div style={{ position: 'relative' }} ref={userRef}>
-                <button
-                  onClick={() => { setUserMenuOpen(v => !v); setNotifOpen(false) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 9px', cursor: 'pointer' }}
-                >
-                  <div className="avatar avatar-sm" style={{ background: avatarColor(user?.name || ''), fontSize: 10 }}>
-                    {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
-                  </div>
-                  {!isMobile && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{user?.name?.split(' ')[0]}</span>}
-                  <ChevronDown size={12} color="var(--text-3)" />
-                </button>
-                {userMenuOpen && (
-                  <div className="dropdown-menu" style={{ right: 0 }}>
-                    <div className="dropdown-item" onClick={() => { setPage('profile'); setUserMenuOpen(false) }}>👤 My Profile</div>
-                    <div className="dropdown-item" onClick={() => { setPage('settings'); setUserMenuOpen(false) }}>⚙️ Settings</div>
-                    <div className="dropdown-divider" />
-                    <div className="dropdown-item danger" onClick={() => { logout(); setUserMenuOpen(false) }}>🚪 Sign Out</div>
                   </div>
                 )}
               </div>

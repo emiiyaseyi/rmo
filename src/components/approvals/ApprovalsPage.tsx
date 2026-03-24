@@ -4,7 +4,8 @@ import { useApp } from '../../context/AppContext'
 import { fmtDate, weekRange, genId, logAudit } from '../../lib/utils'
 import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
+import PageHeader from '../common/PageHeader'
 
 interface ApprovalModalProps {
   entry: Entry;
@@ -166,9 +167,10 @@ function DelegationModal({ onSave, onClose, taskOwners }: DelegationModalProps) 
 }
 
 export default function ApprovalsPage() {
-  const { user, staff, entries, saveEntries, settings, notify, awardPoints, approvalDelegations, saveApprovalDelegations } = useApp()
-  const [tab, setTab] = useState<string>('pending')
+  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations } = useApp()
+  const [tab, setTab] = useState<string>('pending') // pending, history, delegations, outstanding
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterDept, setFilterDept] = useState<string>('')
   const [filterWeek, setFilterWeek] = useState<string>('')
   const [showDelegationModal, setShowDelegationModal] = useState(false)
@@ -478,12 +480,65 @@ export default function ApprovalsPage() {
   const displayPending = getFilteredPending()
   const taskOwners = staff.filter(s => ['team_lead', 'admin', 'super_admin'].includes(s.role) && s.id !== user?.id)
 
+  function handleBulkApprove() {
+    if (selectedIds.length === 0) return
+    if (!confirm(`Are you sure you want to approve ${selectedIds.length} entries?`)) return
+
+    const now = new Date().toISOString()
+    const updatedEntries = entries.map(e => {
+      if (selectedIds.includes(e.id)) {
+        const history: ApprovalHistoryEntry = {
+          id: genId(),
+          reviewerId: user?.id || '',
+          reviewerName: user?.name || '',
+          reviewerRole: user?.role || '',
+          action: 'approved',
+          timestamp: now,
+          // The original code had `status: 'approved'` here, which is not part of ApprovalHistoryEntry type.
+          // Removing it to maintain type correctness.
+        }
+
+        // Award points
+        awardPoints(e.staffId, 5, 'Submission Approved', e.weekKey)
+
+        // Notify
+        notify(e.staffId, `Your timesheet for ${e.project} has been approved`, 'approval', 'Timesheet Approved', e.id, 'entry')
+
+        return {
+          ...e,
+          status: 'approved',
+          approvedBy: user?.id,
+          approvedAt: now,
+          approvalHistory: [...(e.approvalHistory || []), history]
+        }
+      }
+      return e
+    })
+
+    saveEntries(updatedEntries as Entry[])
+    setSelectedIds([])
+    toast.success(`Successfully approved ${selectedIds.length} entries`)
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
-        <h1 style={{ fontSize: 20, fontWeight: 800 }}>Approvals</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Review and action timesheet submissions</p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <PageHeader
+        title="Approvals"
+        icon="✅"
+        subtitle={`${displayPending.length} entries pending your review`}
+        actions={
+          <div style={{ display: 'flex', gap: 10 }}>
+            {selectedIds.length > 0 && (
+              <button className="btn btn-success" onClick={handleBulkApprove}>
+                Approve Selected ({selectedIds.length})
+              </button>
+            )}
+            <div className="btn-secondary btn" style={{ opacity: 0.7, cursor: 'default' }}>
+              Pending: {displayPending.length}
+            </div>
+          </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid-3">
@@ -530,17 +585,11 @@ export default function ApprovalsPage() {
       )}
 
       {/* Tabs */}
-      <div className="tabs">
-        <div className={`tab${tab === 'pending' ? ' active' : ''}`} onClick={() => setTab('pending')}>
-          Pending {pending.length > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>{pending.length}</span>}
-        </div>
-        {isAdmin && (
-          <div className={`tab${tab === '2nd_level' ? ' active' : ''}`} onClick={() => setTab('2nd_level')}>
-            2nd-Level {pending2ndLevel.length > 0 && <span className="badge badge-red" style={{ marginLeft: 6 }}>{pending2ndLevel.length}</span>}
-          </div>
-        )}
-        <div className={`tab${tab === 'history' ? ' active' : ''}`} onClick={() => setTab('history')}>Approval History</div>
-        {isTaskOwner && <div className={`tab${tab === 'delegations' ? ' active' : ''}`} onClick={() => setTab('delegations')}>Delegations</div>}
+      <div className="tabs" style={{ marginBottom: 20 }}>
+        <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending ({displayPending.length})</button>
+        <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>
+        <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
+        {isTaskOwner && <button className={`tab ${tab === 'delegations' ? 'active' : ''}`} onClick={() => setTab('delegations')}>Delegations</button>}
       </div>
 
       {tab === 'pending' && (
@@ -574,6 +623,17 @@ export default function ApprovalsPage() {
                 <table>
                   <thead>
                     <tr>
+                      <th style={{ width: 40 }}>
+                        <button
+                          className="btn btn-icon btn-secondary btn-sm"
+                          onClick={() => {
+                            if (selectedIds.length === displayPending.length) setSelectedIds([])
+                            else setSelectedIds(displayPending.map(e => e.id))
+                          }}
+                        >
+                          {selectedIds.length === displayPending.length && displayPending.length > 0 ? <CheckSquare size={14} /> : <Square size={14} />}
+                        </button>
+                      </th>
                       <th>Staff</th>
                       <th>Dept</th>
                       <th>Project</th>
@@ -591,6 +651,19 @@ export default function ApprovalsPage() {
                       const needsSecondLevel = e.hours >= secondLevelThreshold
                       return (
                         <tr key={e.id} style={{ background: e.status === 'pending_clarification' ? 'rgba(245,158,11,0.05)' : undefined }}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(e.id)}
+                              onChange={() => {
+                                if (selectedIds.includes(e.id)) {
+                                  setSelectedIds(selectedIds.filter(id => id !== e.id))
+                                } else {
+                                  setSelectedIds([...selectedIds, e.id])
+                                }
+                              }}
+                            />
+                          </td>
                           <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                           <td style={{ color: 'var(--text-3)' }}>{s?.department || '—'}</td>
                           <td>{e.project}</td>
@@ -666,6 +739,50 @@ export default function ApprovalsPage() {
             </div>
           )}
         </>
+      )}
+
+      {tab === 'outstanding' && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>⚠️ Outstanding Submissions</h3>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Current Week: <strong>{weekRange(new Date().toISOString().split('T')[0])}</strong></div>
+          </div>
+          
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Staff</th>
+                  <th>Department</th>
+                  <th>Role</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff
+                  .filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted))
+                  .filter(s => !filterDept || s.department === filterDept)
+                  .map(s => (
+                    <tr key={s.id}>
+                      <td style={{ fontWeight: 600 }}>{s.name}</td>
+                      <td>{s.department || '—'}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{s.role?.replace('_', ' ')}</td>
+                      <td style={{ color: 'var(--text-3)' }}>{s.email}</td>
+                      <td><span className="badge badge-gray">Not Submitted</span></td>
+                    </tr>
+                ))}
+                {staff.filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted)).filter(s => !filterDept || s.department === filterDept).length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
+                      🎉 Everyone has submitted!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {tab === 'history' && (

@@ -39,6 +39,7 @@ const PAGE_ROLES: Record<string, string[]> = {
 
   backend: ['admin', 'super_admin'],
   profile: ['staff', 'team_lead', 'admin', 'super_admin'],
+  leave: ['staff', 'team_lead', 'admin', 'super_admin'],
   help: ['staff', 'team_lead', 'admin', 'super_admin'],
 }
 
@@ -98,6 +99,7 @@ export default function Home() {
       case 'dashboard': return <Dashboard setPage={navigate} />
       case 'timesheet': return <TimesheetPage />
       case 'approvals': return <ApprovalsPage />
+      case 'leave': return <ProfilePage initialTab="leave" />
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'messages': return <MessagesPage />
@@ -109,7 +111,7 @@ export default function Home() {
       case 'backend': return <BackendPage />
 
       case 'settings': return <SettingsPage />
-      case 'profile': return <ProfilePage />
+      case 'profile': return <ProfilePage setPage={navigate} />
       case 'help': return <HelpPage />
       default: return <Dashboard setPage={navigate} />
     }

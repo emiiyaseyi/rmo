@@ -52,7 +52,7 @@ export interface ApprovalHistoryEntry {
     action: 'approved' | 'rejected' | 'clarification' | 'correction' | '2nd_level_approved' | '2nd_level_rejected';
     reviewerId: string;
     reviewerName: string;
-    reviewerRole: 'task_owner' | 'admin';
+    reviewerRole: string;
     note?: string;
     timestamp: string;
     correctedHours?: number;
@@ -254,7 +254,10 @@ export interface Announcement {
     message: string;
     icon: string;
     colour: string;
-    expiryDate: string;
+    priority: 'low' | 'medium' | 'high';
+    active: boolean;
+    expiresAt?: string;
+    expiryDate: string; // Keep for compatibility
     createdBy: string;
     dismissedBy: string[];
 }
@@ -441,6 +444,7 @@ export interface AppContextType {
     entries: Entry[];
     messages: AppMessage[];
     messageThreads: MessageThread[];
+    announcements: Announcement[];
     notifications: AppNotification[];
     leaves: Leave[];
     hof: HofEntry[];
@@ -460,6 +464,7 @@ export interface AppContextType {
     saveEntries: (data: Entry[]) => void;
     saveMessages: (data: AppMessage[]) => void;
     saveMessageThreads: (data: MessageThread[]) => void;
+    saveAnnouncements: (data: Announcement[]) => void;
     saveNotifications: (data: AppNotification[]) => void;
     saveLeaves: (data: Leave[]) => void;
     saveHof: (data: HofEntry[]) => void;

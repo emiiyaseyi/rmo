@@ -434,14 +434,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     local.set('messages', data);
     // Sync to Firestore - organized by thread
     data.forEach(msg => {
-      const threadId = msg.threadId || msg.channelId || `dm_${msg.senderId}_${msg.recipientId}`
+      const threadId = msg.threadId || msg.channelId || (msg.recipientId ? `dm_${msg.senderId}_${msg.recipientId}` : '')
       if (threadId) {
-        setDoc(doc(db, 'messages', threadId, 'messages', msg.id), {
-          ...msg,
-          content: msg.text,
-          readBy: msg.read,
-          sentAt: msg.createdAt
-        }, { merge: true }).catch(() => {})
+        // Remove undefined fields for Firebase compatibility
+        const cleanMsg = Object.fromEntries(Object.entries(msg).filter(([_, v]) => v !== undefined))
+        setDoc(doc(db, 'messages', threadId, 'messages', msg.id), cleanMsg, { merge: true }).catch(err => {
+          if (!err.message?.includes('id-token-expired')) console.error('Failed to sync message:', err)
+        })
       }
     })
   }

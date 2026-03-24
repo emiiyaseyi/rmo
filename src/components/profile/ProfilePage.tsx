@@ -5,9 +5,14 @@ import { genId, avatarColor, initials, BADGES, getWeekKey, weekRange, local } fr
 import { Staff, Entry, Leave, Template, AppSettings } from '../../types'
 import toast from 'react-hot-toast'
 
-export default function ProfilePage() {
+interface ProfilePageProps {
+  setPage?: (page: string) => void;
+  initialTab?: string;
+}
+
+export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
   const { user, updateUser, staff, entries, leaves, saveLeaves, settings, notify, templates, saveTemplates, setPrefillTemplate, savePasswordResetRequests, passwordResetRequests } = useApp()
-  const [tab, setTab] = useState<string>('overview')
+  const [tab, setTab] = useState<string>(initialTab || 'overview')
   const [passwordForm, setPasswordForm] = useState({ current: '', newPassword: '', confirm: '' })
   const [passwordError, setPasswordError] = useState<string>('')
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
@@ -402,11 +407,12 @@ export default function ProfilePage() {
           settings={settings}
           onApply={(t) => {
              setPrefillTemplate(t)
-             window.location.hash = '#/timesheet' // Fallback if setPage is not available
-             // But we probably want to use a global page state. 
-             // ProfilePage doesn't have setPage, but it's likely managed by Layout.
-             // I'll assume for now that standard navigation or shared state handles this.
-             toast.success('Template selected - Go to Timesheet to fill')
+             if (setPage) {
+               setPage('timesheet')
+             } else {
+               window.location.hash = '#/timesheet' // Fallback
+             }
+             toast.success('Template selected - Ready to fill')
           }}
         />
       )}

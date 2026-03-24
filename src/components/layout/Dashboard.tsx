@@ -1,7 +1,9 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { getWeekKey, weekRange, fmtDate, isSubmissionOpen } from '../../lib/utils'
+import { getWeekKey, weekRange, fmtDate, isSubmissionOpen, initials, avatarColor } from '../../lib/utils'
+import PageHeader from '../common/PageHeader'
+import Skeleton from '../common/Skeleton'
 
 function Countdown() {
   const [timeLeft, setTimeLeft] = useState('')
@@ -77,7 +79,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, unreadCount, settings } = useApp()
+  const { user, entries, staff, pendingApprovals, unreadCount, settings, leaves } = useApp()
   const thisWeek = getWeekKey()
 
   const myEntries = entries.filter(e => e.staffId === user?.id && e.weekKey === thisWeek && !e.deleted)
@@ -85,14 +87,34 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const submitted = myEntries.some(e => e.status === 'submitted' || e.status === 'approved' || e.status === 'resubmitted')
   const pendingCount = pendingApprovals().length
 
-  // Stats for admin/owner
-  const totalStaff = staff.filter(s => !s.suspended).length
-  const submittedThisWeek = Array.from(new Set(
-    entries.filter(e => e.weekKey === thisWeek && (e.status === 'submitted' || e.status === 'approved' || e.status === 'resubmitted')).map(e => e.staffId)
-  )).length
-  const submissionRate = totalStaff > 0 ? Math.round((submittedThisWeek / totalStaff) * 100) : 0
-
   const isAdmin = ['admin', 'super_admin', 'team_lead'].includes(user?.role || '')
+  const isTeamLead = user?.role === 'team_lead'
+  const isHigherAdmin = ['admin', 'super_admin', 'owner'].includes(user?.role || '')
+
+  // Filter staff based on role
+  const managedStaff = isTeamLead 
+    ? staff.filter(s => s.leadId === user?.id && !s.suspended)
+    : isHigherAdmin 
+      ? staff.filter(s => !s.suspended)
+      : []
+
+  const totalStaffCount = managedStaff.length
+  const managedStaffIds = managedStaff.map(s => s.id)
+
+  const submittedThisWeek = Array.from(new Set(
+    entries.filter(e => 
+      e.weekKey === thisWeek && 
+      managedStaffIds.includes(e.staffId) &&
+      ['submitted', 'approved', 'resubmitted'].includes(e.status)
+    ).map(e => e.staffId)
+  )).length
+
+  const submissionRate = totalStaffCount > 0 ? Math.round((submittedThisWeek / totalStaffCount) * 100) : 0
+  const notSubmittedList = managedStaff.filter(s => !entries.some(e => 
+    e.staffId === s.id && 
+    e.weekKey === thisWeek && 
+    ['submitted', 'approved', 'resubmitted'].includes(e.status)
+  ))
 
   const recentActivity = entries
     .filter(e => e.staffId === user?.id)
@@ -122,6 +144,50 @@ export default function Dashboard({ setPage }: DashboardProps) {
           )}
         </div>
       </div>
+      
+      {/* Action Items */}
+      {(() => {
+        const rejectedEntries = entries.filter(e => e.staffId === user?.id && e.status === 'rejected' && !e.deleted)
+        const pendingLeaves = leaves.filter(l => l.staffId === user?.id && l.status === 'pending')
+        
+        if (rejectedEntries.length === 0 && pendingLeaves.length === 0) return null
+        
+        return (
+          <div style={{ 
+            background: 'var(--danger-bg)', 
+            border: '1px solid rgba(216, 0, 26, 0.1)', 
+            borderRadius: 12, 
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)', fontWeight: 700, fontSize: 13 }}>
+              <span>🚨</span> Action Required
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {rejectedEntries.map(e => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Rejected: {e.project}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Reason: {e.rejectionReason || 'No reason provided'}</div>
+                  </div>
+                  <button className="btn btn-primary btn-sm" onClick={() => setPage('timesheet')}>Resubmit</button>
+                </div>
+              ))}
+              {pendingLeaves.map(l => (
+                <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Leave Pending: {l.type}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDate(l.from)} → {fmtDate(l.to)}</div>
+                  </div>
+                  <span className="badge badge-yellow">Pending</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Countdown */}
       <Countdown />
@@ -185,16 +251,27 @@ export default function Dashboard({ setPage }: DashboardProps) {
       {isAdmin && (
         <div className="grid-3">
           <div className="stat-card" style={{ borderLeft: '3px solid var(--accent)' }}>
-            <div className="stat-label">Submission Rate</div>
+            <div className="stat-label">{isTeamLead ? 'Team' : 'Org'} Submission Rate</div>
             <div className="stat-value">{submissionRate}%</div>
-            <div className="stat-sub">{submittedThisWeek} of {totalStaff} staff submitted</div>
+            <div className="stat-sub">{submittedThisWeek} of {totalStaffCount} {isTeamLead ? 'team members' : 'staff'} submitted</div>
             <div className="progress" style={{ marginTop: 8 }}>
               <div className="progress-bar" style={{ width: `${submissionRate}%`, background: submissionRate >= 80 ? 'var(--success)' : submissionRate >= 60 ? 'var(--warning)' : 'var(--danger)' }} />
             </div>
+            {notSubmittedList.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 4 }}>Not Submitted:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {notSubmittedList.slice(0, 5).map(s => (
+                    <span key={s.id} className="badge badge-gray" style={{ fontSize: 9 }}>{s.name.split(' ')[0]}</span>
+                  ))}
+                  {notSubmittedList.length > 5 && <span style={{ fontSize: 9, color: 'var(--text-3)' }}>+{notSubmittedList.length - 5} more</span>}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="stat-card" style={{ borderLeft: '3px solid var(--warning)' }}>
-            <div className="stat-label">Pending Approvals</div>
+            <div className="stat-label">Pending My Approval</div>
             <div className="stat-value" style={{ color: 'var(--warning)' }}>{pendingCount}</div>
             <div className="stat-sub">
               {pendingCount > 0 ? (
@@ -204,9 +281,9 @@ export default function Dashboard({ setPage }: DashboardProps) {
           </div>
 
           <div className="stat-card" style={{ borderLeft: '3px solid var(--success)' }}>
-            <div className="stat-label">Active Staff</div>
-            <div className="stat-value">{totalStaff}</div>
-            <div className="stat-sub">{staff.filter(s => s.suspended).length} suspended</div>
+            <div className="stat-label">My {isTeamLead ? 'Team' : 'Active Staff'}</div>
+            <div className="stat-value">{totalStaffCount}</div>
+            <div className="stat-sub">{managedStaff.filter(s => s.role === 'team_lead').length} team leads</div>
           </div>
         </div>
       )}
@@ -253,34 +330,98 @@ export default function Dashboard({ setPage }: DashboardProps) {
         )}
       </div>
 
-      <div className="grid-3">
-        {[
-          { id: 'analytics', icon: '📊', title: 'Analytics', desc: 'View team performance', page: 'analytics', role: 'admin' },
-          { id: 'leaderboard', icon: '🏆', title: 'Leaderboard', desc: 'See rankings & badges', page: 'leaderboard' },
-          { id: 'messages', icon: '💬', title: 'Messages', desc: unreadCount > 0 ? `${unreadCount} unread messages` : 'Team communication', page: 'messages' },
-        ].filter(q => {
-          if (q.role && !['admin', 'super_admin', 'team_lead'].includes(user?.role || '')) return false
-          const toggleKey = q.id === 'leaderboard' ? 'leaderboard' : 
-                           q.id === 'messages' ? 'messaging' :
-                           q.id === 'analytics' ? 'analytics' : null
-          if (toggleKey && settings?.featureToggles) {
-            return (settings.featureToggles as any)[toggleKey] !== false
-          }
-          return true
-        }).map(q => (
-          <div
-            key={q.page}
-            className="card"
-            style={{ cursor: 'pointer', transition: 'all 0.2s' }}
-            onClick={() => setPage(q.page)}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)' }}
-          >
-            <div style={{ fontSize: 28, marginBottom: 8 }}>{q.icon}</div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{q.title}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{q.desc}</div>
+      {/* Leaderboard & Actions */}
+      <div className="grid-2">
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700 }}>🏆 Leaderboard</h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => setPage('leaderboard')}>Full View</button>
           </div>
-        ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[...staff]
+              .sort((a, b) => (b.points || 0) - (a.points || 0))
+              .slice(0, 3)
+              .map((s, i) => (
+                <div key={s.id} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 12, 
+                  padding: '8px 12px', 
+                  background: s.id === user?.id ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                  borderRadius: 8,
+                  border: s.id === user?.id ? '1px solid var(--accent)' : '1px solid transparent'
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, width: 20, color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : '#CD7F32' }}>
+                    {i + 1}
+                  </div>
+                  <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 9 }}>
+                    {s.photo ? <img src={s.photo} alt="" /> : initials(s.name)}
+                  </div>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.name} {s.id === user?.id && '(You)'}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                    {s.points?.toLocaleString() || 0}
+                  </div>
+                </div>
+              ))}
+            
+            {/* My Rank if not in top 3 */}
+            {(() => {
+              const sorted = [...staff].sort((a, b) => (b.points || 0) - (a.points || 0))
+              const myIdx = sorted.findIndex(s => s.id === user?.id)
+              if (myIdx > 2) {
+                const me = sorted[myIdx]
+                return (
+                  <>
+                    <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 10 }}>•••</div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      padding: '8px 12px', 
+                      background: 'var(--accent-subtle)',
+                      borderRadius: 8,
+                      border: '1px solid var(--accent)'
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, width: 20 }}>{myIdx + 1}</div>
+                      <div className="avatar avatar-sm" style={{ background: avatarColor(me.name), fontSize: 9 }}>
+                        {me.photo ? <img src={me.photo} alt="" /> : initials(me.name)}
+                      </div>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{me.name} (You)</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{me.points?.toLocaleString() || 0}</div>
+                    </div>
+                  </>
+                )
+              }
+              return null
+            })()}
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700 }}>⚡ Quick Actions</h3>
+          </div>
+          <div className="grid-2" style={{ gap: 10 }}>
+            <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('timesheet')}>
+              <span style={{ fontSize: 24 }}>📋</span>
+              <span>Log Hours</span>
+            </button>
+            <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('profile')}>
+              <span style={{ fontSize: 24 }}>🏖️</span>
+              <span>Request Leave</span>
+            </button>
+            <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('messages')}>
+              <span style={{ fontSize: 24 }}>💬</span>
+              <span>Messages</span>
+            </button>
+            <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('help')}>
+              <span style={{ fontSize: 24 }}>❓</span>
+              <span>Help Center</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -5,6 +5,7 @@ import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, 
 import toast from 'react-hot-toast'
 import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save } from 'lucide-react'
 import { Entry, Staff } from '../../types'
+import PageHeader from '../common/PageHeader'
 
 interface EntryFormProps {
   entry: Partial<Entry> | null;
@@ -343,6 +344,45 @@ function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onCl
 }
 
 /* ────────────────────────────────────────────────────────────── */
+/*  No Work Confirmation Modal                                    */
+/* ────────────────────────────────────────────────────────────── */
+function NoWorkConfirmationModal({ onConfirm, onClose }: { onConfirm: () => void; onClose: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Mark this week as No Work?</span>
+          <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, marginBottom: 16 }}>
+            You are about to mark this week as <strong>No Work</strong>.
+          </p>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 12, borderRadius: 8, fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 16 }}>ℹ️</span>
+              <span style={{ fontWeight: 600 }}>This will:</span>
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--text-2)' }}>
+              <li>Create a 0-hour entry marked as "No work this week"</li>
+              <li>Submit it automatically for the current week</li>
+              <li>Lock this week for further edits</li>
+            </ul>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 16 }}>
+            Use this if you genuinely had no billable work this week.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={onConfirm}>OK</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
 /*  Main Page                                                     */
 /* ────────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
@@ -359,6 +399,7 @@ export default function TimesheetPage() {
   const [overrideEntry, setOverrideEntry] = useState<Entry | null>(null)
   const [resubmitEntry, setResubmitEntry] = useState<Entry | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [showNoWorkModal, setShowNoWorkModal] = useState(false)
 
   useEffect(() => {
     if (prefillTemplate) {
@@ -478,8 +519,11 @@ export default function TimesheetPage() {
   }
 
   function markNoWork() {
+    setShowNoWorkModal(true)
+  }
+
+  function confirmNoWork() {
     if (!user) return
-    if (!window.confirm('Mark this week as No Work?')) return
     const today = new Date().toISOString().slice(0, 10)
     const ne: Entry = {
       id: genId(),
@@ -499,6 +543,7 @@ export default function TimesheetPage() {
       updatedAt: new Date().toISOString()
     }
     saveEntries([...entries, ne])
+    setShowNoWorkModal(false)
     toast.success('Marked as No Work')
   }
 
@@ -588,41 +633,38 @@ export default function TimesheetPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>
-            📋 Timesheet
-            {viewingStaffId && <span style={{ fontSize: 13, color: 'var(--warning)', marginLeft: 10 }}>👁 Viewing: {targetUser?.name}</span>}
-          </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{weekRange(selectedWeek)}</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {isCurrentWeek && isWindowOpen && <CountdownTimer weekKey={selectedWeek} />}
-          {/* Admin: view another staff's timesheet */}
-          {isAdmin && (
-            <select className="form-select" style={{ width: 'auto', borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
-              <option value="">My Timesheet</option>
-              {staff.filter(s => s.id !== user?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+      <PageHeader 
+        title="Timesheet"
+        icon="📋"
+        subtitle={`${weekRange(selectedWeek)}${viewingStaffId ? ` | 👁 Viewing: ${targetUser?.name}` : ''}`}
+        actions={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {isCurrentWeek && isWindowOpen && <CountdownTimer weekKey={selectedWeek} />}
+            {/* Admin: view another staff's timesheet */}
+            {isAdmin && (
+              <select className="form-select" style={{ width: 'auto', borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
+                <option value="">My Timesheet</option>
+                {staff.filter(s => s.id !== user?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+            <select className="form-select" style={{ width: 'auto' }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
+              {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
             </select>
-          )}
-          <select className="form-select" style={{ width: 'auto' }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
-            {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
-          </select>
-          <button className="btn btn-secondary btn-sm" onClick={downloadTemplate}>📄</button>
-          <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-            <Upload size={13} /> Import
-            <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
-          </label>
-          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}><Download size={13} /> CSV</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>PDF</button>
-          {canEdit && !isLocked && (
-            <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
-              <Plus size={14} /> Log Hours
-            </button>
-          )}
-        </div>
-      </div>
+            <button className="btn btn-secondary btn-sm" title="Download Template" onClick={downloadTemplate}>📄</button>
+            <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+              <Upload size={13} /> Import
+              <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
+            </label>
+            <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}><Download size={13} /> CSV</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>PDF</button>
+            {canEdit && !isLocked && (
+              <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
+                <Plus size={14} /> Log Hours
+              </button>
+            )}
+          </div>
+        }
+      />
 
       {/* Dynamic Banners */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -779,6 +821,12 @@ export default function TimesheetPage() {
           cap={weekCap}
           onConfirm={handleConfirmSubmit}
           onClose={() => setShowConfirm(false)}
+        />
+      )}
+      {showNoWorkModal && (
+        <NoWorkConfirmationModal
+          onConfirm={confirmNoWork}
+          onClose={() => setShowNoWorkModal(false)}
         />
       )}
     </div>

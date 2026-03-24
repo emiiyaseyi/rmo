@@ -6,6 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Bell, Menu, Sun, Moon, Wifi, WifiOff, ChevronDown } from 'lucide-react'
 import PasswordChangeModal from '../auth/PasswordChangeModal'
 import IdleWarningOverlay from '../auth/IdleWarningOverlay'
+import FloatingChatWidget from '../messages/FloatingChatWidget'
 
 
 interface NavItem {
@@ -303,6 +304,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       </div>
       {user && showPasswordChange && <PasswordChangeModal />}
       <IdleWarningOverlay />
+      {user && settings?.featureToggles?.messaging && page !== 'messages' && <FloatingChatWidget />}
     </div>
   )
 }

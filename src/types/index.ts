@@ -127,16 +127,38 @@ export interface AppNotification {
     linkedType?: 'entry' | 'leave' | 'message' | 'redemption' | 'request' | 'streak_recovery' | 'project' | string;
 }
 
+export interface MessageThread {
+    id: string;
+    type: 'direct' | 'group';
+    name: string | null;
+    icon: string | null;
+    participants: string[];
+    lastMessage: string | null;
+    lastMessageAt: string | null;
+    lastMessageBy: string | null;
+    createdAt: string;
+}
+
 export interface AppMessage {
     id: string;
     senderId: string;
     senderName?: string;
     recipientId?: string;
     channelId?: string;
+    threadId?: string;
     text: string;
+    content?: string; // Alias for text
     type: 'dm' | 'channel';
     read: string[];
+    readBy?: string[]; // Alias for read
+    sentAt?: string; // Alias for createdAt
     createdAt: string;
+}
+
+export interface UnreadCount {
+    id: string; // staffId
+    threads: Record<string, number>;
+    total: number;
 }
 
 export interface Holiday {
@@ -418,6 +440,7 @@ export interface AppContextType {
     staff: Staff[];
     entries: Entry[];
     messages: AppMessage[];
+    messageThreads: MessageThread[];
     notifications: AppNotification[];
     leaves: Leave[];
     hof: HofEntry[];
@@ -428,6 +451,7 @@ export interface AppContextType {
     darkMode: boolean;
     online: boolean;
     unreadCount: number;
+    unreadMessageCount: number;
     login: (s: Staff) => void;
     logout: () => void;
     updateUser: (updates: Partial<Staff>) => void;
@@ -435,6 +459,7 @@ export interface AppContextType {
     saveStaff: (data: Staff[]) => void;
     saveEntries: (data: Entry[]) => void;
     saveMessages: (data: AppMessage[]) => void;
+    saveMessageThreads: (data: MessageThread[]) => void;
     saveNotifications: (data: AppNotification[]) => void;
     saveLeaves: (data: Leave[]) => void;
     saveHof: (data: HofEntry[]) => void;
@@ -452,6 +477,9 @@ export interface AppContextType {
     grantBadge: (staffId: string, badgeId: string) => void;
     pendingApprovals: () => Entry[];
     sendMessage: (msg: Partial<AppMessage>) => AppMessage;
+    getOrCreateThread: (type: 'direct' | 'group', participants: string[], name?: string, icon?: string) => MessageThread;
+    getThreadMessages: (threadId: string) => AppMessage[];
+    getThreadUnreadCount: (threadId: string) => number;
     loadAll: () => void;
     checkReminders: () => void;
     templates: Template[];

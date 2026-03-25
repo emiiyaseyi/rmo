@@ -6,7 +6,7 @@ import { Leave } from '../../types'
 import toast from 'react-hot-toast'
 
 export default function LeaveRequestPage() {
-  const { user, leaves, saveLeaves, staff, notify } = useApp()
+  const { user, leaves, saveLeaves, staff, notify, logAudit } = useApp()
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
 
   const myLeaves = leaves.filter(l => l.staffId === user?.id).sort((a, b) =>
@@ -42,6 +42,15 @@ export default function LeaveRequestPage() {
     }
 
     saveLeaves([...leaves, req])
+
+    // Log the leave request
+    logAudit('leave_request', req.id, {
+      staffName: user?.name,
+      type: leaveForm.type,
+      from: leaveForm.from,
+      to: leaveForm.to,
+      reason: leaveForm.reason
+    })
 
     // Notify team lead first
     if (leadId) {

@@ -107,6 +107,21 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <input className="form-input" type="number" value={form.weekly_cap || ''} onChange={e => F('weekly_cap', e.target.value)} placeholder="Blank = global cap" />
             </div>
           </div>
+          <div className="form-group">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <input
+                type="checkbox"
+                id="exempt-checkbox"
+                checked={form.exemptFromTimesheet || false}
+                onChange={e => F('exemptFromTimesheet', e.target.checked)}
+                style={{ width: 16, height: 16, cursor: 'pointer' }}
+              />
+              <label htmlFor="exempt-checkbox" style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer', margin: 0 }}>
+                Exempt from timesheet submission
+              </label>
+            </div>
+            <span className="form-hint">If checked, this staff member will not be required to submit timesheets and won't appear in "not submitted" warnings</span>
+          </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -595,7 +610,7 @@ export default function StaffPage() {
             email: (r.Email || r.email || '').toLowerCase().trim(),
             department: r.Department || r.department || '',
             jobTitle: r.JobTitle || r.jobTitle || r['Job Title'] || '',
-            role: (r.Role || r.role || 'staff').toLowerCase(),
+            role: (r.Role || r.role || 'staff').toLowerCase().replace(/\s+/g, '_'),
             lead: r.Lead || r.lead || '',
             phone: String(r.Phone || r.phone || ''),
             password: String(r.Password || r.password || 'dsn-staff'),

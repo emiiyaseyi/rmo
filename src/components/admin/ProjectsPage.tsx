@@ -37,10 +37,12 @@ export default function ProjectsPage() {
 
     if (editing) {
       saveProjects(projects.map((p: any) => p.id === editing.id ? { ...p, ...form } : p))
+      logAudit('project_update', editing.id, { name: form.name, active: form.active, budget: form.budget })
       toast.success('Project updated')
     } else {
       const newP = { ...form, id: genId() }
       saveProjects([...projects, newP])
+      logAudit('project_create', newP.id, { name: form.name, active: form.active, budget: form.budget })
       toast.success('Project added')
     }
     setShowAdd(false)
@@ -50,7 +52,9 @@ export default function ProjectsPage() {
 
   const handleDelete = (id: string) => {
     if (!window.confirm('Are you sure? This will not delete historical logs but will remove it from the active projects list.')) return
+    const project = projects.find((p: any) => p.id === id)
     saveProjects(projects.filter((p: any) => p.id !== id))
+    if (project) logAudit('project_delete', id, { name: project.name })
     toast.success('Project removed')
   }
 
@@ -91,6 +95,7 @@ export default function ProjectsPage() {
         const rows = text.split('\n').slice(1).filter(r => r.trim())
         const newProjects = rows.map(r => ({ id: genId(), name: r.trim(), active: true, budget: 0 }))
         saveProjects([...projects, ...newProjects])
+        logAudit('project_bulk_import', 'bulk', { count: newProjects.length, projects: newProjects.map(p => p.name) })
         toast.success(`Imported ${newProjects.length} projects`)
       }
       reader.readAsText(file)

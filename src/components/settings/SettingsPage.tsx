@@ -6,12 +6,20 @@ import { AppSettings, WeekLock, PublicHoliday } from '../../types'
 import toast from 'react-hot-toast'
 
 export default function SettingsPage() {
-  const { 
-    settings, saveSettings, user, logAudit, 
+  const {
+    settings, saveSettings, user, logAudit,
     weekLocks, saveWeekLocks,
     auditLogs,
     publicHolidays, savePublicHolidays,
-    staff
+    staff,
+    entries,
+    leaves,
+    nots,
+    messageThreads,
+    rewards,
+    redeems,
+    announcements,
+    projects
   } = useApp()
 
   const [tab, setTab] = useState<string>('branding')
@@ -38,7 +46,7 @@ export default function SettingsPage() {
     { id: 'holidays', label: 'Holidays' },
     { id: 'security', label: 'Security' },
     { id: 'activity', label: 'Activity Log' },
-    { id: 'backend', label: 'Backend Admin' },
+    { id: 'database', label: 'Database' },
   ]
   const actionOptions = useMemo(
     () => Array.from(new Set((auditLogs || []).map(l => String(l.action || '')).filter(Boolean))).sort(),
@@ -588,77 +596,80 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* BACKEND ADMIN */}
-        {tab === 'backend' && (
+        {/* DATABASE */}
+        {tab === 'database' && (
           <div className="flex flex-col gap-6">
             <div className="card flex flex-col gap-4">
-              <h3 className="font-bold">💾 System Storage Stats</h3>
-              <div className="flex gap-3 text-xs text-3">
-                <div className="flex-1 p-4 bg-2 rounded-lg border border-3">
-                  <div className="font-bold text-lg mb-1">
-                    {typeof localStorage !== 'undefined' ? Object.keys(localStorage).filter(k => k.startsWith('dsn_')).length : 0}
-                  </div>
-                  <div>Data Tables</div>
-                </div>
-                <div className="flex-1 p-4 bg-2 rounded-lg border border-3">
-                  <div className="font-bold text-lg mb-1">
-                    {typeof localStorage !== 'undefined' ?
-                      ((Object.keys(localStorage).filter(k => k.startsWith('dsn_')).reduce((s, k) => s + (localStorage.getItem(k) || '').length, 0) / 1024 / 1024).toFixed(2)) : '0.00'} MB
-                  </div>
-                  <div>Storage Used</div>
-                </div>
-              </div>
-              <div className="p-4 bg-soft-warning rounded-lg text-xs text-warning">
-                ⚠️ Backend features are for advanced debugging. Exercise caution when clearing data.
-              </div>
-            </div>
+              <h3 className="font-bold">🗄️ Firestore Database Statistics</h3>
+              <p className="text-xs text-3">Real-time collection counts and estimated storage size</p>
 
-            <div className="card flex flex-col gap-4">
-              <h3 className="font-bold">📊 Local Storage Browser</h3>
-              <p className="text-xs text-3">View and manage localStorage data tables</p>
               <div className="overflow-x-auto border border-3 rounded-lg">
                 <table className="w-full text-xs">
                   <thead className="bg-2">
                     <tr>
-                      <th className="p-3 text-left font-bold uppercase text-[10px]">Table Name</th>
-                      <th className="p-3 text-right font-bold uppercase text-[10px]">Records</th>
-                      <th className="p-3 text-right font-bold uppercase text-[10px]">Size</th>
-                      <th className="p-3 text-right font-bold uppercase text-[10px]">Actions</th>
+                      <th className="p-3 text-left font-bold uppercase text-[10px]">Collection</th>
+                      <th className="p-3 text-right font-bold uppercase text-[10px]">Documents</th>
+                      <th className="p-3 text-right font-bold uppercase text-[10px]">Est. Size</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {typeof localStorage !== 'undefined' && Object.keys(localStorage).filter(k => k.startsWith('dsn_')).map(key => {
-                      const name = key.replace('dsn_', '')
-                      const val = localStorage.getItem(key) || ''
-                      let count = null
-                      try {
-                        const parsed = JSON.parse(val)
-                        count = Array.isArray(parsed) ? parsed.length : null
-                      } catch {}
+                    {[
+                      { name: 'staff', count: staff?.length || 0, data: staff },
+                      { name: 'timesheetEntries', count: entries?.length || 0, data: entries },
+                      { name: 'leaves', count: leaves?.length || 0, data: leaves },
+                      { name: 'notifications', count: nots?.length || 0, data: nots },
+                      { name: 'auditLogs', count: auditLogs?.length || 0, data: auditLogs },
+                      { name: 'messageThreads', count: messageThreads?.length || 0, data: messageThreads },
+                      { name: 'rewards', count: rewards?.length || 0, data: rewards },
+                      { name: 'redeems', count: redeems?.length || 0, data: redeems },
+                      { name: 'announcements', count: announcements?.length || 0, data: announcements },
+                      { name: 'publicHolidays', count: publicHolidays?.length || 0, data: publicHolidays },
+                      { name: 'weekLocks', count: weekLocks?.length || 0, data: weekLocks },
+                      { name: 'projects', count: projects?.length || 0, data: projects },
+                      { name: 'settings', count: 1, data: settings }
+                    ].map(({ name, count, data }) => {
+                      const estimatedSize = data ? (JSON.stringify(data).length / 1024).toFixed(2) : '0.00'
                       return (
-                        <tr key={key} className="border-t border-3">
+                        <tr key={name} className="border-t border-3">
                           <td className="p-3 font-mono font-bold">{name}</td>
-                          <td className="p-3 text-right">{count ?? '—'}</td>
-                          <td className="p-3 text-right font-mono">{(val.length / 1024).toFixed(1)} KB</td>
-                          <td className="p-3 text-right">
-                            <button
-                              className="btn btn-danger btn-sm text-[10px]"
-                              onClick={() => {
-                                if (window.confirm(`Clear all data in "${name}"? This cannot be undone.`)) {
-                                  localStorage.removeItem(key)
-                                  toast.success(`${name} cleared`)
-                                  window.location.reload()
-                                }
-                              }}
-                            >
-                              Clear
-                            </button>
-                          </td>
+                          <td className="p-3 text-right">{count.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono">{estimatedSize} KB</td>
                         </tr>
                       )
                     })}
+                    <tr className="border-t-2 border-3 bg-2 font-bold">
+                      <td className="p-3">Total</td>
+                      <td className="p-3 text-right">
+                        {[
+                          staff?.length || 0,
+                          entries?.length || 0,
+                          leaves?.length || 0,
+                          nots?.length || 0,
+                          auditLogs?.length || 0,
+                          messageThreads?.length || 0,
+                          rewards?.length || 0,
+                          redeems?.length || 0,
+                          announcements?.length || 0,
+                          publicHolidays?.length || 0,
+                          weekLocks?.length || 0,
+                          projects?.length || 0,
+                          1
+                        ].reduce((sum, n) => sum + n, 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right font-mono">
+                        {(
+                          [staff, entries, leaves, nots, auditLogs, messageThreads, rewards, redeems, announcements, publicHolidays, weekLocks, projects, settings]
+                            .filter(Boolean)
+                            .reduce((sum, data) => sum + JSON.stringify(data).length, 0) / 1024
+                        ).toFixed(2)} KB
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
+              </div>
+
+              <div className="p-4 bg-soft-info rounded-lg text-xs text-info">
+                ℹ️ Data is synced in real-time from Firestore. Size estimates are based on JSON serialization and may differ from actual Firestore storage calculations.
               </div>
             </div>
           </div>

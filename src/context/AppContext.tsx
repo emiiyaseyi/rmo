@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import toast from 'react-hot-toast'
 import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
 import { db } from '../lib/firebase'
-import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore'
+import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy, writeBatch } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
 import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, MessageThread, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
@@ -105,7 +105,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('dark', dm)
 
     const acts = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart']
-    const handler = () => resetIdle()
+    const handler = () => {
+      // Only reset idle timer if countdown is NOT active
+      // Once countdown starts, only explicit button clicks can dismiss it
+      if (idleCountdown === null) {
+        resetIdle()
+      }
+    }
     acts.forEach(e => window.addEventListener(e, handler, { passive: true }))
     window.addEventListener('online', () => setOnline(true))
     window.addEventListener('offline', () => setOnline(false))
@@ -114,7 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       acts.forEach(e => window.removeEventListener(e, handler))
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
-  }, [])
+  }, [idleCountdown])
 
   // Initialize default group channels
   useEffect(() => {
@@ -160,7 +166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    setIdleCountdown(null)
+    setIdleCountdown(null) // Clear countdown state
     const totalMins = settings?.idle_minutes || 2
     const warnAt = (totalMins * 60) - 30 // Start warning 30s before
 
@@ -178,14 +184,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }, 1000)
 
-      // Store interval to clear it if user becomes active
+      // Store interval to clear it later
       ;(idleTimerRef as any).currentCountdownInterval = interval
 
     }, warnAt * 1000)
   }
 
-  // Idle countdown is only cleared by explicit user action (clicking buttons)
-  // No automatic clearing on mouse movement when warning is shown
+  // Idle countdown behavior:
+  // - Before countdown: any activity resets the timer
+  // - During countdown: only explicit button clicks (Stay Logged In) can dismiss it
+  // - Mouse movement/hover does NOT dismiss the countdown modal
 
   // REAL-TIME SYNC FOR ALL COLLECTIONS
   useEffect(() => {
@@ -257,6 +265,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => unsubs.forEach(u => u())
   }, [user?.id])
+
+  // Clean up audit logs older than 3 months (90 days)
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return // Only admins trigger cleanup
+
+    const cleanupAuditLogs = async () => {
+      try {
+        const threeMonthsAgo = new Date()
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+        const cutoffDate = threeMonthsAgo.toISOString()
+
+        const oldLogsQuery = query(
+          collection(db, 'auditLogs'),
+          where('timestamp', '<', cutoffDate)
+        )
+
+        const snapshot = await getDocs(oldLogsQuery)
+        if (snapshot.empty) return
+
+        console.log(`Cleaning up ${snapshot.size} audit logs older than 3 months...`)
+
+        // Delete in batches to avoid exceeding Firestore limits
+        const batch = writeBatch(db)
+        snapshot.docs.forEach(doc => batch.delete(doc.ref))
+        await batch.commit()
+
+        console.log(`Successfully deleted ${snapshot.size} old audit logs`)
+      } catch (error) {
+        console.error('Failed to clean up old audit logs:', error)
+      }
+    }
+
+    // Run cleanup on mount and then daily
+    cleanupAuditLogs()
+    const interval = setInterval(cleanupAuditLogs, 24 * 60 * 60 * 1000) // Run daily
+
+    return () => clearInterval(interval)
+  }, [user?.id, user?.role])
 
   // Helper to strip undefined values for Firebase
   const fbSafe = (obj: any) => {

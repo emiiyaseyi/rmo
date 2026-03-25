@@ -7,6 +7,7 @@ import { Staff, Entry, Reward, Redemption, HofEntry, AppMessage, Leave } from '.
 import toast from 'react-hot-toast'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
 import * as XLSX from 'xlsx'
+import TimeReport from './TimeReport'
 
 const COLORS = ['#076C04', '#22C55E', '#EAB308', '#D8001A', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
 const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-1)' }
@@ -166,6 +167,8 @@ export default function AnalyticsPage() {
     // Determine number of weeks in period for averaging
     const days = (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
     const weeksInPeriod = Math.max(days / 7, 1)
+    const lowThresh = settings?.utilizationThresholds?.low || 25
+    const highThresh = settings?.utilizationThresholds?.high || 40
 
     return filteredStaff.map(s => {
       const sEntries = filteredEntries.filter(e => e.staffId === s.id && e.status === 'approved')
@@ -178,11 +181,11 @@ export default function AnalyticsPage() {
         totalHours: parseFloat(totalHours.toFixed(1)),
         avgWeekly: parseFloat(avgWeekly.toFixed(1)),
         utilization,
-        isUnder: avgWeekly < 30 && totalHours > 0,
-        isOver: avgWeekly > weekCap
+        isUnder: avgWeekly < lowThresh && totalHours > 0,
+        isOver: avgWeekly > highThresh
       }
     }).sort((a, b) => b.avgWeekly - a.avgWeekly)
-  }, [filteredStaff, filteredEntries, weekCap, dateRange])
+  }, [filteredStaff, filteredEntries, weekCap, dateRange, settings])
 
   // Staff YTD Data
   const staffYTD = useMemo(() => {
@@ -418,19 +421,27 @@ export default function AnalyticsPage() {
 
       {/* Tabs */}
       <div className="tabs">
-        {['overview', 'projects', 'utilisation', 'staff_ytd', 'compare_staff', 'month_compare', 'bulk_import'].map(t => (
+        {['overview', 'time_report', 'dept_report', 'projects', 'utilisation', 'hour_thresholds', 'staff_ytd', 'compare_staff', 'month_compare', 'bulk_import'].map(t => (
           <div
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
             onClick={() => setTab(t)}
             style={{ textTransform: 'capitalize' }}
           >
-            {t.replace('_', ' ')}
+            {t.replace(/_/g, ' ')}
           </div>
         ))}
       </div>
 
-      {/* ── OVERVIEW TAB ── */}
+      {/* ── TIME REPORT TAB ── */}
+      {tab === 'time_report' && (
+        <TimeReport 
+          entries={filteredEntries} 
+          staff={staff} 
+          projects={projects}
+          dateRange={dateRange}
+        />
+      )}
       {tab === 'overview' && (
         <div className="flex flex-col gap-6">
           <div className="grid-4">
@@ -541,6 +552,148 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* ── DEPARTMENT REPORT TAB ── */}
+      {tab === 'dept_report' && (() => {
+        // Group filtered entries by department, then by project, then by category/task
+        const deptMap: Record<string, { hours: number; entries: number; projects: Record<string, { hours: number; entries: number; categories: Record<string, number> }> }> = {}
+        filteredEntries.forEach(e => {
+          const s = staff.find(st => st.id === e.staffId)
+          const dept = s?.department || 'Unassigned'
+          if (!deptMap[dept]) deptMap[dept] = { hours: 0, entries: 0, projects: {} }
+          deptMap[dept].hours += e.hours || 0
+          deptMap[dept].entries++
+          if (!deptMap[dept].projects[e.project]) deptMap[dept].projects[e.project] = { hours: 0, entries: 0, categories: {} }
+          deptMap[dept].projects[e.project].hours += e.hours || 0
+          deptMap[dept].projects[e.project].entries++
+          const cat = e.category || 'General'
+          deptMap[dept].projects[e.project].categories[cat] = (deptMap[dept].projects[e.project].categories[cat] || 0) + (e.hours || 0)
+        })
+        const sorted = Object.entries(deptMap).sort((a, b) => b[1].hours - a[1].hours)
+        
+        const exportDeptCSV = () => {
+          const rows: any[] = []
+          sorted.forEach(([dept, d]) => {
+            Object.entries(d.projects).forEach(([proj, p]) => {
+              Object.entries(p.categories).forEach(([cat, h]) => {
+                rows.push({ Department: dept, Project: proj, Task: cat, Hours: h.toFixed(1), Entries: p.entries })
+              })
+            })
+          })
+          exportCSV(rows, `dept_report_${format(dateRange.start, 'yyyy-MM-dd')}.csv`)
+          toast.success('CSV exported')
+        }
+
+        return (
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-1 font-bold">Department / Project / Task Report</h3>
+              <button className="btn btn-secondary btn-sm" onClick={exportDeptCSV}>⬇ Export CSV</button>
+            </div>
+            {sorted.length === 0 ? (
+              <div className="empty-state card"><div className="empty-state-icon">📊</div><div>No data for this period.</div></div>
+            ) : sorted.map(([dept, d]) => (
+              <div key={dept} className="card flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-base">{dept}</h4>
+                    <span className="text-xs text-3">{d.entries} entries · {d.hours.toFixed(1)}h total</span>
+                  </div>
+                  <div className="progress" style={{ width: 120 }}>
+                    <div className="progress-bar" style={{ width: `${Math.min((d.hours / Math.max(...sorted.map(s => s[1].hours))) * 100, 100)}%` }} />
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>Project</th><th>Task / Category</th><th>Hours</th></tr></thead>
+                    <tbody>
+                      {Object.entries(d.projects).sort((a, b) => b[1].hours - a[1].hours).map(([proj, p]) =>
+                        Object.entries(p.categories).sort((a, b) => b[1] - a[1]).map(([cat, h], i) => (
+                          <tr key={`${proj}-${cat}`}>
+                            {i === 0 ? <td className="font-medium" rowSpan={Object.keys(p.categories).length}>{proj}</td> : null}
+                            <td className="text-xs text-3">{cat}</td>
+                            <td className="font-bold font-mono">{h.toFixed(1)}h</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {/* ── HOUR THRESHOLDS TAB ── */}
+      {tab === 'hour_thresholds' && (() => {
+        const lowThresh = settings?.utilizationThresholds?.low || 25
+        const highThresh = settings?.utilizationThresholds?.high || 40
+        const days = (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
+        const weeksInPeriod = Math.max(days / 7, 1)
+
+        const staffWithHours = activeStaff.map(s => {
+          const sEntries = filteredEntries.filter(e => e.staffId === s.id && e.status === 'approved')
+          const totalHours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
+          const avgWeekly = totalHours / weeksInPeriod
+          return { ...s, totalHours: parseFloat(totalHours.toFixed(1)), avgWeekly: parseFloat(avgWeekly.toFixed(1)) }
+        })
+
+        const overStaff = staffWithHours.filter(s => s.avgWeekly > highThresh).sort((a, b) => b.avgWeekly - a.avgWeekly)
+        const underStaff = staffWithHours.filter(s => s.avgWeekly < lowThresh && s.totalHours > 0).sort((a, b) => a.avgWeekly - b.avgWeekly)
+
+        const exportThresholds = (list: typeof staffWithHours, label: string) => {
+          exportCSV(list.map(s => ({ Name: s.name, Department: s.department || '—', TotalHours: s.totalHours, AvgWeekly: s.avgWeekly })), `${label}_${format(dateRange.start, 'yyyy-MM-dd')}.csv`)
+          toast.success('Exported')
+        }
+
+        const StaffTable = ({ data, label, color }: { data: typeof staffWithHours; label: string; color: string }) => (
+          <div className="card flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold" style={{ color }}>{label} <span className="badge" style={{ background: color + '22', color }}>{data.length}</span></h4>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportThresholds(data, label.toLowerCase().replace(/\s+/g, '_'))}>⬇ Export CSV</button>
+            </div>
+            {data.length === 0 ? (
+              <div className="text-center py-8 text-4 italic">No staff in this category</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Staff</th><th>Department</th><th>Avg Weekly</th><th>Total Hours</th></tr></thead>
+                  <tbody>
+                    {data.map(s => (
+                      <tr key={s.id}>
+                        <td className="font-medium">{s.name}</td>
+                        <td className="text-3">{s.department || '—'}</td>
+                        <td className="font-bold" style={{ color }}>{s.avgWeekly}h</td>
+                        <td className="font-mono text-3">{s.totalHours}h</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+
+        return (
+          <div className="flex flex-col gap-6">
+            <div className="grid-2 gap-3">
+              <div className="stat-card" style={{ borderColor: 'var(--danger)' }}>
+                <div className="stat-label">Over Hours (&gt;{highThresh}h/wk)</div>
+                <div className="stat-value text-danger">{overStaff.length}</div>
+                <div className="stat-sub">staff above threshold</div>
+              </div>
+              <div className="stat-card" style={{ borderColor: 'var(--warning)' }}>
+                <div className="stat-label">Under Hours (&lt;{lowThresh}h/wk)</div>
+                <div className="stat-value text-warning">{underStaff.length}</div>
+                <div className="stat-sub">staff below threshold</div>
+              </div>
+            </div>
+            <StaffTable data={overStaff} label={`Over ${highThresh}h Staff`} color="var(--danger)" />
+            <StaffTable data={underStaff} label={`Under ${lowThresh}h Staff`} color="var(--warning)" />
+          </div>
+        )
+      })()}
 
       {/* ── PROJECTS TAB ── */}
       {tab === 'projects' && (
@@ -673,8 +826,8 @@ export default function AnalyticsPage() {
                         </div>
                       </td>
                       <td>
-                        {u.isOver && <span className="text-danger font-bold">🚩 Over (&gt;{weekCap}h)</span>}
-                        {u.isUnder && <span className="text-warning font-bold">🚩 Under (&lt;30h)</span>}
+                        {u.isOver && <span className="text-danger font-bold">🚩 Over (&gt;{settings?.utilizationThresholds?.high || 40}h)</span>}
+                        {u.isUnder && <span className="text-warning font-bold">🚩 Under (&lt;{settings?.utilizationThresholds?.low || 25}h)</span>}
                         {!u.isOver && !u.isUnder && u.totalHours > 0 && <span className="text-success">Optimal</span>}
                         {u.totalHours === 0 && <span className="text-4 italic">No activity</span>}
                       </td>

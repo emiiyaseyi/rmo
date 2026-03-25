@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
   const [toggles, setToggles] = useState(settings?.featureToggles || { gamification: true, leaderboard: true, messaging: true, bulkImports: true, darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true, firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true, profilePhotos: true, streakRecovery: true, duplicateDetection: true, announcements: true, orgChart: true })
+  const [securityForm, setSecurityForm] = useState(settings?.security || { defaultPassword: 'dsn-staff', requireTwoFactor: false })
   
   const tabs = [
 
@@ -39,7 +40,10 @@ export default function SettingsPage() {
     { id: 'holidays', label: '🏖️ Holidays', icon: '🗓️' },
     { id: 'projects', label: '📁 Projects', icon: '💼' },
     { id: 'queue', label: '🔑 Resets', icon: '🛡️' },
+    { id: 'thresholds', label: '📊 Limits', icon: '📈' },
+    { id: 'bulk_projects', label: '📁 Bulk Projects', icon: '📦' },
     { id: 'logs', label: '📜 Audit', icon: '🕵️' },
+    { id: 'security', label: '🛡️ Security', icon: '🔒' },
     { id: 'deleted', label: '🗑️ Deleted', icon: '♻️' },
   ]
 
@@ -199,7 +203,7 @@ export default function SettingsPage() {
               {Object.entries(toggles).map(([key, value]) => (
                 <div key={key} className="flex items-center justify-between p-3 bg-2 rounded-lg border border-3">
                   <span className="text-xs font-medium capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                  <button
+                   <button
                     onClick={() => {
                       const next = { ...toggles, [key]: !value }
                       setToggles(next)
@@ -207,13 +211,16 @@ export default function SettingsPage() {
                     }}
                     className={`w-10 h-5 rounded-full relative transition-all ${value ? 'bg-success' : 'bg-3'}`}
                   >
-                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${value ? 'left-6' : 'left-1'}`}></div>
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm transition-all ${value ? 'left-6' : 'left-1'}`}></div>
                   </button>
                 </div>
               ))}
             </div>
+          <div className="mt-4 p-4 bg-soft-primary rounded-lg text-xs text-primary">
+            ℹ️ Changes to feature toggles will take effect immediately for all users.
           </div>
-        )}
+        </div>
+      )}
 
         {/* POINTS CONFIG */}
         {tab === 'points' && (
@@ -272,6 +279,23 @@ export default function SettingsPage() {
               <div>
                 <div className="text-xs font-bold">CDS Day Visibility</div>
                 <div className="text-[10px] text-3">Show CDS Day selection in staff profiles.</div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-3 p-4 bg-soft-warning rounded-lg border border-warning-subtle">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🗓️</span>
+                <div className="text-xs font-bold text-warning">Emergency Deadline Extension</div>
+              </div>
+              <p className="text-[10px] text-warning-subtle">Sets a custom date/time until which the submission window remains open for all staff.</p>
+              <div className="flex gap-2">
+                <input 
+                  type="datetime-local" 
+                  className="form-input text-xs"
+                  value={capsForm.deadlineOverride || ''}
+                  onChange={e => setCapsForm({...capsForm, deadlineOverride: e.target.value})}
+                />
+                <button className="btn btn-secondary btn-sm" onClick={() => setCapsForm({...capsForm, deadlineOverride: null})}>Clear</button>
               </div>
             </div>
             
@@ -517,14 +541,14 @@ export default function SettingsPage() {
                          <button 
                           className="btn btn-success btn-sm"
                           onClick={() => {
-                            // Reset password to 1234
-                            const updatedStaff = staff.map(s => s.id === req.staffId ? { ...s, password: '1234', mustChangePassword: true } : s)
+                            // Reset password to dsn-staff
+                            const updatedStaff = staff.map(s => s.id === req.staffId ? { ...s, password: 'dsn-staff', mustChangePassword: true, first_login: true } : s)
                             saveStaff(updatedStaff)
                             const updatedReqs = passwordResetRequests.map(r => r.id === req.id ? { ...r, status: 'resolved' as const, resolvedBy: user?.name, resolvedAt: new Date().toISOString() } : r)
                             savePasswordResetRequests(updatedReqs)
                             logAudit('password_reset', req.staffId, { action: 'admin_reset_approved' })
-                            notify(req.staffId, 'Your password reset request has been approved. Your temporary password is "1234".', 'password_reset', 'Password Reset Approved', req.id, 'message')
-                            toast.success('Password reset to 1234')
+                            notify(req.staffId, 'Your password reset request has been approved. Your temporary password is "dsn-staff".', 'password_reset', 'Password Reset Approved', req.id, 'message')
+                            toast.success('Password reset to dsn-staff')
                           }}
                          >Approve Reset</button>
                          <button 
@@ -539,6 +563,133 @@ export default function SettingsPage() {
                    )
                 })
               )}
+            </div>
+          </div>
+        )}
+
+        {/* THRESHOLDS */}
+        {tab === 'thresholds' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">📈 Analytics Thresholds</h3>
+            <p className="text-xs text-3">Set hour limits to highlight staff with high or low workload in analytics.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="form-group">
+                <label className="form-label">Low Workload Threshold (hrs/week)</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    value={settings?.utilizationThresholds?.low || 25} 
+                    onChange={e => saveAllSettings({ utilizationThresholds: { ...settings?.utilizationThresholds, low: Number(e.target.value), high: settings?.utilizationThresholds?.high || 40 } })}
+                  />
+                  <span className="text-xs text-4">e.g. 25h</span>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">High Workload Threshold (hrs/week)</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    value={settings?.utilizationThresholds?.high || 40} 
+                    onChange={e => saveAllSettings({ utilizationThresholds: { ...settings?.utilizationThresholds, high: Number(e.target.value), low: settings?.utilizationThresholds?.low || 25 } })}
+                  />
+                  <span className="text-xs text-4">e.g. 40h</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-soft-warning rounded-lg border border-warning-subtle text-xs text-warning">
+              <strong>Tip:</strong> These values are used in the "Utilisation" tab of the Analytics page to flag staff with red/yellow indicators.
+            </div>
+          </div>
+        )}
+
+        {/* SECURITY & PASSWORDS */}
+        {tab === 'security' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">🛡️ Security & Access Control</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="form-group">
+                <label className="form-label">Default New User Password</label>
+                <div className="flex gap-2">
+                  <input 
+                    className="form-input" 
+                    type="text"
+                    value={securityForm.defaultPassword}
+                    onChange={e => setSecurityForm({...securityForm, defaultPassword: e.target.value})}
+                  />
+                </div>
+                <p className="text-[10px] text-3 mt-1">This password will be assigned to all new users and during administrative resets.</p>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Active Features</label>
+                <div className="flex items-center gap-3 p-3 bg-2 rounded-lg border border-3">
+                   <button
+                    onClick={() => setSecurityForm({...securityForm, requireTwoFactor: !securityForm.requireTwoFactor})}
+                    className={`w-10 h-5 rounded-full relative transition-all ${securityForm.requireTwoFactor ? 'bg-success' : 'bg-3'}`}
+                  >
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${securityForm.requireTwoFactor ? 'left-6' : 'left-1'}`}></div>
+                  </button>
+                  <span className="text-xs font-medium">Require 2FA for Admin/Leads</span>
+                </div>
+              </div>
+            </div>
+            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ security: securityForm })}>
+              Save Security Settings
+            </button>
+            
+            <div className="divider"></div>
+            
+            <div className="p-4 bg-soft-danger rounded-lg border border-danger-subtle">
+              <h4 className="text-xs font-bold text-danger mb-2">🚨 Critical Action: Bulk Password Update</h4>
+              <p className="text-[10px] text-danger-subtle mb-3">Resets EVERY user's password to the default set above. Users will be forced to change it on next login.</p>
+              <button 
+                className="btn btn-danger btn-sm"
+                onClick={() => {
+                  if (confirm('Are you absolutely sure? This will logout all users and reset their passwords.')) {
+                    const next = staff.map(s => ({ ...s, password: securityForm.defaultPassword || 'dsn-staff', mustChangePassword: true, first_login: true, forceLogout: true }))
+                    saveStaff(next)
+                    logAudit('bulk_password_reset', 'system', { defaultPass: securityForm.defaultPassword })
+                    toast.success('All passwords reset successfully')
+                  }
+                }}
+              >Reset All User Passwords</button>
+            </div>
+          </div>
+        )}
+
+        {/* BULK PROJECT IMPORT */}
+        {tab === 'bulk_projects' && (
+          <div className="card flex flex-col gap-6">
+            <h3 className="font-bold">📦 Bulk Project Import</h3>
+            <p className="text-xs text-3">Import multiple projects at once using a CSV file.</p>
+            <div className="flex flex-col gap-4 p-8 bg-2 rounded-xl border border-dashed border-3 text-center">
+              <div className="text-3xl">📄</div>
+              <div>
+                <button className="btn btn-primary btn-sm mb-2" onClick={() => {
+                   const input = document.createElement('input')
+                   input.type = 'file'
+                   input.accept = '.csv'
+                   input.onchange = (e: any) => {
+                     const file = e.target.files[0]
+                     if (!file) return
+                     const reader = new FileReader()
+                     reader.onload = (evt) => {
+                       const text = evt.target?.result as string
+                       const rows = text.split('\n').slice(1).filter(r => r.trim())
+                       const newProjects = rows.map(r => ({ id: genId(), name: r.trim(), active: true, budget: 0 }))
+                       saveProjects([...projects, ...newProjects])
+                       toast.success(`Imported ${newProjects.length} projects`)
+                     }
+                     reader.readAsText(file)
+                   }
+                   input.click()
+                }}>Upload Projects CSV</button>
+                <p className="text-[10px] text-4">CSV should have one project name per line (with header).</p>
+              </div>
+              <button className="text-xs text-accent underline cursor-pointer" onClick={() => exportCSV([{ ProjectName: 'Project X' }, { ProjectName: 'Project Y' }], 'projects_template.csv')}>
+                Download Template
+              </button>
             </div>
           </div>
         )}
@@ -571,7 +722,8 @@ export default function SettingsPage() {
                     <th className="p-3">User</th>
                     <th className="p-3">Action</th>
                     <th className="p-3">Target</th>
-                    <th className="p-3">Device</th>
+                    <th className="p-3">IP / Location</th>
+                    <th className="p-3">Device / Details</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-3">
@@ -588,7 +740,8 @@ export default function SettingsPage() {
                         </span>
                       </td>
                       <td className="p-3 text-3 truncate max-w-[120px]">{log.targetId}</td>
-                      <td className="p-3 text-3 truncate max-w-[150px]">{log.device}</td>
+                      <td className="p-3 text-3 font-mono">{log.ipAddress || '—'}</td>
+                      <td className="p-3 text-3 truncate max-w-[200px]" title={log.device}>{log.device || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

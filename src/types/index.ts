@@ -45,6 +45,7 @@ export interface Staff {
     cdsDay?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | null;
     weeklyHourGoal?: number;
     fontSize?: string | number;
+    exemptFromTimesheet?: boolean;
 }
 
 export interface ApprovalHistoryEntry {
@@ -231,6 +232,14 @@ export interface AppSettings {
         minutes: number;
     };
     categories: string[];
+    utilizationThresholds?: {
+        low: number;
+        high: number;
+    };
+    security?: {
+        defaultPassword?: string;
+        requireTwoFactor?: boolean;
+    };
     // Keep legacy fields for compatibility during migration if needed
     app_name?: string;
     welcome_message?: string;

@@ -273,6 +273,42 @@ function ResubmitModal({ entry, onSave, onClose }: ResubmitModalProps) {
 }
 
 /* ────────────────────────────────────────────────────────────── */
+/*  Clarify Modal                                                 */
+/* ────────────────────────────────────────────────────────────── */
+interface ClarifyModalProps {
+  entry: Entry;
+  onSave: (note: string) => void;
+  onClose: () => void;
+}
+
+function ClarifyModal({ entry, onSave, onClose }: ClarifyModalProps) {
+  const [note, setNote] = useState('')
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Explain/Clarify Entry</span>
+          <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div style={{ background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '10px 14px', borderRadius: 8, fontSize: 13, border: '1px solid var(--accent-subtle)' }}>
+            <strong>Request:</strong> {entry.clarificationNote || 'No details provided'}
+          </div>
+          <div className="form-group" style={{ marginTop: 15 }}>
+            <label className="form-label">Your Explanation *</label>
+            <textarea className="form-textarea" value={note} onChange={e => setNote(e.target.value)} placeholder="Provide the details requested..." />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!note.trim()} onClick={() => onSave(note)}>Send Explanation</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
 /*  Countdown Timer                                               */
 /* ────────────────────────────────────────────────────────────── */
 function CountdownTimer({ weekKey }: { weekKey: string }) {
@@ -398,6 +434,8 @@ export default function TimesheetPage() {
   const [editEntry, setEditEntry] = useState<Partial<Entry> | null>(null)
   const [overrideEntry, setOverrideEntry] = useState<Entry | null>(null)
   const [resubmitEntry, setResubmitEntry] = useState<Entry | null>(null)
+  const [clarifyEntry, setClarifyEntry] = useState<Entry | null>(null)
+  const [staffSearch, setStaffSearch] = useState('')
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
 
@@ -549,9 +587,25 @@ export default function TimesheetPage() {
 
   function handleResubmit(note: string) {
     if (!resubmitEntry) return
-    saveEntries(entries.map(e => e.id === resubmitEntry.id ? { ...e, status: 'resubmitted', resubmitNote: note, updatedAt: new Date().toISOString() } : e))
+    saveEntries(entries.map(e => e.id === resubmitEntry.id ? { ...e, status: 'resubmitted' as const, resubmitNote: note, updatedAt: new Date().toISOString() } : e))
     setResubmitEntry(null)
     toast.success('Resubmitted')
+    logAudit('ENTRY_RESUBMIT', `Resubmitted entry: ${resubmitEntry.project}`, user?.id || '', user?.name || '')
+  }
+
+  function handleClarify(note: string) {
+    if (!clarifyEntry) return
+    const now = new Date().toISOString()
+    const updated = entries.map(e => e.id === clarifyEntry.id ? { 
+      ...e, 
+      status: 'resubmitted' as const, 
+      resubmitNote: note,
+      updatedAt: now 
+    } : e)
+    saveEntries(updated)
+    toast.success('Explanation sent')
+    setClarifyEntry(null)
+    logAudit('ENTRY_CLARIFY_RESPONSE', `Sent clarification for: ${clarifyEntry.project}`, user?.id || '', user?.name || '')
   }
 
   function handleSaveTemplate(tpl: any) {
@@ -629,7 +683,7 @@ export default function TimesheetPage() {
     }
   }
 
-  const statusBadge: Record<string, string> = { draft: 'gray', submitted: 'blue', approved: 'green', rejected: 'red', resubmitted: 'yellow' }
+  const statusBadge: Record<string, string> = { draft: 'gray', submitted: 'blue', approved: 'green', rejected: 'red', resubmitted: 'yellow', pending_clarification: 'yellow' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -642,10 +696,21 @@ export default function TimesheetPage() {
             {isCurrentWeek && isWindowOpen && <CountdownTimer weekKey={selectedWeek} />}
             {/* Admin: view another staff's timesheet */}
             {isAdmin && (
-              <select className="form-select" style={{ width: 'auto', borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
-                <option value="">My Timesheet</option>
-                {staff.filter(s => s.id !== user?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input 
+                  className="form-input text-xs" 
+                  style={{ width: 120 }} 
+                  placeholder="Search staff..." 
+                  value={staffSearch}
+                  onChange={e => setStaffSearch(e.target.value)}
+                />
+                <select className="form-select" style={{ width: 150, borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
+                  <option value="">My Timesheet</option>
+                  {staff
+                    .filter(s => s.id !== user?.id && (!staffSearch || s.name.toLowerCase().includes(staffSearch.toLowerCase())))
+                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
             )}
             <select className="form-select" style={{ width: 'auto' }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
               {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
@@ -775,6 +840,9 @@ export default function TimesheetPage() {
                         {e.status === 'rejected' && !viewingStaffId && (
                           <button className="btn btn-success btn-sm" onClick={() => setResubmitEntry(e)}>Resubmit</button>
                         )}
+                        {e.status === 'pending_clarification' && !viewingStaffId && (
+                          <button className="btn btn-primary btn-sm" onClick={() => setClarifyEntry(e)}>Explain</button>
+                        )}
                         {(e.status === 'draft' || isAdmin) && !isLocked && (
                           <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => deleteEntry(e.id)}><Trash2 size={12} /></button>
                         )}
@@ -813,6 +881,9 @@ export default function TimesheetPage() {
       )}
       {resubmitEntry && (
         <ResubmitModal entry={resubmitEntry} onSave={handleResubmit} onClose={() => setResubmitEntry(null)} />
+      )}
+      {clarifyEntry && (
+        <ClarifyModal entry={clarifyEntry} onSave={handleClarify} onClose={() => setClarifyEntry(null)} />
       )}
       {showConfirm && (
         <SubmissionConfirmationModal

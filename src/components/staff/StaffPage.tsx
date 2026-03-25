@@ -18,7 +18,7 @@ interface StaffModalProps {
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
   const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin')
-  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', photoUrl: '', password: '1234', mustChangePassword: true, weekly_cap: '' })
+  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', photoUrl: '', password: 'dsn-staff', mustChangePassword: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
 
@@ -213,8 +213,9 @@ function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: Import
     return rows.map(r => {
       const email = r.email?.toLowerCase().trim()
       const isDupe = existingEmails.has(email)
+      const normalizedRole = (r.role || 'staff').toLowerCase().replace(/\s+/g, '_')
       const validRoles = ['staff', 'team_lead', 'admin']
-      const isValid = r.name && email && validRoles.includes(r.role?.toLowerCase()) && r.department
+      const isValid = r.name && email && validRoles.includes(normalizedRole) && r.department
       
       let status: 'new' | 'existing' | 'invalid' = 'new'
       let reason = ''
@@ -380,6 +381,7 @@ export default function StaffPage() {
   const [deptFilter, setDeptFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [utilFilter, setUtilFilter] = useState('')
   const [tab, setTab] = useState('staff')
   const [showModal, setShowModal] = useState(false)
   const [editStaff, setEditStaff] = useState<Staff | null>(null)
@@ -406,14 +408,37 @@ export default function StaffPage() {
     return () => unsub()
   }, [])
 
-  const filtered = useMemo(() => staff.filter(s => {
-    if (search && !s.name?.toLowerCase().includes(search.toLowerCase()) && !s.email?.toLowerCase().includes(search.toLowerCase()) && !s.department?.toLowerCase().includes(search.toLowerCase())) return false
-    if (deptFilter && s.department !== deptFilter) return false
-    if (roleFilter && s.role !== roleFilter) return false
-    if (statusFilter === 'active' && s.suspended) return false
-    if (statusFilter === 'suspended' && !s.suspended) return false
-    return true
-  }), [staff, search, deptFilter, roleFilter, statusFilter])
+  const filtered = useMemo(() => {
+    const now = new Date().toISOString().slice(0, 10)
+    const currentWeekKey = (() => {
+      const d = new Date()
+      const day = d.getDay()
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+      return new Date(d.setDate(diff)).toISOString().slice(0, 10)
+    })()
+
+    return staff.map(s => {
+      const weekEntries = entries.filter(e => e.staffId === s.id && e.weekKey === currentWeekKey && !e.deleted)
+      const weekHours = weekEntries.reduce((a, e) => a + (e.hours || 0), 0)
+      const isOnLeave = leaves.some(l => l.staffId === s.id && l.status === 'approved' && now >= l.from && now <= l.to)
+      return { ...s, weekHours, isOnLeave }
+    }).filter(s => {
+      if (search && !s.name?.toLowerCase().includes(search.toLowerCase()) && !s.email?.toLowerCase().includes(search.toLowerCase()) && !s.department?.toLowerCase().includes(search.toLowerCase())) return false
+      if (deptFilter && s.department !== deptFilter) return false
+      if (roleFilter && s.role !== roleFilter) return false
+      if (statusFilter === 'active' && s.suspended) return false
+      if (statusFilter === 'suspended' && !s.suspended) return false
+      if (statusFilter === 'on_leave' && !s.isOnLeave) return false
+      
+      const lowThreshold = settings?.utilizationThresholds?.low || 25
+      const highThreshold = settings?.utilizationThresholds?.high || 40
+      
+      if (utilFilter === 'high' && s.weekHours < highThreshold) return false
+      if (utilFilter === 'low' && s.weekHours > lowThreshold) return false
+      
+      return true
+    })
+  }, [staff, entries, leaves, search, deptFilter, roleFilter, statusFilter, utilFilter, settings])
 
   /* ── Selection helpers ── */
   const allSelectedOnPage = filtered.length > 0 && filtered.every(s => selected.has(s.id))
@@ -433,7 +458,7 @@ export default function StaffPage() {
       toast.success('Staff updated')
     } else {
       if (staff.find(s => s.email?.toLowerCase() === form.email?.toLowerCase())) {
-        toast.error('Email already exists'); return
+        toast.error('Email address already exists'); return
       }
       const ns: Staff = { 
         ...form, 
@@ -450,12 +475,18 @@ export default function StaffPage() {
       notify(ns.id, `Welcome to Data Science Nigeria RMO! Your account has been created with default password "1234" or as specified by your admin. Please change it on your first login.`, 'info', 'Welcome to DSN-RMO', ns.id, 'message', ns.email)
       toast.success(form.name + ' added')
     }
-    setShowModal(false); setEditStaff(null)
+    setEditStaff(null); setShowModal(false)
   }
 
   function handleDelete(ids: Set<string>) {
     const names = staff.filter(s => ids.has(s.id)).map(s => s.name).join(', ')
     if (!window.confirm(`Permanently delete ${ids.size} staff member(s): ${names}?\n\nThis cannot be undone.`)) return
+    
+    // Actually delete from Firestore
+    ids.forEach(id => {
+      deleteDoc(doc(db, 'staff', id)).catch(e => console.error('Delete failed:', e))
+    })
+    
     saveStaff(staff.filter(s => !ids.has(s.id)))
     logAudit('DELETE_STAFF', `${user?.name} deleted ${ids.size} staff`, user?.id || '', user?.name || '')
     setSelected(new Set())
@@ -486,15 +517,15 @@ export default function StaffPage() {
   }
 
   async function resetPassword(s: Staff) {
-    if (!window.confirm(`Reset password for ${s.name} to "1234"?`)) return
+    if (!window.confirm(`Reset password for ${s.name} to "dsn-staff"?`)) return
     try {
       await updateDoc(doc(db, 'staff', s.id), {
-        password: '1234',
+        password: 'dsn-staff',
         first_login: true,
         password_reset_pending: true
       })
-      saveStaff(staff.map(m => m.id === s.id ? { ...m, password: '1234', first_login: true, password_reset_pending: true } : m))
-      notify(s.id, 'Your password has been reset by admin to "1234". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
+      saveStaff(staff.map(m => m.id === s.id ? { ...m, password: 'dsn-staff', first_login: true, password_reset_pending: true } : m))
+      notify(s.id, 'Your password has been reset by admin to "dsn-staff". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
       toast.success('Password reset for ' + s.name)
     } catch (e: any) {
       toast.error('Failed to reset password.')
@@ -522,7 +553,10 @@ export default function StaffPage() {
       Name: s.name, Email: s.email, Department: s.department || '',
       Role: s.role, Lead: s.leadName || '', Phone: s.phone || '',
       Points: s.points || 0, Streak: s.streak || 0, Badges: (s.badges || []).length,
-      Status: s.status || (s.suspended ? 'suspended' : 'active'), Joined: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
+      Status: s.status || (s.suspended ? 'suspended' : 'active'), 
+      WeekHours: (s as any).weekHours || 0,
+      OnLeave: (s as any).isOnLeave ? 'Yes' : 'No',
+      Joined: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
     }))
     exportCSV(rows, 'dsn_staff.csv')
     toast.success('Exported ' + rows.length + ' staff')
@@ -544,7 +578,7 @@ export default function StaffPage() {
   }
 
   function downloadTemplate() {
-    exportCSV([{ Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'Engineering', Role: 'staff', Lead: 'John Manager', Phone: '+2341234567', Password: 'admin' }], 'staff_import_template.csv')
+    exportCSV([{ Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'Engineering', Role: 'staff', Lead: 'John Manager', Phone: '+2341234567', Password: 'dsn-staff' }], 'staff_import_template.csv')
   }
 
   /* ── Bulk import ── */
@@ -564,7 +598,7 @@ export default function StaffPage() {
             role: (r.Role || r.role || 'staff').toLowerCase(),
             lead: r.Lead || r.lead || '',
             phone: String(r.Phone || r.phone || ''),
-            password: String(r.Password || r.password || '1234'),
+            password: String(r.Password || r.password || 'dsn-staff'),
           })).filter(r => r.name || r.email)
           setImportRows(parsed)
         } catch { toast.error('Failed to parse file') }
@@ -583,7 +617,7 @@ export default function StaffPage() {
         id: genId(), name: r.name, email: r.email, department: r.department, 
         role: r.role as any, jobTitle: r.jobTitle || '', status: 'active' as const,
         leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, 
-        password: r.password || '1234', first_login: true, mustChangePassword: true,
+        password: r.password || 'dsn-staff', first_login: true, mustChangePassword: true,
         points: 0, streak: 0, badges: [], createdAt: now 
       }
     })
@@ -696,6 +730,12 @@ export default function StaffPage() {
               <option value="">All Status</option>
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
+              <option value="on_leave">On Leave</option>
+            </select>
+            <select className="form-select" style={{ width: 'auto' }} value={utilFilter} onChange={e => setUtilFilter(e.target.value)}>
+              <option value="">All Utilization</option>
+              <option value="high">High (&gt;40h)</option>
+              <option value="low">Low (&lt;25h)</option>
             </select>
           </div>
 

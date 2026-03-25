@@ -1,6 +1,7 @@
 'use client'
 import React, { useState } from 'react'
-import { local, exportCSV } from '../../lib/utils'
+import { exportCSV } from '../../lib/utils'
+import { useApp } from '../../context/AppContext'
 
 interface AuditLog {
   id: string;
@@ -13,11 +14,12 @@ interface AuditLog {
 }
 
 export default function AuditPage() {
+  const { auditLogs } = useApp()
   const [search, setSearch] = useState('')
   const [filterAction, setFilterAction] = useState('')
   const [filterDate, setFilterDate] = useState('')
 
-  const logs = local.get<AuditLog[]>('audit_logs', [])
+  const logs = auditLogs || []
 
   const filtered = logs.filter(l => {
     if (search && !l.userName?.toLowerCase().includes(search.toLowerCase()) && !l.action?.toLowerCase().includes(search.toLowerCase())) return false
@@ -26,7 +28,7 @@ export default function AuditPage() {
     return true
   })
 
-  const actionTypes = Array.from(new Set(logs.map(l => l.action?.split('_')[0]).filter(Boolean)))
+  const actionTypes = Array.from(new Set(logs.map(l => l.action?.split('_')[0]).filter(Boolean))) as string[]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

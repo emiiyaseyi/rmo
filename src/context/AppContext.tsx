@@ -153,6 +153,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [staff.length, messageThreads.length])
 
   function resetIdle() {
+    // Clear any existing countdown interval
+    if ((idleTimerRef as any).currentCountdownInterval) {
+      clearInterval((idleTimerRef as any).currentCountdownInterval)
+      ;(idleTimerRef as any).currentCountdownInterval = null
+    }
+
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     setIdleCountdown(null)
     const totalMins = settings?.idle_minutes || 2
@@ -178,24 +184,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, warnAt * 1000)
   }
 
-  // Helper to clear countdown if user moves
-  useEffect(() => {
-    const handleActivity = () => {
-      if (idleCountdown !== null) {
-        if ((idleTimerRef as any).currentCountdownInterval) {
-          clearInterval((idleTimerRef as any).currentCountdownInterval)
-        }
-        setIdleCountdown(null)
-        resetIdle()
-      }
-    }
-    window.addEventListener('mousemove', handleActivity)
-    window.addEventListener('keydown', handleActivity)
-    return () => {
-      window.removeEventListener('mousemove', handleActivity)
-      window.removeEventListener('keydown', handleActivity)
-    }
-  }, [idleCountdown])
+  // Idle countdown is only cleared by explicit user action (clicking buttons)
+  // No automatic clearing on mouse movement when warning is shown
 
   // REAL-TIME SYNC FOR ALL COLLECTIONS
   useEffect(() => {

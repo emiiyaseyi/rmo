@@ -73,6 +73,7 @@ function StaffNode({ member, reports }: StaffNodeProps) {
 
 export default function OrgChartPage() {
   const { staff } = useApp()
+  const [viewMode, setViewMode] = useState<'role' | 'department'>('role')
   const [deptFilter, setDeptFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -108,13 +109,29 @@ export default function OrgChartPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>🗂️ Org Chart</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Department structure and reporting lines</p>
+          <h1 style={{ fontSize: 20, fontWeight: 800 }}>🗂️ Organogram</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Organization structure and reporting hierarchy</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input 
-            className="form-input" 
-            placeholder="Search staff..." 
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', borderRadius: 8, padding: 4 }}>
+            <button
+              className={`btn btn-sm ${viewMode === 'role' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('role')}
+              style={{ fontSize: 12 }}
+            >
+              By Role
+            </button>
+            <button
+              className={`btn btn-sm ${viewMode === 'department' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('department')}
+              style={{ fontSize: 12 }}
+            >
+              By Department
+            </button>
+          </div>
+          <input
+            className="form-input"
+            placeholder="Search staff..."
             style={{ width: 180 }}
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -146,37 +163,89 @@ export default function OrgChartPage() {
         ))}
       </div>
 
-      {/* Admins row */}
-      {admins.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Administration</div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {admins.map(a => (
-              <StaffNode key={a.id} member={a} reports={[]} />
-            ))}
-          </div>
-        </div>
+      {/* Role-based view */}
+      {viewMode === 'role' && (
+        <>
+          {/* Admins row */}
+          {admins.length > 0 && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                👑 Administration
+              </div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {admins.map(a => (
+                  <StaffNode key={a.id} member={a} reports={[]} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Team Leads row */}
+          {leads.length > 0 && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                🎯 Team Leads
+              </div>
+              <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {leads.map(lead => (
+                  <StaffNode key={lead.id} member={lead} reports={getReports(lead.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Staff without leads */}
+          {regularStaff.filter(s => !leads.find(l => l.id === s.leadId)).length > 0 && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                👥 Staff
+              </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {regularStaff.filter(s => !leads.find(l => l.id === s.leadId)).map(s => (
+                  <StaffNode key={s.id} member={s} reports={[]} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Departments */}
-      {Object.entries(deptGroups).map(([dept, { leads: dLeads, staff: dStaff }]) => (
-        <div key={dept} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-            🏢 {dept}
-          </div>
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {dLeads.map(lead => (
-              <StaffNode key={lead.id} member={lead} reports={getReports(lead.id)} />
-            ))}
-            {/* Staff with no lead */}
-            {dStaff.length > 0 && (
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                {dStaff.map(s => <StaffNode key={s.id} member={s} reports={[]} />)}
+      {/* Department-based view */}
+      {viewMode === 'department' && (
+        <>
+          {/* Admins row */}
+          {admins.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Administration</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {admins.map(a => (
+                  <StaffNode key={a.id} member={a} reports={[]} />
+                ))}
               </div>
-            )}
-          </div>
-        </div>
-      ))}
+            </div>
+          )}
+
+          {/* Departments */}
+          {Object.entries(deptGroups).map(([dept, { leads: dLeads, staff: dStaff }]) => (
+            <div key={dept} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                🏢 {dept}
+              </div>
+              <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {dLeads.map(lead => (
+                  <StaffNode key={lead.id} member={lead} reports={getReports(lead.id)} />
+                ))}
+                {/* Staff with no lead */}
+                {dStaff.length > 0 && (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {dStaff.map(s => <StaffNode key={s.id} member={s} reports={[]} />)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       {filtered.length === 0 && (
         <div className="empty-state card">

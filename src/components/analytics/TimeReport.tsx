@@ -93,22 +93,23 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input 
-            className="form-input text-xs" 
-            placeholder="Search staff or desc..." 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
+        <div className="flex gap-3 flex-wrap items-center">
+          <input
+            className="form-input text-xs flex-1"
+            style={{ minWidth: '200px' }}
+            placeholder="Search staff or desc..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
           />
-          <select className="form-select text-xs" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+          <select className="form-select text-xs" style={{ minWidth: '150px' }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
             <option value="">All Departments</option>
             {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
-          <select className="form-select text-xs" value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+          <select className="form-select text-xs" style={{ minWidth: '150px' }} value={projFilter} onChange={e => setProjFilter(e.target.value)}>
             <option value="">All Projects</option>
             {projectNames.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select className="form-select text-xs" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <select className="form-select text-xs" style={{ minWidth: '150px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="approved">Approved</option>
             <option value="submitted">Submitted</option>

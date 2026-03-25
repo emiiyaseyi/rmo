@@ -16,6 +16,8 @@ import AnalyticsPage from '@/components/analytics/AnalyticsPage'
 import StaffPage from '@/components/staff/StaffPage'
 import SettingsPage from '@/components/settings/SettingsPage'
 import ProfilePage from '@/components/profile/ProfilePage'
+import LeaveRequestPage from '@/components/leave/LeaveRequestPage'
+import LeaveApprovalsPage from '@/components/leave/LeaveApprovalsPage'
 import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
@@ -46,6 +48,7 @@ export default function Home() {
   const { user, staff, saveStaff, features, checkReminders, settings, canApproveTimesheets } = useApp()
   const [page, setPage] = useState('dashboard')
   const [showTour, setShowTour] = useState(false)
+  const [isHydrating, setIsHydrating] = useState(true)
   const didInitUserState = useRef(false)
 
   // Handle URL segments for SPA routing
@@ -138,8 +141,10 @@ export default function Home() {
     // Skip first run so session hydration doesn't rewrite current route to "/"
     if (!didInitUserState.current) {
       didInitUserState.current = true
+      setIsHydrating(false)
       return
     }
+    setIsHydrating(false)
     if (!user && typeof window !== 'undefined') {
       if (window.location.pathname !== '/') {
         window.history.replaceState({}, '', '/')
@@ -148,6 +153,36 @@ export default function Home() {
     }
   }, [user])
 
+  // Show blank screen during hydration to prevent login flash
+  if (isHydrating) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: 'var(--bg-page)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            border: '4px solid var(--border)',
+            borderTopColor: 'var(--accent)',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto'
+          }} />
+        </div>
+        <style jsx>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    )
+  }
+
   if (!user) return <LoginPage />
 
   function renderPage() {
@@ -155,7 +190,7 @@ export default function Home() {
       case 'dashboard': return <Dashboard setPage={navigate} />
       case 'timesheet': return <TimesheetPage />
       case 'approvals': return <ApprovalsPage />
-      case 'leave': return <ProfilePage initialTab="leave" />
+      case 'leave': return <LeaveRequestPage />
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'messages': return <MessagesPage />

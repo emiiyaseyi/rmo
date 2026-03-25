@@ -6,11 +6,17 @@ import { Briefcase, Plus, Search, Download, Trash2, Edit2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function ProjectsPage() {
-  const { projects, saveProjects, entries } = useApp()
+  const { projects, saveProjects, entries, settings, saveSettings, logAudit } = useApp()
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState({ name: '', active: true, budget: 0 })
+
+  const saveAllSettings = (updates: any) => {
+    const newData = { ...settings, ...updates }
+    saveSettings(newData)
+    logAudit('settings_change', 'system', { updates: Object.keys(updates) })
+  }
 
   const projectStats = useMemo(() => {
     return projects.map((p: any) => {
@@ -72,19 +78,45 @@ export default function ProjectsPage() {
     toast.success('Exported')
   }
 
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv'
+    input.onchange = (e: any) => {
+      const file = e.target.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (evt) => {
+        const text = evt.target?.result as string
+        const rows = text.split('\n').slice(1).filter(r => r.trim())
+        const newProjects = rows.map(r => ({ id: genId(), name: r.trim(), active: true, budget: 0 }))
+        saveProjects([...projects, ...newProjects])
+        toast.success(`Imported ${newProjects.length} projects`)
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>💼 Project Management</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Manaage projects and view total logged hours</p>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Manage projects, import/export data and configure categories</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary btn-sm" onClick={handleImport}>
+            📁 Import CSV
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => exportCSV([{ ProjectName: 'Project X' }, { ProjectName: 'Project Y' }], 'projects_template.csv')}>
+            📄 Template
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>
-            <Download size={14} /> CSV
+            <Download size={14} /> Report CSV
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>
-            <Download size={14} /> PDF
+            <Download size={14} /> Report PDF
           </button>
           <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
             <Plus size={14} /> Add Project
@@ -132,10 +164,10 @@ export default function ProjectsPage() {
                   <td>{p.staffCount}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-icon btn-secondary btn-sm" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0 }); setShowAdd(true) }}>
+                      <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0 }); setShowAdd(true) }}>
                         <Edit2 size={12} />
                       </button>
-                      <button className="btn btn-icon btn-danger btn-sm" onClick={() => handleDelete(p.id)}>
+                      <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -149,6 +181,36 @@ export default function ProjectsPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="card flex flex-col gap-4">
+        <h3 className="font-bold">🏷️ Entry Categories</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Configure tasks and categories available for time entry</p>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {settings?.categories.map((c: string) => (
+            <div key={c} className="flex items-center gap-2 px-3 py-1.5 bg-soft-primary text-primary rounded-full text-xs font-medium">
+              {c}
+              <button className="hover:text-danger" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} onClick={() => {
+                const next = settings.categories.filter((x: string) => x !== c)
+                saveAllSettings({ categories: next })
+              }}>×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type="text" className="form-input" style={{ maxWidth: 300 }} id="cat-name-input" placeholder="New Category Name" />
+          <button 
+            className="btn btn-secondary"
+            onClick={() => {
+              const el = document.getElementById('cat-name-input') as HTMLInputElement
+              const name = el.value
+              if (!name) return
+              saveAllSettings({ categories: [...settings.categories, name] })
+              el.value = ''
+              toast.success('Category added')
+            }}
+          >Add Category</button>
         </div>
       </div>
 

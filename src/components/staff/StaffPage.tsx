@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF, avatarColor, initials, logAudit } from '../../lib/utils'
 import { db } from '../../lib/firebase'
 import { doc, updateDoc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore'
-import { Search, Plus, Upload, Download, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Search, Plus, Download, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square, Unlock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Staff, Entry } from '../../types'
 
@@ -402,10 +402,6 @@ export default function StaffPage() {
   const [editStaff, setEditStaff] = useState<Staff | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkEdit, setShowBulkEdit] = useState(false)
-  const [compareA, setCompareA] = useState('')
-  const [compareB, setCompareB] = useState('')
-  const [showCompare, setShowCompare] = useState(false)
-  const [importRows, setImportRows] = useState<any[] | null>(null)
   const [activeSessions, setActiveSessions] = useState<any[]>([])
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
@@ -547,14 +543,30 @@ export default function StaffPage() {
     }
   }
 
+  async function unlockAccount(s: Staff) {
+    if (!window.confirm(`Unlock account for ${s.name}?`)) return
+    try {
+      await updateDoc(doc(db, 'staff', s.id), {
+        failed_attempts: 0,
+        lockout_until: null
+      })
+      saveStaff(staff.map(m => m.id === s.id ? { ...m, failed_attempts: 0, lockout_until: undefined } : m))
+      notify(s.id, 'Your account has been unlocked by an administrator. You can now login.', 'account_unlock', 'Account Unlocked', s.id, 'message')
+      logAudit('ACCOUNT_UNLOCK', `${user?.name} unlocked account for ${s.name}`, user?.id || '', user?.name || '')
+      toast.success('Account unlocked for ' + s.name)
+    } catch (e: any) {
+      toast.error('Failed to unlock account.')
+    }
+  }
+
   async function forceLogout(s: Staff) {
     if (!window.confirm(`Force logout ${s.name}?`)) return
     try {
       // Set force_logout flag in Firestore
       await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
-      
+
       // Cleanup of local session mirror (if any existed) is handled by Firestore sync logic
-      
+
       logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
       toast.success(s.name + ' logged out')
     } catch (e: any) {
@@ -592,77 +604,6 @@ export default function StaffPage() {
     } catch { toast.error('PDF export failed — try CSV instead') }
   }
 
-  function downloadTemplate() {
-    exportCSV([{ Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'Engineering', Role: 'staff', Lead: 'John Manager', Phone: '+2341234567', Password: 'dsn-staff' }], 'staff_import_template.csv')
-  }
-
-  /* ── Bulk import ── */
-  function handleFileSelect(e: any) {
-    const file = e.target.files[0]; if (!file) return
-    import('xlsx').then(XLSX => {
-      const reader = new FileReader()
-      reader.onload = ev => {
-        try {
-          const wb = XLSX.read(ev.target?.result as string, { type: 'binary' })
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as any[]
-          const parsed = rows.map(r => ({
-            name: r.Name || r.name || '',
-            email: (r.Email || r.email || '').toLowerCase().trim(),
-            department: r.Department || r.department || '',
-            jobTitle: r.JobTitle || r.jobTitle || r['Job Title'] || '',
-            role: (r.Role || r.role || 'staff').toLowerCase().replace(/\s+/g, '_'),
-            lead: r.Lead || r.lead || '',
-            phone: String(r.Phone || r.phone || ''),
-            password: String(r.Password || r.password || 'dsn-staff'),
-          })).filter(r => r.name || r.email)
-          setImportRows(parsed)
-        } catch { toast.error('Failed to parse file') }
-      }
-      reader.readAsBinaryString(file)
-    })
-    e.target.value = ''
-  }
-
-  function confirmImport(rows: any[]) {
-    const { saveBulkStaffImportLogs, bulkStaffImportLogs } = useApp() // Access from context
-    const now = new Date().toISOString()
-    const newStaff: Staff[] = rows.map(r => {
-      const lead = staff.find(s => s.name === r.lead)
-      return { 
-        id: genId(), name: r.name, email: r.email, department: r.department, 
-        role: r.role as any, jobTitle: r.jobTitle || '', status: 'active' as const,
-        leadId: lead?.id || '', leadName: lead?.name || r.lead, phone: r.phone, 
-        password: r.password || 'dsn-staff', first_login: true, mustChangePassword: true,
-        points: 0, streak: 0, badges: [], createdAt: now 
-      }
-    })
-
-    // Log the import
-    const logEntry = {
-      id: genId(),
-      importedBy: user?.id || 'admin',
-      timestamp: now,
-      totalRows: rows.length,
-      newCount: rows.length,
-      existingCount: 0, // already filtered out
-      invalidCount: 0, // already filtered out
-      errors: []
-    }
-    
-    saveStaff([...staff, ...newStaff])
-    if (saveBulkStaffImportLogs) {
-        saveBulkStaffImportLogs([logEntry, ...bulkStaffImportLogs])
-    }
-    
-    newStaff.forEach(s => {
-      notify(s.id, `Welcome to Data Science Nigeria RMO! Your account has been created with default password "${s.password}". Please change it on your first login.`, 'info', 'Welcome to DSN-RMO', s.id, 'message', s.email)
-    })
-    
-    logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
-    toast.success(`✅ Imported ${rows.length} staff members`)
-    setImportRows(null)
-  }
-
   /* ── Leave ── */
   function approveLeave(id: string) {
     const l = leaves.find((x: any) => x.id === id)
@@ -678,9 +619,6 @@ export default function StaffPage() {
   }
 
   const pendingLeaves = leaves.filter((l: any) => l.status === 'pending')
-  const staffA = staff.find(s => s.id === compareA)
-  const staffB = staff.find(s => s.id === compareB)
-  const existingEmails = useMemo(() => new Set(staff.map(s => s.email?.toLowerCase())), [staff])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -693,11 +631,6 @@ export default function StaffPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary btn-sm" onClick={downloadTemplate}>📄 Template</button>
-          <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-            <Upload size={13} /> Import
-            <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleFileSelect} />
-          </label>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-secondary btn-sm" onClick={() => exportStaff(selected.size > 0 ? selected : null)}>
               <Download size={13} /> {selected.size > 0 ? `Export ${selected.size}` : 'Export All'}
@@ -719,7 +652,6 @@ export default function StaffPage() {
         <div className={'tab' + (tab === 'leaves' ? ' active' : '')} onClick={() => setTab('leaves')}>
           Leave Requests {pendingLeaves.length > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>{pendingLeaves.length}</span>}
         </div>
-        <div className={'tab' + (tab === 'compare' ? ' active' : '')} onClick={() => setTab('compare')}>Compare Staff</div>
       </div>
 
       {/* ── STAFF LIST TAB ── */}
@@ -831,9 +763,14 @@ export default function StaffPage() {
                             : <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>}
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditStaff(s); setShowModal(true) }}><Edit2 size={12} /></button>
                             <button className="btn btn-icon btn-secondary btn-sm" title="Reset Password" onClick={() => resetPassword(s)}><Key size={12} /></button>
+                            {s.lockout_until && new Date(s.lockout_until) > new Date() && (
+                              <button className="btn btn-icon btn-warning btn-sm" title="Unlock Account" onClick={() => unlockAccount(s)}>
+                                <Unlock size={12} />
+                              </button>
+                            )}
                             <button className="btn btn-icon btn-secondary btn-sm" title={s.suspended ? 'Unsuspend' : 'Suspend'} onClick={() => toggleSuspend(s)}>
                               {s.suspended ? <UserCheck size={12} /> : <UserX size={12} />}
                             </button>
@@ -951,36 +888,9 @@ export default function StaffPage() {
           )
       )}
 
-      {/* ── COMPARE TAB ── */}
-      {tab === 'compare' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="grid-2">
-            <div className="form-group">
-              <label className="form-label">Staff A</label>
-              <select className="form-select" value={compareA} onChange={e => setCompareA(e.target.value)}>
-                <option value="">Select staff…</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.department || s.role})</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Staff B</label>
-              <select className="form-select" value={compareB} onChange={e => setCompareB(e.target.value)}>
-                <option value="">Select staff…</option>
-                {staff.filter(s => s.id !== compareA).map(s => <option key={s.id} value={s.id}>{s.name} ({s.department || s.role})</option>)}
-              </select>
-            </div>
-          </div>
-          <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={!compareA || !compareB} onClick={() => setShowCompare(true)}>
-            Compare →
-          </button>
-        </div>
-      )}
-
       {/* ── Modals ── */}
       {showModal && <StaffModal existing={editStaff} allStaff={staff} onSave={handleSave} onClose={() => { setShowModal(false); setEditStaff(null) }} />}
       {showBulkEdit && <BulkEditModal count={selected.size} allStaff={staff} onApply={handleBulkEdit} onClose={() => setShowBulkEdit(false)} />}
-      {showCompare && staffA && staffB && <CompareModal staffA={staffA} staffB={staffB} entries={entries} onClose={() => setShowCompare(false)} />}
-      {importRows && <ImportPreviewModal rows={importRows} existingEmails={existingEmails} onConfirm={confirmImport} onClose={() => setImportRows(null)} />}
     </div>
   )
 }

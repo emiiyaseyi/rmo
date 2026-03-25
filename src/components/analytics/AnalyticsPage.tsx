@@ -6,7 +6,6 @@ import { getWeekKey, weekRange, exportCSV, exportPDF, fmtDate } from '../../lib/
 import { Staff, Entry, Reward, Redemption, HofEntry, AppMessage, Leave } from '../../types'
 import toast from 'react-hot-toast'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
-import * as XLSX from 'xlsx'
 import TimeReport from './TimeReport'
 
 const COLORS = ['#076C04', '#22C55E', '#EAB308', '#D8001A', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
@@ -15,7 +14,7 @@ const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', bo
 type PeriodType = 'week' | 'month' | 'custom'
 
 export default function AnalyticsPage() {
-  const { staff, entries, settings, projects, projectBudgets, bulkImportLogs } = useApp()
+  const { staff, entries, settings, projects, projectBudgets } = useApp()
   const [tab, setTab] = useState('overview')
   
   // Filter State
@@ -27,16 +26,6 @@ export default function AnalyticsPage() {
 
   const [staffFilter, setStaffFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
-
-  // Comparison State
-  const [compareStaff1, setCompareStaff1] = useState<string>('')
-  const [compareStaff2, setCompareStaff2] = useState<string>('')
-
-  // Bulk Import State
-  const [importing, setImporting] = useState(false)
-  const [importPreview, setImportPreview] = useState<any[]>([])
-  const [importErrors, setImportErrors] = useState<string[]>([])
-  const { saveEntries, saveBulkImportLogs, user } = useApp()
   
   // Utils
   const weekCap = settings?.weekly_cap || 45
@@ -62,7 +51,7 @@ export default function AnalyticsPage() {
   // Filtered Data
   const filteredEntries = useMemo(() => {
     return entries.filter(e => {
-      if (e.deleted) return false
+      if (e.deleted || !e.date) return false
       const d = parseISO(e.date)
       return isWithinInterval(d, { start: dateRange.start, end: dateRange.end })
     })
@@ -149,7 +138,7 @@ export default function AnalyticsPage() {
     const prevMonthEnd = endOfMonth(prevMonthStart)
 
     const getMonthStats = (start: Date, end: Date) => {
-      const ents = entries.filter(e => !e.deleted && isWithinInterval(parseISO(e.date), { start, end }))
+      const ents = entries.filter(e => !e.deleted && e.date && isWithinInterval(parseISO(e.date), { start, end }))
       const approved = ents.filter(e => e.status === 'approved')
       const hours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
       const submissionCount = new Set(ents.map(e => `${e.staffId}-${e.weekKey}`)).size
@@ -191,7 +180,7 @@ export default function AnalyticsPage() {
   const staffYTD = useMemo(() => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1)
     const yearEnd = new Date()
-    const ytdEntries = entries.filter(e => !e.deleted && parseISO(e.date) >= yearStart)
+    const ytdEntries = entries.filter(e => !e.deleted && e.date && parseISO(e.date) >= yearStart)
     
     return activeStaff.map(s => {
       const sEntries = ytdEntries.filter(e => e.staffId === s.id)
@@ -253,97 +242,6 @@ export default function AnalyticsPage() {
     }))
     exportCSV(rows, `staff_ytd_${new Date().getFullYear()}.csv`)
     toast.success('Exported YTD CSV')
-  }
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      const bstr = evt.target?.result
-      const wb = XLSX.read(bstr, { type: 'binary' })
-      const wsname = wb.SheetNames[0]
-      const ws = wb.Sheets[wsname]
-      const data = XLSX.utils.sheet_to_json(ws) as any[]
-      
-      const errors: string[] = []
-      const preview = data.map((row, idx) => {
-        const staffObj = staff.find(s => s.id === row.staffId || s.email === row.email)
-        const projObj = projects.find(p => p.name === row.project)
-        
-        if (!staffObj) errors.push(`Row ${idx + 2}: Staff not found (${row.staffId || row.email})`)
-        if (!projObj) errors.push(`Row ${idx + 2}: Project not found (${row.project})`)
-        if (!row.date || isNaN(Date.parse(row.date))) errors.push(`Row ${idx + 2}: Invalid date (${row.date})`)
-        if (isNaN(parseFloat(row.hours))) errors.push(`Row ${idx + 2}: Invalid hours (${row.hours})`)
-
-        return {
-          ...row,
-          isValid: !errors.length,
-          staffName: staffObj?.name || 'Unknown',
-          projectName: projObj?.name || 'Unknown'
-        }
-      })
-
-      setImportPreview(preview)
-      setImportErrors(errors)
-    }
-    reader.readAsBinaryString(file)
-  }
-
-  const commitImport = async () => {
-    if (importErrors.length > 0) {
-      toast.error('Please fix errors before importing')
-      return
-    }
-    if (importPreview.length === 0) return
-
-    setImporting(true)
-    try {
-      const newEntries: Entry[] = importPreview.map(row => {
-        const s = staff.find(st => st.id === row.staffId || st.email === row.email)
-        const entryDate = format(new Date(row.date), 'yyyy-MM-dd')
-        return {
-          id: Math.random().toString(36).substr(2, 9),
-          staffId: s?.id || row.staffId,
-          staffName: s?.name || 'Unknown',
-          date: entryDate,
-          startDate: entryDate,
-          endDate: entryDate,
-          hours: parseFloat(row.hours),
-          project: row.project,
-          category: row.category || 'Client Work',
-          description: row.description || 'Bulk imported',
-          status: 'approved' as const,
-          weekKey: getWeekKey(new Date(row.date)),
-          createdAt: new Date().toISOString(),
-          createdBy: user?.id || 'system'
-        }
-      })
-
-      await saveEntries([...entries, ...newEntries])
-      
-      const log = {
-        id: Math.random().toString(36).substr(2, 9),
-        importedBy: user?.id || 'admin',
-        importedByName: user?.name || 'Admin',
-        timestamp: new Date().toISOString(),
-        totalRows: importPreview.length,
-        successCount: importPreview.length,
-        failCount: 0,
-        errors: []
-      }
-      await saveBulkImportLogs([...bulkImportLogs, log])
-      
-      toast.success(`Successfully imported ${newEntries.length} entries`)
-      setImportPreview([])
-      setTab('overview')
-    } catch (e) {
-      toast.error('Import failed')
-      console.error(e)
-    } finally {
-      setImporting(false)
-    }
   }
 
   return (
@@ -421,7 +319,7 @@ export default function AnalyticsPage() {
 
       {/* Tabs */}
       <div className="tabs">
-        {['overview', 'time_report', 'dept_report', 'projects', 'utilisation', 'hour_thresholds', 'staff_ytd', 'compare_staff', 'month_compare', 'bulk_import'].map(t => (
+        {['overview', 'time_report', 'dept_report', 'projects', 'utilisation', 'hour_thresholds', 'staff_ytd', 'month_compare'].map(t => (
           <div
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
@@ -910,68 +808,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* ── COMPARE STAFF TAB ── */}
-      {tab === 'compare_staff' && (
-        <div className="flex flex-col gap-6">
-          <div className="card flex items-center gap-4">
-            <div className="flex-1">
-              <label className="form-label text-xs">Staff 1</label>
-              <select className="form-select" value={compareStaff1} onChange={e => setCompareStaff1(e.target.value)}>
-                <option value="">Select staff...</option>
-                {activeStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="text-4 font-bold">VS</div>
-            <div className="flex-1">
-              <label className="form-label text-xs">Staff 2</label>
-              <select className="form-select" value={compareStaff2} onChange={e => setCompareStaff2(e.target.value)}>
-                <option value="">Select staff...</option>
-                {activeStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          </div>
 
-          {compareStaff1 && compareStaff2 ? (
-            <div className="grid-2">
-              {[compareStaff1, compareStaff2].map((sid, idx) => {
-                const s = staff.find(st => st.id === sid)
-                const sEntries = filteredEntries.filter(e => e.staffId === sid && e.status === 'approved')
-                const hours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
-                return (
-                  <div key={sid} className="card flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center font-bold">
-                        {s?.name.charAt(0)}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-1">{s?.name}</h3>
-                        <p className="text-xs text-3">{s?.department || 'No Dept'}</p>
-                      </div>
-                    </div>
-                    <div className="grid-2 gap-3">
-                      <div className="bg-elevated p-3 rounded-lg text-center">
-                        <div className="text-4 text-xs mb-1">Total Hours</div>
-                        <div className="text-1 font-bold text-xl">{hours}h</div>
-                      </div>
-                      <div className="bg-elevated p-3 rounded-lg text-center">
-                        <div className="text-4 text-xs mb-1">Avg Weekly</div>
-                        <div className="text-1 font-bold text-xl">
-                          {parseFloat((hours / (utilisationData.length > 0 ? 4 : 1)).toFixed(1))}h
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="card py-20 text-center opacity-50">
-              <div className="text-4xl mb-4">👥</div>
-              <h3 className="text-1 font-bold">Select two staff members to compare</h3>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── MONTH COMPARE TAB ── */}
       {tab === 'month_compare' && (
@@ -1022,108 +859,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* ── BULK IMPORT TAB ── */}
-      {tab === 'bulk_import' && (
-        <div className="flex flex-col gap-6">
-          <div className="card">
-            <h3 className="text-1 font-bold mb-2">Import Entries from CSV</h3>
-            <p className="text-3 text-sm mb-6">
-              Upload a CSV file with columns: <code className="bg-elevated px-1 rounded">staffId</code> (or email), 
-              <code className="bg-elevated px-1 rounded">project</code>, 
-              <code className="bg-elevated px-1 rounded">date</code> (YYYY-MM-DD), 
-              <code className="bg-elevated px-1 rounded">hours</code>, 
-              <code className="bg-elevated px-1 rounded">category</code>, and 
-              <code className="bg-elevated px-1 rounded">description</code>.
-            </p>
-            
-            <div className="flex items-center gap-4">
-              <input 
-                type="file" 
-                accept=".csv,.xlsx" 
-                onChange={handleFileUpload} 
-                className="form-input" 
-                style={{ width: 'auto' }}
-              />
-              {importPreview.length > 0 && (
-                <button 
-                  className={`btn btn-primary ${importing || importErrors.length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={commitImport}
-                  disabled={importing || importErrors.length > 0}
-                >
-                  {importing ? 'Importing...' : `Import ${importPreview.length} Entries`}
-                </button>
-              )}
-            </div>
-          </div>
 
-          {importErrors.length > 0 && (
-            <div className="card bg-danger-light border-danger text-danger">
-              <h4 className="font-bold mb-2">Validation Errors:</h4>
-              <ul className="list-disc pl-5 text-sm">
-                {importErrors.map((err, i) => <li key={i}>{err}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {importPreview.length > 0 && (
-            <div className="card" style={{ padding: 0 }}>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Staff</th>
-                      <th>Project</th>
-                      <th>Date</th>
-                      <th>Hours</th>
-                      <th>Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.map((row, i) => (
-                      <tr key={i}>
-                        <td className="font-medium">{row.staffName} <span className="text-4 text-xs">({row.staffId || row.email})</span></td>
-                        <td>{row.projectName}</td>
-                        <td className="font-mono">{row.date}</td>
-                        <td className="font-bold">{row.hours}h</td>
-                        <td className="text-3 text-xs truncate max-w-xs">{row.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="card">
-            <h3 className="text-1 font-bold mb-4">Recent Import Logs</h3>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Imported By</th>
-                    <th>Rows</th>
-                    <th>Errors</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulkImportLogs.slice().reverse().map(log => (
-                    <tr key={log.id}>
-                      <td className="text-4 text-sm">{fmtDate(log.timestamp)}</td>
-                      <td>{log.importedByName}</td>
-                      <td>{log.totalRows}</td>
-                      <td>{log.failCount > 0 ? <span className="text-danger font-bold">{log.failCount}</span> : 'None'}</td>
-                    </tr>
-                  ))}
-                  {bulkImportLogs.length === 0 && (
-                    <tr><td colSpan={4} className="text-center py-8 text-4">No import history yet.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

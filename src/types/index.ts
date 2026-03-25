@@ -490,6 +490,7 @@ export interface AppContextType {
     awardPoints: (staffId: string, points: number, action: string, weekId?: string) => void;
     grantBadge: (staffId: string, badgeId: string) => void;
     pendingApprovals: () => Entry[];
+    canApproveTimesheets: () => boolean;
     sendMessage: (msg: Partial<AppMessage>) => AppMessage;
     getOrCreateThread: (type: 'direct' | 'group', participants: string[], name?: string, icon?: string) => MessageThread;
     getThreadMessages: (threadId: string) => AppMessage[];
@@ -520,4 +521,3 @@ export interface AppContextType {
     // Add other fields as needed or use any for complex legacy state
     [key: string]: any;
 }
-

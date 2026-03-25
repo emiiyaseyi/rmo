@@ -418,10 +418,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function saveStaff(data: Staff[]) {
     const previousStaff = staff
     setStaff(data);
-
-    // Sync to Firestore for centralized management
+ 
+    // Efficient Sync to Firestore: only update changed members
     data.forEach(s => {
-      setDoc(doc(db, 'staff', s.id), s, { merge: true }).catch(() => {})
+      const prev = previousStaff.find(p => p.id === s.id)
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(s)) {
+        setDoc(doc(db, 'staff', s.id), s, { merge: true }).catch(() => {})
+      }
     })
 
     // Auto-add new staff to "All Staff" channel
@@ -483,7 +486,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   function saveNots(data: AppNotification[]) { 
     setNots(data); 
-    data.forEach(n => { setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) })
+    data.forEach(n => { 
+      const prev = notifications.find(p => p.id === n.id)
+      if (!prev || prev.read !== n.read) {
+        setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) 
+      }
+    }) 
   }
   function saveRedeems(data: Redemption[]) {
     data.forEach(r => { setDoc(doc(db, 'redeems', r.id), r, { merge: true }).catch(() => {}) })
@@ -517,8 +525,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       action,
       performedBy: user?.name || 'System',
       targetId,
-      device: navigator.userAgent.slice(0, 50),
-      ipAddress: '127.0.0.1', // Placeholder for frontend-only
+      device: `${navigator.platform} (${navigator.language}) | ${navigator.userAgent.slice(0, 40)}`,
+      ipAddress: 'Local Browser',
       timestamp: new Date().toISOString(),
       metadata
     }
@@ -568,7 +576,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
-    data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {}) })
+    data.forEach(r => { 
+      setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {})
+      // Notify Admin when a new request is made
+      if (r.status === 'pending') {
+        const admins = staff.filter(s => s.role === 'admin')
+        const requester = staff.find(s => s.id === r.staffId)
+        admins.forEach(admin => {
+          notify(admin.id, `Password reset requested by ${requester?.name || 'Staff'}`, 'password_reset_request', 'Reset Request', r.id, 'request')
+        })
+      }
+    }) 
   }
 
   async function login(staffMember: Staff) {
@@ -1042,12 +1060,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (diffMs > 0) {
       const hoursLate = diffMs / 3600000
       const periods = Math.floor(hoursLate / 12)
-      totalAward = Math.max(0, totalAward - (periods * 5))
-      bonusDesc = 'Late submission (reduced points)'
+      totalAward = totalAward - (periods * 5)
+      bonusDesc = periods > 0 ? `Late submission (${periods * 5} pts deduction)` : 'On-time submission'
       
       const extendedDeadline = new Date(deadline)
-      extendedDeadline.setHours(extendedDeadline.getHours() + 48) // 2 days grace
-      if (now > extendedDeadline) totalAward = 0
+      extendedDeadline.setHours(extendedDeadline.getHours() + 168) // 1 week grace for late submissions
+      if (now > extendedDeadline) totalAward = -50 // Heavy penalty for extremely late
     }
 
     const submission: WeekSubmission = {
@@ -1078,7 +1096,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
 
       // Award points
-      if (totalAward > 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
+      if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
       
       // Update streak
       const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))

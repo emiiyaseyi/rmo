@@ -21,6 +21,7 @@ import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
 import BackendPage from '@/components/settings/BackendPage'
 import ResetRequestsPage from '@/components/admin/ResetRequestsPage'
+import ProjectsPage from '@/components/admin/ProjectsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   dashboard: ['staff', 'team_lead', 'admin'],
@@ -29,6 +30,7 @@ const PAGE_ROLES: Record<string, string[]> = {
   delegation: ['team_lead', 'admin'],
   leaderboard: ['staff', 'team_lead', 'admin'],
   messages: ['staff', 'team_lead', 'admin'],
+  projects: ['admin'],
   analytics: ['team_lead', 'admin'],
   staff: ['admin'],
   org_chart: ['admin'],
@@ -148,6 +150,7 @@ export default function Home() {
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'messages': return <MessagesPage />
+      case 'projects': return <ProjectsPage />
       case 'analytics': return <AnalyticsPage />
       case 'staff': return <StaffPage />
       case 'org_chart': return <OrgChartPage />

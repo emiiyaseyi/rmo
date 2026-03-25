@@ -95,7 +95,7 @@ export default function LoginPage() {
       }
 
       // Success Logic
-      if (found.first_login || password === '1234' || (found as any).mustChangePassword) {
+      if (found.first_login || password === 'dsn-staff' || password === '1234' || (found as any).mustChangePassword) {
         setFoundUser(found)
         setStep('change_password')
         setLoading(false)

@@ -488,7 +488,8 @@ export default function TimesheetPage() {
   const submitted = weekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
   const hasRejected = weekEntries.some(e => e.status === 'rejected')
   const canEdit = isAdmin || (!submitted && !isLocked)
-  const canSubmit = !isAdmin && isWindowOpen && !submitted && weekEntries.length > 0 && !isLocked && isCurrentWeek && !isOver
+  const isOwnSheet = effectiveUserId === user?.id
+  const canSubmit = isOwnSheet && !submitted && weekEntries.length > 0 && !isLocked
   const myTemplates = templates.filter(t => t.staffId === user?.id)
 
   function updateEntry(entryId: string, updates: any) {
@@ -497,18 +498,21 @@ export default function TimesheetPage() {
 
   function saveEntry(form: any) {
     const isEdit = !!editEntry?.id
+    const leadMatch = leads.find(l => l.name.toLowerCase() === String(form.lead || '').toLowerCase())
+    const normalizedForm = { ...form, leadId: leadMatch?.id || form.leadId || '' }
     if (!isEdit) {
       const similar = weekEntries.find(e => e.project === form.project && e.category === form.category)
       if (similar && !window.confirm('A similar entry (same project + category) already exists for this week. Add anyway?')) return
     }
 
     if (isEdit && editEntry) {
-      updateEntry(editEntry.id, form)
+      updateEntry(editEntry.id, normalizedForm)
+      logAudit('EDIT_ENTRY', `${user?.name} edited entry for ${normalizedForm.project}`, user?.id || '', user?.name || '')
       toast.success('Entry updated')
     } else {
       const now = new Date().toISOString()
       const ne: Entry = {
-        ...form,
+        ...normalizedForm,
         id: genId(),
         staffId: effectiveUserId,
         staffName: targetUser?.name || '',
@@ -518,6 +522,7 @@ export default function TimesheetPage() {
         updatedAt: now
       }
       saveEntries([...entries, ne])
+      logAudit('ADD_ENTRY', `${user?.name} added entry for ${normalizedForm.project}`, user?.id || '', user?.name || '')
       toast.success('Entry added')
     }
     setShowForm(false); setEditEntry(null)
@@ -631,13 +636,16 @@ export default function TimesheetPage() {
           const newEntries: Entry[] = rows.map(r => {
             const startDate = r['Start Date'] || r.startDate || r.Date || r.date || selectedWeek
             const endDate = r['End Date'] || r.endDate || startDate
+            const leadName = r.Lead || r.lead || ''
+            const leadMatch = leads.find(l => l.name.toLowerCase() === String(leadName).toLowerCase())
             return {
               id: genId(),
               staffId: effectiveUserId,
               staffName: targetUser?.name || '',
               weekKey: selectedWeek,
               project: r.Project || r.project || '',
-              lead: r.Lead || r.lead || '',
+              lead: leadName,
+              leadId: leadMatch?.id || '',
               description: r.Description || r.description || '',
               date: startDate,
               startDate,
@@ -763,7 +771,7 @@ export default function TimesheetPage() {
           {submitted && <span className="badge badge-green" style={{ fontSize: 13 }}>✅ Submitted</span>}
           {isLocked && <span className="badge badge-red">🔒 Locked</span>}
           {canSubmit && <button className="btn btn-primary" onClick={submitWeek}>📤 Submit Week</button>}
-          {!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek && isWindowOpen && (
+          {!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek && (
             <button className="btn btn-secondary btn-sm" onClick={markNoWork}>No Work This Week</button>
           )}
         </div>

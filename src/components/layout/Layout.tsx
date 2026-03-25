@@ -24,17 +24,17 @@ function getNavItems(role: string): NavItem[] {
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin'] },
-    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead'], badge: 'approvals' },
+    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead', 'staff'], badge: 'approvals' },
 
     { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'projects', label: 'Projects', icon: '💼', roles: ['admin'] },
     { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['admin', 'team_lead'] },
     { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['admin', 'team_lead'] },
     { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'admin', 'team_lead'] },
-    { id: 'staff', label: 'Staff Directory', icon: '👥', roles: ['admin'] },
+    { id: 'staff', label: 'Staff Management', icon: '👥', roles: ['admin'] },
     { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
     { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
-    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin'] },
+
 
     { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'admin', 'team_lead'], badge: 'messages' },
@@ -51,11 +51,12 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, messages, settings, showPasswordChange, announcements } = useApp()
+  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, canApproveTimesheets, messages, settings, showPasswordChange, announcements } = useApp()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(local.get('sidebar_collapsed', false))
   const [notifOpen, setNotifOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const notifRef = useRef<HTMLDivElement>(null)
 
   // Close sidebar on navigation (mobile)
@@ -72,14 +73,24 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const canApprove = canApproveTimesheets()
   const navItems = getNavItems(user?.role || 'staff').filter(item => {
-    const toggleKey = item.id === 'leaderboard' ? 'leaderboard' : 
+    if (item.id === 'approvals' && !canApprove) return false
+
+    // Feature toggle check
+    const toggleKey = item.id === 'leaderboard' ? 'leaderboard' :
                      item.id === 'messages' ? 'messages' :
                      item.id === 'org_chart' ? 'org_chart' :
                      item.id === 'analytics' ? 'analytics' : null
     if (toggleKey && settings?.featureToggles) {
-      return (settings.featureToggles as any)[toggleKey] !== false
+      if ((settings.featureToggles as any)[toggleKey] === false) return false
     }
+
+    // Search filter
+    if (searchQuery.trim() && !item.isHeader) {
+      return item.label.toLowerCase().includes(searchQuery.toLowerCase())
+    }
+
     return true
   })
 
@@ -166,6 +177,65 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               </button>
             )}
           </div>
+
+          {/* Search Bar */}
+          {(!collapsed || isMobile) && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Search menu..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 32px 8px 12px',
+                    fontSize: 12,
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-1)',
+                    outline: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-3)',
+                      fontSize: 14,
+                      padding: 4
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+                {!searchQuery && (
+                  <span style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--text-4)',
+                    fontSize: 12,
+                    pointerEvents: 'none'
+                  }}>
+                    🔍
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Nav */}
           <nav style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column' }}>
@@ -363,4 +433,3 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     </div>
   )
 }
-

@@ -391,7 +391,7 @@ function CompareModal({ staffA, staffB, entries, onClose }: CompareModalProps) {
 
 /* ─── Main Component ──────────────────────────────────────────────── */
 export default function StaffPage() {
-  const { staff, saveStaff, entries, leaves, saveLeaves, notify, user, settings, grantBadge, awardPoints } = useApp()
+  const { staff, saveStaff, entries, leaves, saveLeaves, notify, user, settings, grantBadge, awardPoints, logAudit } = useApp()
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
@@ -607,18 +607,62 @@ export default function StaffPage() {
   /* ── Leave ── */
   function approveLeave(id: string) {
     const l = leaves.find((x: any) => x.id === id)
-    saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, status: 'approved', approvedBy: user?.name, approvedAt: new Date().toISOString() } : x))
-    if (l) notify(l.staffId, '✅ Your leave request has been approved', 'leave_approved', 'Leave Approved', id, 'leave')
-    toast.success('Leave approved')
+    if (!l) return
+
+    const isTeamLead = user?.role === 'team_lead'
+    const isAdmin = user?.role === 'admin'
+
+    let updates: any = {}
+    if (isTeamLead && l.status === 'pending') {
+      // Team lead approves first
+      updates = {
+        status: 'lead_approved',
+        leadApprovedBy: user?.id,
+        leadApprovedAt: new Date().toISOString()
+      }
+      // Notify admins for final approval
+      staff.filter(s => s.role === 'admin').forEach(a =>
+        notify(a.id, `${l.staffName}'s ${l.type} leave has been approved by team lead, awaiting your approval`, 'leave_request', 'Leave Approval Needed', id, 'leave')
+      )
+      logAudit('leave_lead_approval', id, { approver: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to })
+      toast.success('Leave approved (awaiting admin approval)')
+    } else if (isAdmin) {
+      // Admin gives final approval
+      updates = {
+        status: 'approved',
+        approvedBy: user?.id,
+        approvedAt: new Date().toISOString()
+      }
+      notify(l.staffId, '✅ Your leave request has been approved', 'leave_approved', 'Leave Approved', id, 'leave')
+      logAudit('leave_admin_approval', id, { approver: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to })
+      toast.success('Leave approved')
+    }
+
+    saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, ...updates } : x))
   }
+
   function rejectLeave(id: string, reason: string) {
     const l = leaves.find((x: any) => x.id === id)
-    saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, status: 'rejected', rejectionReason: reason } : x))
-    if (l) notify(l.staffId, `❌ Leave request rejected: ${reason}`, 'leave_declined', 'Leave Declined', id, 'leave')
+    if (!l) return
+
+    saveLeaves(leaves.map((x: any) => x.id === id ? {
+      ...x,
+      status: 'rejected',
+      rejectionReason: reason,
+      rejectedBy: user?.id,
+      rejectedAt: new Date().toISOString()
+    } : x))
+
+    notify(l.staffId, `❌ Leave request rejected: ${reason}`, 'leave_declined', 'Leave Declined', id, 'leave')
+    logAudit('leave_rejection', id, { rejector: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to, reason })
     toast.success('Leave rejected')
   }
 
-  const pendingLeaves = leaves.filter((l: any) => l.status === 'pending')
+  const pendingLeaves = leaves.filter((l: any) => {
+    if (user?.role === 'admin') return l.status === 'pending' || l.status === 'lead_approved'
+    if (user?.role === 'team_lead') return l.status === 'pending'
+    return false
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

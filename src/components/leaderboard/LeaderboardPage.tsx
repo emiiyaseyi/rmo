@@ -434,26 +434,75 @@ export default function LeaderboardPage() {
       {tab === 'recovery' && (
         <div className="flex flex-col gap-6">
           {user?.role !== 'admin' && (
-            <div className="card max-w-md mx-auto w-full">
-              <h3 className="font-bold mb-4">Request Streak Recovery</h3>
-              <p className="text-xs text-3 mb-4">Missed a week? Request a recovery to keep your streak alive. Limit: Once per month.</p>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="text-xs font-bold mb-1 block">Week ID (e.g. 2026-W12)</label>
-                  <input className="input w-full" value={recoveryForm.weekId} onChange={e => setRecoveryForm({ ...recoveryForm, weekId: e.target.value })} placeholder="YYYY-WXX" />
+            <div className="card w-full" style={{ maxWidth: 700, margin: '0 auto', border: 'none', background: 'linear-gradient(145deg, var(--bg-card), var(--bg-hover))', boxShadow: 'var(--shadow)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
+                <div style={{ width: 64, height: 64, borderRadius: '20px', background: 'var(--warning-bg)', border: '1px solid rgba(234, 179, 8, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0, boxShadow: '0 8px 16px rgba(234, 179, 8, 0.15)' }}>
+                  🔥
                 </div>
                 <div>
-                  <label className="text-xs font-bold mb-1 block">Reason</label>
-                  <textarea className="input w-full h-20" value={recoveryForm.reason} onChange={e => setRecoveryForm({ ...recoveryForm, reason: e.target.value })} placeholder="Why did you miss this week?" />
+                  <h3 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>Request Streak Recovery</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-3)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+                    Missed a timesheet submission? Request a recovery to keep your streak alive.<br/>
+                    <strong style={{ color: 'var(--warning)' }}>Limit: Once per month.</strong>
+                  </p>
                 </div>
-                <button className="btn btn-accent w-full" onClick={handleRecoveryRequest}>Submit Request</button>
+              </div>
+              
+              <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: '24px 28px', border: '1px solid var(--border)', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+                <div className="grid-2" style={{ marginBottom: 20 }}>
+                  <div className="form-group">
+                    <label className="form-label">Week ID</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 18 }}>📅</span>
+                      <input 
+                        className="form-input" 
+                        value={recoveryForm.weekId} 
+                        onChange={e => setRecoveryForm({ ...recoveryForm, weekId: e.target.value })} 
+                        placeholder="YYYY-WXX" 
+                        style={{ paddingLeft: 46, height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Current Streak</label>
+                    <div style={{ height: 48, padding: '0 20px', background: 'var(--bg-elevated)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-1)', fontWeight: 700, fontSize: 15, border: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--warning)' }}>🔥</span> {user?.streak || 0} {user?.streak === 1 ? 'Week' : 'Weeks'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="form-group" style={{ marginBottom: 24 }}>
+                  <label className="form-label">Reason for Request</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 16, top: 16, color: 'var(--text-3)', fontSize: 18 }}>✍️</span>
+                    <textarea 
+                      className="form-textarea" 
+                      value={recoveryForm.reason} 
+                      onChange={e => setRecoveryForm({ ...recoveryForm, reason: e.target.value })} 
+                      placeholder="Please concisely explain why you missed your submission..." 
+                      style={{ paddingLeft: 46, minHeight: 120, paddingTop: 16, fontSize: 14, borderRadius: 12 }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex' }}>
+                  <button 
+                    className="btn btn-primary w-full" 
+                    onClick={handleRecoveryRequest}
+                    disabled={!recoveryForm.weekId || !recoveryForm.reason}
+                    style={{ height: 52, fontSize: 16, borderRadius: 12, boxShadow: '0 4px 16px rgba(7, 108, 4, 0.25)' }}
+                  >
+                    <span style={{ marginRight: 8, fontSize: 18 }}>✨</span> Submit Recovery Request
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="p-4 border-b">
-              <h3 className="font-bold">{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Requests'}</h3>
+          <div className="card w-full mx-auto" style={{ maxWidth: 700, padding: 0, overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 20 }}>📜</span>
+              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Recovery Requests'}</h3>
             </div>
             <div className="table-wrap">
               <table>

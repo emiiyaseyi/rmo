@@ -541,19 +541,19 @@ export default function ApprovalsPage() {
       />
 
       {/* Stats */}
-      <div className="grid-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         <div className="stat-card">
           <div className="stat-label">Pending Review</div>
           <div className="stat-value" style={{ color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
           <div className="stat-sub">{pending.length > 0 ? 'Requires action' : 'All caught up!'}</div>
         </div>
-        {isAdmin && (
-          <div className="stat-card">
-            <div className="stat-label">2nd-Level Review</div>
-            <div className="stat-value" style={{ color: pending2ndLevel.length > 0 ? 'var(--warning)' : 'var(--text-3)' }}>{pending2ndLevel.length}</div>
-            <div className="stat-sub">High-value entries</div>
+        <div className="stat-card">
+          <div className="stat-label">{isAdmin ? '2nd-Level Review' : 'Approved (All time)'}</div>
+          <div className="stat-value" style={{ color: isAdmin ? (pending2ndLevel.length > 0 ? 'var(--warning)' : 'var(--text-3)') : 'var(--success)' }}>
+            {isAdmin ? pending2ndLevel.length : history.filter(e => e.status === 'approved').length}
           </div>
-        )}
+          <div className="stat-sub">{isAdmin ? 'High-value entries' : ''}</div>
+        </div>
         <div className="stat-card">
           <div className="stat-label">Approved (All time)</div>
           <div className="stat-value" style={{ color: 'var(--success)' }}>{history.filter(e => e.status === 'approved').length}</div>

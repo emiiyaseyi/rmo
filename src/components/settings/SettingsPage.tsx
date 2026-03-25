@@ -38,6 +38,7 @@ export default function SettingsPage() {
     { id: 'holidays', label: 'Holidays' },
     { id: 'security', label: 'Security' },
     { id: 'activity', label: 'Activity Log' },
+    { id: 'backend', label: 'Backend Admin' },
   ]
   const actionOptions = useMemo(
     () => Array.from(new Set((auditLogs || []).map(l => String(l.action || '')).filter(Boolean))).sort(),
@@ -527,19 +528,20 @@ export default function SettingsPage() {
                 Export CSV
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="flex gap-3 flex-wrap items-center">
               <input
-                className="form-input text-xs"
+                className="form-input text-xs flex-1"
+                style={{ minWidth: '200px' }}
                 placeholder="Search user/action/target/details..."
                 value={auditSearch}
                 onChange={e => setAuditSearch(e.target.value)}
               />
-              <select className="form-select text-xs" value={auditAction} onChange={e => setAuditAction(e.target.value)}>
+              <select className="form-select text-xs" style={{ minWidth: '150px' }} value={auditAction} onChange={e => setAuditAction(e.target.value)}>
                 <option value="">All Actions</option>
                 {actionOptions.map((action: string) => <option key={action} value={action}>{action}</option>)}
               </select>
-              <input className="form-input text-xs" type="date" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} />
-              <input className="form-input text-xs" type="date" value={auditTo} onChange={e => setAuditTo(e.target.value)} />
+              <input className="form-input text-xs" style={{ width: '140px' }} type="date" placeholder="dd----yyyy" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} />
+              <input className="form-input text-xs" style={{ width: '140px' }} type="date" placeholder="dd----yyyy" value={auditTo} onChange={e => setAuditTo(e.target.value)} />
             </div>
             <div className="text-xs text-3">
               Showing {filteredAuditLogs.length} log event{filteredAuditLogs.length === 1 ? '' : 's'} from Firebase.
@@ -582,6 +584,82 @@ export default function SettingsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* BACKEND ADMIN */}
+        {tab === 'backend' && (
+          <div className="flex flex-col gap-6">
+            <div className="card flex flex-col gap-4">
+              <h3 className="font-bold">💾 System Storage Stats</h3>
+              <div className="flex gap-3 text-xs text-3">
+                <div className="flex-1 p-4 bg-2 rounded-lg border border-3">
+                  <div className="font-bold text-lg mb-1">
+                    {typeof localStorage !== 'undefined' ? Object.keys(localStorage).filter(k => k.startsWith('dsn_')).length : 0}
+                  </div>
+                  <div>Data Tables</div>
+                </div>
+                <div className="flex-1 p-4 bg-2 rounded-lg border border-3">
+                  <div className="font-bold text-lg mb-1">
+                    {typeof localStorage !== 'undefined' ?
+                      ((Object.keys(localStorage).filter(k => k.startsWith('dsn_')).reduce((s, k) => s + (localStorage.getItem(k) || '').length, 0) / 1024 / 1024).toFixed(2)) : '0.00'} MB
+                  </div>
+                  <div>Storage Used</div>
+                </div>
+              </div>
+              <div className="p-4 bg-soft-warning rounded-lg text-xs text-warning">
+                ⚠️ Backend features are for advanced debugging. Exercise caution when clearing data.
+              </div>
+            </div>
+
+            <div className="card flex flex-col gap-4">
+              <h3 className="font-bold">📊 Local Storage Browser</h3>
+              <p className="text-xs text-3">View and manage localStorage data tables</p>
+              <div className="overflow-x-auto border border-3 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-2">
+                    <tr>
+                      <th className="p-3 text-left font-bold uppercase text-[10px]">Table Name</th>
+                      <th className="p-3 text-right font-bold uppercase text-[10px]">Records</th>
+                      <th className="p-3 text-right font-bold uppercase text-[10px]">Size</th>
+                      <th className="p-3 text-right font-bold uppercase text-[10px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {typeof localStorage !== 'undefined' && Object.keys(localStorage).filter(k => k.startsWith('dsn_')).map(key => {
+                      const name = key.replace('dsn_', '')
+                      const val = localStorage.getItem(key) || ''
+                      let count = null
+                      try {
+                        const parsed = JSON.parse(val)
+                        count = Array.isArray(parsed) ? parsed.length : null
+                      } catch {}
+                      return (
+                        <tr key={key} className="border-t border-3">
+                          <td className="p-3 font-mono font-bold">{name}</td>
+                          <td className="p-3 text-right">{count ?? '—'}</td>
+                          <td className="p-3 text-right font-mono">{(val.length / 1024).toFixed(1)} KB</td>
+                          <td className="p-3 text-right">
+                            <button
+                              className="btn btn-danger btn-sm text-[10px]"
+                              onClick={() => {
+                                if (window.confirm(`Clear all data in "${name}"? This cannot be undone.`)) {
+                                  localStorage.removeItem(key)
+                                  toast.success(`${name} cleared`)
+                                  window.location.reload()
+                                }
+                              }}
+                            >
+                              Clear
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

@@ -28,7 +28,7 @@ export default function AuditPage() {
     return true
   })
 
-  const actionTypes = Array.from(new Set(logs.map(l => l.action?.split('_')[0]).filter(Boolean)))
+  const actionTypes = Array.from(new Set(logs.map(l => l.action?.split('_')[0]).filter(Boolean))) as string[]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

@@ -32,7 +32,7 @@ function getNavItems(role: string): NavItem[] {
     { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['admin', 'team_lead'] },
     { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'staff', label: 'Staff Management', icon: '👥', roles: ['admin'] },
-    { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
+    { id: 'org_chart', label: 'Organogram', icon: '🗂️', roles: ['admin'] },
     { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
 
 
@@ -74,6 +74,47 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
   }, [])
 
   const canApprove = canApproveTimesheets()
+
+  // Comprehensive search index for semantic platform search
+  const searchableItems = React.useMemo(() => {
+    const items = [
+      // Navigation items
+      ...getNavItems(user?.role || 'staff').map(item => ({
+        id: item.id,
+        label: item.label,
+        keywords: [item.label.toLowerCase()],
+        type: 'page' as const
+      })),
+      // Settings & Admin features
+      { id: 'settings', label: 'Branding Settings', keywords: ['branding', 'logo', 'colors', 'theme', 'appearance', 'brand'], type: 'page' as const },
+      { id: 'settings', label: 'Feature Toggles', keywords: ['features', 'toggle', 'enable', 'disable', 'modules'], type: 'page' as const },
+      { id: 'settings', label: 'Points Configuration', keywords: ['points', 'gamification', 'awards', 'scoring'], type: 'page' as const },
+      { id: 'settings', label: 'Hour Caps', keywords: ['caps', 'hours', 'weekly cap', 'limits'], type: 'page' as const },
+      { id: 'settings', label: 'Week Locking', keywords: ['lock', 'week', 'freeze', 'prevent submissions'], type: 'page' as const },
+      { id: 'settings', label: 'Public Holidays', keywords: ['holidays', 'public holiday', 'days off'], type: 'page' as const },
+      { id: 'settings', label: 'Security Settings', keywords: ['security', 'password', 'authentication', '2fa', 'two factor'], type: 'page' as const },
+      { id: 'settings', label: 'Activity Log', keywords: ['activity', 'log', 'audit', 'history', 'events'], type: 'page' as const },
+      { id: 'settings', label: 'Backend Admin', keywords: ['backend', 'storage', 'database', 'tables', 'technical'], type: 'page' as const },
+      // Staff management features
+      { id: 'staff', label: 'Leave Approvals', keywords: ['leave', 'approvals', 'approve leave', 'vacation', 'time off'], type: 'page' as const },
+      { id: 'staff', label: 'Staff Accounts', keywords: ['staff', 'accounts', 'users', 'employees', 'team members'], type: 'page' as const },
+      { id: 'staff', label: 'Password Resets', keywords: ['password', 'reset', 'unlock', 'account recovery'], type: 'page' as const },
+      // Profile features
+      { id: 'profile', label: 'Profile Settings', keywords: ['profile', 'account', 'personal', 'settings'], type: 'page' as const },
+      { id: 'profile', label: 'Change Password', keywords: ['password', 'security', 'change password'], type: 'page' as const },
+      { id: 'profile', label: 'Badges', keywords: ['badges', 'achievements', 'awards'], type: 'page' as const },
+      { id: 'profile', label: 'Templates', keywords: ['templates', 'prefill', 'saved entries'], type: 'page' as const },
+      // Analytics features
+      { id: 'analytics', label: 'Time Report', keywords: ['time', 'report', 'detailed', 'hours', 'entries'], type: 'page' as const },
+      { id: 'analytics', label: 'Department Report', keywords: ['department', 'report', 'dept', 'team stats'], type: 'page' as const },
+      { id: 'analytics', label: 'Projects Report', keywords: ['projects', 'report', 'project hours'], type: 'page' as const },
+      { id: 'analytics', label: 'Utilisation Report', keywords: ['utilisation', 'utilization', 'efficiency', 'productivity'], type: 'page' as const },
+      // Other features
+      { id: 'delegation', label: 'Approval Delegation', keywords: ['delegation', 'delegate', 'approval delegation', 'substitute'], type: 'page' as const },
+    ]
+    return items.filter(item => !item.label.includes('undefined'))
+  }, [user?.role])
+
   const navItems = getNavItems(user?.role || 'staff').filter(item => {
     if (item.id === 'approvals' && !canApprove) return false
 
@@ -86,9 +127,19 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       if ((settings.featureToggles as any)[toggleKey] === false) return false
     }
 
-    // Search filter
+    // Semantic search filter
     if (searchQuery.trim() && !item.isHeader) {
-      return item.label.toLowerCase().includes(searchQuery.toLowerCase())
+      const query = searchQuery.toLowerCase()
+      // Check if query matches any searchable item
+      const hasMatch = searchableItems.some(searchItem =>
+        searchItem.keywords.some(keyword => keyword.includes(query)) ||
+        searchItem.label.toLowerCase().includes(query)
+      )
+      // If search matches a feature but not this menu item, hide it
+      const menuItemMatches = item.label.toLowerCase().includes(query) ||
+        searchableItems.some(si => si.id === item.id && si.keywords.some(k => k.includes(query)))
+
+      return menuItemMatches
     }
 
     return true
@@ -96,7 +147,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
   const pendingCount = pendingApprovals().length
   const unreadMsg = (messages || []).filter(m => m.recipientId === user?.id && !(m.read || []).includes(user?.id || '')).length
-  
+
   const branding = settings?.branding
   const logoUrl = branding?.logoBase64 || "/dsn.png"
   const appName = branding?.appName || 'DSN Timesheet'
@@ -184,7 +235,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
-                  placeholder="Search menu..."
+                  placeholder="Search platform..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   style={{
@@ -234,6 +285,62 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   </span>
                 )}
               </div>
+
+              {/* Search Results Dropdown */}
+              {searchQuery.trim() && (
+                <div style={{
+                  marginTop: 8,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  maxHeight: 300,
+                  overflowY: 'auto',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}>
+                  {(() => {
+                    const query = searchQuery.toLowerCase()
+                    const matches = searchableItems.filter(item =>
+                      item.keywords.some(k => k.includes(query)) ||
+                      item.label.toLowerCase().includes(query)
+                    ).slice(0, 8)
+
+                    if (matches.length === 0) {
+                      return (
+                        <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>
+                          No results found
+                        </div>
+                      )
+                    }
+
+                    return matches.map((item, idx) => (
+                      <div
+                        key={`${item.id}-${idx}`}
+                        onClick={() => {
+                          setPage(item.id)
+                          setSearchQuery('')
+                          if (isMobile) setSidebarOpen(false)
+                        }}
+                        style={{
+                          padding: '10px 16px',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          borderBottom: idx < matches.length - 1 ? '1px solid var(--border)' : 'none',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>
+                          {item.label}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                          {item.keywords.slice(0, 3).join(' · ')}
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+              )}
             </div>
           )}
 

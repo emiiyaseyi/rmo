@@ -300,11 +300,16 @@ export interface Leave {
     from: string;
     to: string;
     reason?: string;
-    status: 'pending' | 'approved' | 'rejected';
+    status: 'pending' | 'lead_approved' | 'approved' | 'rejected';
     createdAt: string;
     approvedBy?: string;
     approvedAt?: string;
     rejectionReason?: string;
+    leadApprovedBy?: string;
+    leadApprovedAt?: string;
+    leadId?: string;
+    rejectedBy?: string;
+    rejectedAt?: string;
 }
 
 export interface PasswordResetRequest {

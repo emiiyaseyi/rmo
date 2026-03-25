@@ -1,9 +1,9 @@
 'use client'
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import toast from 'react-hot-toast'
-import { local, logAudit, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
+import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
 import { db } from '../lib/firebase'
-import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore'
+import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
 import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, MessageThread, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
@@ -259,6 +259,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unsubs.push(onSnapshot(collection(db, 'publicHolidays'), (snap) => {
       setPublicHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as PublicHoliday)))
     }))
+    // 10. Audit Logs
+    unsubs.push(onSnapshot(query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc')), (snap) => {
+      setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog))
+        .slice(0, 2000))
+    }))
 
     return () => unsubs.forEach(u => u())
   }, [user?.id])
@@ -418,10 +423,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function saveStaff(data: Staff[]) {
     const previousStaff = staff
     setStaff(data);
-
-    // Sync to Firestore for centralized management
+ 
+    // Efficient Sync to Firestore: only update changed members
     data.forEach(s => {
-      setDoc(doc(db, 'staff', s.id), s, { merge: true }).catch(() => {})
+      const prev = previousStaff.find(p => p.id === s.id)
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(s)) {
+        setDoc(doc(db, 'staff', s.id), s, { merge: true }).catch(() => {})
+      }
     })
 
     // Auto-add new staff to "All Staff" channel
@@ -483,7 +491,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   function saveNots(data: AppNotification[]) { 
     setNots(data); 
-    data.forEach(n => { setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) })
+    data.forEach(n => { 
+      const prev = notifications.find(p => p.id === n.id)
+      if (!prev || prev.read !== n.read) {
+        setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) 
+      }
+    }) 
   }
   function saveRedeems(data: Redemption[]) {
     data.forEach(r => { setDoc(doc(db, 'redeems', r.id), r, { merge: true }).catch(() => {}) })
@@ -511,14 +524,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(h => { setDoc(doc(db, 'publicHolidays', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
 
-  function logAudit(action: AuditLog['action'], targetId: string, metadata: any = {}) {
+  function logAudit(action: string, targetId: string, metadata: any = {}) {
     const entry: AuditLog = {
       id: genId(),
-      action,
+      action: action as any,
       performedBy: user?.name || 'System',
       targetId,
-      device: navigator.userAgent.slice(0, 50),
-      ipAddress: '127.0.0.1', // Placeholder for frontend-only
+      device: `${navigator.platform} (${navigator.language}) | ${navigator.userAgent.slice(0, 40)}`,
+      ipAddress: 'Local Browser',
       timestamp: new Date().toISOString(),
       metadata
     }
@@ -526,6 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveAuditLogs(updated)
   }
   function saveAuditLogs(data: AuditLog[]) {
+    setAuditLogs(data)
     data.forEach(log => { setDoc(doc(db, 'auditLogs', log.id), log, { merge: true }).catch(() => {}) })
   }
   function saveDelegations(data: Delegation[]) {
@@ -568,7 +582,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
   }
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
-    data.forEach(r => { setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {}) })
+    data.forEach(r => { 
+      setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {})
+      // Notify Admin when a new request is made
+      if (r.status === 'pending') {
+        const admins = staff.filter(s => s.role === 'admin')
+        const requester = staff.find(s => s.id === r.staffId)
+        admins.forEach(admin => {
+          notify(admin.id, `Password reset requested by ${requester?.name || 'Staff'}`, 'password_reset_request', 'Reset Request', r.id, 'request')
+        })
+      }
+    }) 
   }
 
   async function login(staffMember: Staff) {
@@ -728,6 +752,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function pendingApprovals() {
     if (!user) return []
+    const normalizedUserName = (user.name || '').trim().toLowerCase()
 
     // Check active approval delegations
     const now = new Date()
@@ -744,34 +769,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .filter(s => delegatedTaskOwnerIds.includes(s.leadId || ''))
       .map(s => s.id)
 
+    // Staff can be project/task owners even without team_lead role
+    const projectOwnerStaffIds = Array.from(
+      new Set(
+        entries
+          .filter(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
+          .map(e => e.staffId)
+      )
+    )
+
     // Admin sees all pending and 2nd-level approvals
     if (user.role === 'admin') {
       return entries.filter(e =>
-        ['submitted', 'resubmitted', 'pending_2nd_approval'].includes(e.status) && !e.deleted
+        ['submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status) && !e.deleted
       )
     }
 
-    // Team Lead layer
-    if (user.role === 'team_lead') {
-      const myStaffIds = staff.filter(s => s.leadId === user.id).map(s => s.id)
-      const allIds = Array.from(new Set([...myStaffIds, ...delegatedStaffIds]))
-      return entries.filter(e =>
-        ['submitted', 'resubmitted'].includes(e.status) &&
-        allIds.includes(e.staffId) &&
-        !e.deleted
-      )
-    }
+    // Team leads, delegates and project/task owners can approve eligible entries
+    const myStaffIds = staff.filter(s => s.leadId === user.id).map(s => s.id)
+    const allIds = Array.from(new Set([...myStaffIds, ...delegatedStaffIds, ...projectOwnerStaffIds]))
 
-    // Staff with delegation only
-    if (delegatedStaffIds.length > 0) {
-      return entries.filter(e =>
-        ['submitted', 'resubmitted'].includes(e.status) &&
-        delegatedStaffIds.includes(e.staffId) &&
-        !e.deleted
-      )
-    }
+    return entries.filter(e =>
+      ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status) &&
+      allIds.includes(e.staffId) &&
+      !e.deleted
+    )
+  }
 
-    return []
+  function canApproveTimesheets() {
+    if (!user) return false
+    if (['admin', 'team_lead'].includes(user.role)) return true
+    if (pendingApprovals().length > 0) return true
+    const normalizedUserName = (user.name || '').trim().toLowerCase()
+    return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
   }
 
   // Thread Management Functions
@@ -886,7 +916,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (wat.getUTCHours() < reminderHour) return
 
     const currentWeek = getWeekKey()
-    const activeStaff = staff.filter(s => s.status === 'active' && s.role === 'staff')
+    const activeStaff = staff.filter(s => s.status === 'active' && !s.exemptFromTimesheet)
     activeStaff.forEach(s => {
       const hasSubmitted = entries.some(e => e.staffId === s.id && e.weekKey === currentWeek && ['submitted', 'approved', 'resubmitted'].includes(e.status))
       if (!hasSubmitted) {
@@ -1042,12 +1072,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (diffMs > 0) {
       const hoursLate = diffMs / 3600000
       const periods = Math.floor(hoursLate / 12)
-      totalAward = Math.max(0, totalAward - (periods * 5))
-      bonusDesc = 'Late submission (reduced points)'
+      totalAward = totalAward - (periods * 5)
+      bonusDesc = periods > 0 ? `Late submission (${periods * 5} pts deduction)` : 'On-time submission'
       
       const extendedDeadline = new Date(deadline)
-      extendedDeadline.setHours(extendedDeadline.getHours() + 48) // 2 days grace
-      if (now > extendedDeadline) totalAward = 0
+      extendedDeadline.setHours(extendedDeadline.getHours() + 168) // 1 week grace for late submissions
+      if (now > extendedDeadline) totalAward = -50 // Heavy penalty for extremely late
     }
 
     const submission: WeekSubmission = {
@@ -1066,6 +1096,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Save submission record
     try {
       await setDoc(doc(db, 'weekSubmissions', submissionId), submission)
+      logAudit('submit', submissionId, { staffId, weekKey, totalHours })
       
       // Notify Task Owners/Admins
       const submittedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'submitted')
@@ -1078,7 +1109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
 
       // Award points
-      if (totalAward > 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
+      if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
       
       // Update streak
       const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))
@@ -1106,7 +1137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStreakRecoveries, savePointsHistory,
     notify, markRead, markAllRead,
     awardPoints, grantBadge,
-    pendingApprovals, sendMessage, getOrCreateThread, getThreadMessages, getThreadUnreadCount,
+    pendingApprovals, canApproveTimesheets, sendMessage, getOrCreateThread, getThreadMessages, getThreadUnreadCount,
     loadAll, checkReminders,
     idleCountdown, showPasswordChange, setShowPasswordChange,
     calculateWeekCap, updateEntry, submitWeekEntries,

@@ -74,9 +74,16 @@ function StaffNode({ member, reports }: StaffNodeProps) {
 export default function OrgChartPage() {
   const { staff } = useApp()
   const [deptFilter, setDeptFilter] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [search, setSearch] = useState('')
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter((d): d is string => !!d)))
-  const filtered = deptFilter ? staff.filter(s => s.department === deptFilter) : staff
+  const filtered = staff.filter(s => {
+    const matchDept = !deptFilter || s.department === deptFilter
+    const matchRole = !roleFilter || s.role === roleFilter
+    const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
+    return matchDept && matchRole && matchSearch
+  })
 
   // Build tree: admins at top, then team leads, then staff by leadId
   const admins = filtered.filter(s => (s.role === 'admin') && !s.suspended)
@@ -104,10 +111,25 @@ export default function OrgChartPage() {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>🗂️ Org Chart</h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Department structure and reporting lines</p>
         </div>
-        <select className="form-select" style={{ width: 'auto' }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
-          <option value="">All Departments</option>
-          {departments.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input 
+            className="form-input" 
+            placeholder="Search staff..." 
+            style={{ width: 180 }}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select className="form-select" style={{ width: 150 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select className="form-select" style={{ width: 130 }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
+            <option value="">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="team_lead">Team Lead</option>
+            <option value="staff">Staff</option>
+          </select>
+        </div>
       </div>
 
       {/* Legend */}

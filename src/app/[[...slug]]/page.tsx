@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/context/AppContext'
 
 import LoginPage from '@/components/auth/LoginPage'
@@ -20,20 +20,20 @@ import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
 import BackendPage from '@/components/settings/BackendPage'
-import ResetRequestsPage from '@/components/admin/ResetRequestsPage'
+import ProjectsPage from '@/components/admin/ProjectsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   dashboard: ['staff', 'team_lead', 'admin'],
   timesheet: ['staff', 'team_lead', 'admin'],
-  approvals: ['team_lead', 'admin'],
+  approvals: ['staff', 'team_lead', 'admin'],
   delegation: ['team_lead', 'admin'],
   leaderboard: ['staff', 'team_lead', 'admin'],
   messages: ['staff', 'team_lead', 'admin'],
+  projects: ['admin'],
   analytics: ['team_lead', 'admin'],
   staff: ['admin'],
   org_chart: ['admin'],
   audit: ['admin'],
-  reset_queue: ['admin'],
   settings: ['admin'],
 
   backend: ['admin'],
@@ -43,9 +43,10 @@ const PAGE_ROLES: Record<string, string[]> = {
 }
 
 export default function Home() {
-  const { user, staff, saveStaff, features, checkReminders, settings } = useApp()
+  const { user, staff, saveStaff, features, checkReminders, settings, canApproveTimesheets } = useApp()
   const [page, setPage] = useState('dashboard')
   const [showTour, setShowTour] = useState(false)
+  const didInitUserState = useRef(false)
 
   // Handle URL segments for SPA routing
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function Home() {
     if (target === 'analytics' && features && !features.analytics) return
     if (target === 'org_chart' && features && !features.org_chart) return
     if (target === 'delegation' && features && !features.delegation) return
+    if (target === 'approvals' && !canApproveTimesheets()) return
     
     setPage(target)
     if (typeof window !== 'undefined') {
@@ -122,13 +124,22 @@ export default function Home() {
   // Guard page by role
   useEffect(() => {
     if (user && page !== 'dashboard') {
+      if (page === 'approvals' && !canApproveTimesheets()) {
+        setPage('dashboard')
+        return
+      }
       const allowed = PAGE_ROLES[page] || []
       if (!allowed.includes(user.role)) setPage('dashboard')
     }
-  }, [page, user])
+  }, [page, user, canApproveTimesheets])
 
   // Reset URL on logout
   useEffect(() => {
+    // Skip first run so session hydration doesn't rewrite current route to "/"
+    if (!didInitUserState.current) {
+      didInitUserState.current = true
+      return
+    }
     if (!user && typeof window !== 'undefined') {
       if (window.location.pathname !== '/') {
         window.history.replaceState({}, '', '/')
@@ -148,11 +159,11 @@ export default function Home() {
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'messages': return <MessagesPage />
+      case 'projects': return <ProjectsPage />
       case 'analytics': return <AnalyticsPage />
       case 'staff': return <StaffPage />
       case 'org_chart': return <OrgChartPage />
       case 'audit': return <AuditPage />
-      case 'reset_queue': return <ResetRequestsPage />
       case 'backend': return <BackendPage />
 
       case 'settings': return <SettingsPage />

@@ -8,6 +8,7 @@ interface AuditLog {
   detail: string;
   userId: string;
   userName: string;
+  device?: string;
   timestamp: string;
 }
 
@@ -34,7 +35,7 @@ export default function AuditPage() {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>📝 Audit Trail</h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{logs.length} total events logged</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filtered.map(l => ({ Action: l.action, Detail: l.detail, User: l.userName, Time: l.timestamp })), 'audit_trail.csv')}>
+        <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filtered.map(l => ({ Action: l.action, Detail: l.detail, User: l.userName, Time: l.timestamp, Device: l.device || '' })), 'audit_trail.csv')}>
           ⬇ Export CSV
         </button>
       </div>
@@ -62,6 +63,7 @@ export default function AuditPage() {
                   <th>Time</th>
                   <th>User</th>
                   <th>Action</th>
+                  <th>Device</th>
                   <th>Detail</th>
                 </tr>
               </thead>
@@ -80,6 +82,9 @@ export default function AuditPage() {
                                 l.action?.includes('LOCKOUT') ? 'red' :
                                   'gray'
                         }`}>{l.action}</span>
+                    </td>
+                    <td style={{ fontSize: 10, color: 'var(--text-4)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.device}>
+                      {l.device || '—'}
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-2)', maxWidth: 400 }}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</div>

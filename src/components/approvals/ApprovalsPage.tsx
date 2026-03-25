@@ -177,7 +177,7 @@ export default function ApprovalsPage() {
 
   const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 20
   const isAdmin = user?.role === 'admin'
-  const isTaskOwner = ['team_lead', 'admin'].includes(user?.role || '')
+  const normalizedUserName = (user?.name || '').trim().toLowerCase()
 
   // Active delegations for current user
   const now = new Date()
@@ -194,6 +194,11 @@ export default function ApprovalsPage() {
     if (isAdmin) return staff.map(s => s.id)
 
     const myStaff = staff.filter(s => s.leadId === user.id).map(s => s.id)
+    const projectOwnedStaff = Array.from(new Set(
+      entries
+        .filter(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
+        .map(e => e.staffId)
+    ))
 
     // Add delegated staff
     const activeDelegations = approvalDelegations.filter(d =>
@@ -206,8 +211,9 @@ export default function ApprovalsPage() {
     const delegatedOwnerIds = activeDelegations.map(d => d.taskOwnerId)
     const delegatedStaff = staff.filter(s => delegatedOwnerIds.includes(s.leadId || '')).map(s => s.id)
 
-    return Array.from(new Set([...myStaff, ...delegatedStaff]))
-  }, [user, staff, approvalDelegations, isAdmin, now])
+    return Array.from(new Set([...myStaff, ...delegatedStaff, ...projectOwnedStaff]))
+  }, [user, staff, approvalDelegations, isAdmin, now, entries, normalizedUserName])
+  const isTaskOwner = isAdmin || user?.role === 'team_lead' || approvableStaffIds.length > 0
 
   // Which entries this approver can see (based on reporting lead name matching)
   const relevantEntries: Entry[] = useMemo(() => {
@@ -218,20 +224,15 @@ export default function ApprovalsPage() {
 
       // Admin sees all entries including 2nd-level
       if (isAdmin) {
-        return ['submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)
+        return ['draft', 'submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)
       }
 
-      // Task Owner sees entries from their direct reports or delegated staff
-      if (isTaskOwner || approvableStaffIds.includes(e.staffId)) {
-        // Filter out entries waiting for 2nd-level admin approval
-        return ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status) && approvableStaffIds.includes(e.staffId)
-      }
-
-      return false
+      // Team leads, delegates and project/task owners
+      return ['draft', 'submitted', 'resubmitted', 'pending_clarification'].includes(e.status) && approvableStaffIds.includes(e.staffId)
     })
-  }, [entries, user, isAdmin, isTaskOwner, approvableStaffIds])
+  }, [entries, user, isAdmin, approvableStaffIds])
 
-  const pending = relevantEntries.filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
+  const pending = relevantEntries.filter(e => ['draft', 'submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
   const pending2ndLevel = isAdmin ? entries.filter(e => e.status === 'pending_2nd_approval' && !e.deleted) : []
   const history = entries.filter(e => ['approved', 'rejected'].includes(e.status) && !e.deleted && (isAdmin || approvableStaffIds.includes(e.staffId)))
 
@@ -485,8 +486,9 @@ export default function ApprovalsPage() {
     if (!confirm(`Are you sure you want to approve ${selectedIds.length} entries?`)) return
 
     const now = new Date().toISOString()
+    const approvableStatuses = new Set(['submitted', 'resubmitted', 'pending_clarification'])
     const updatedEntries = entries.map(e => {
-      if (selectedIds.includes(e.id)) {
+      if (selectedIds.includes(e.id) && approvableStatuses.has(e.status)) {
         const history: ApprovalHistoryEntry = {
           id: genId(),
           reviewerId: user?.id || '',
@@ -625,11 +627,14 @@ export default function ApprovalsPage() {
                         <button
                           className="btn btn-icon btn-secondary btn-sm"
                           onClick={() => {
-                            if (selectedIds.length === displayPending.length) setSelectedIds([])
-                            else setSelectedIds(displayPending.map(e => e.id))
+                            const selectableIds = displayPending
+                              .filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
+                              .map(e => e.id)
+                            if (selectedIds.length === selectableIds.length) setSelectedIds([])
+                            else setSelectedIds(selectableIds)
                           }}
                         >
-                          {selectedIds.length === displayPending.length && displayPending.length > 0 ? <CheckSquare size={14} /> : <Square size={14} />}
+                          {selectedIds.length > 0 && selectedIds.length === displayPending.filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status)).length ? <CheckSquare size={14} /> : <Square size={14} />}
                         </button>
                       </th>
                       <th>Staff</th>
@@ -653,6 +658,7 @@ export default function ApprovalsPage() {
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(e.id)}
+                              disabled={e.status === 'draft'}
                               onChange={() => {
                                 if (selectedIds.includes(e.id)) {
                                   setSelectedIds(selectedIds.filter(id => id !== e.id))
@@ -673,14 +679,18 @@ export default function ApprovalsPage() {
                           <td><span className="badge badge-blue">{e.category}</span></td>
                           <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>
                           <td>
-                            <span className={`badge badge-${e.status === 'resubmitted' ? 'yellow' : e.status === 'pending_clarification' ? 'yellow' : 'blue'}`}>
-                              {e.status === 'pending_clarification' ? 'clarification' : e.status}
+                            <span className={`badge badge-${e.status === 'draft' ? 'gray' : e.status === 'resubmitted' ? 'yellow' : e.status === 'pending_clarification' ? 'yellow' : 'blue'}`}>
+                              {e.status === 'pending_clarification' ? 'clarification' : e.status === 'draft' ? 'planned' : e.status}
                             </span>
                           </td>
                           <td>
-                            <button className="btn btn-primary btn-sm" onClick={() => setSelectedEntry(e)}>
-                              Review
-                            </button>
+                            {e.status === 'draft' ? (
+                              <span className="badge badge-gray">Awaiting Submit</span>
+                            ) : (
+                              <button className="btn btn-primary btn-sm" onClick={() => setSelectedEntry(e)}>
+                                Review
+                              </button>
+                            )}
                           </td>
                         </tr>
                       )
@@ -761,6 +771,7 @@ export default function ApprovalsPage() {
                 {staff
                   .filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted))
                   .filter(s => !filterDept || s.department === filterDept)
+                  .filter(s => !s.exemptFromTimesheet)
                   .map(s => (
                     <tr key={s.id}>
                       <td style={{ fontWeight: 600 }}>{s.name}</td>
@@ -770,7 +781,7 @@ export default function ApprovalsPage() {
                       <td><span className="badge badge-gray">Not Submitted</span></td>
                     </tr>
                 ))}
-                {staff.filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted)).filter(s => !filterDept || s.department === filterDept).length === 0 && (
+                {staff.filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted)).filter(s => !filterDept || s.department === filterDept).filter(s => !s.exemptFromTimesheet).length === 0 && (
                   <tr>
                     <td colSpan={5} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                       🎉 Everyone has submitted!

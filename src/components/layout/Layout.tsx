@@ -24,16 +24,17 @@ function getNavItems(role: string): NavItem[] {
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin'] },
-    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead'], badge: 'approvals' },
+    { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead', 'staff'], badge: 'approvals' },
 
     { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
+    { id: 'projects', label: 'Projects', icon: '💼', roles: ['admin'] },
     { id: 'analytics', label: 'Analytics', icon: '📊', roles: ['admin', 'team_lead'] },
     { id: 'delegation', label: 'Delegation', icon: '🤝', roles: ['admin', 'team_lead'] },
     { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', roles: ['staff', 'admin', 'team_lead'] },
-    { id: 'staff', label: 'Staff Directory', icon: '👥', roles: ['admin'] },
+    { id: 'staff', label: 'Staff Management', icon: '👥', roles: ['admin'] },
     { id: 'org_chart', label: 'Org Chart', icon: '🗂️', roles: ['admin'] },
     { id: 'audit', label: 'Audit Trail', icon: '📝', roles: ['admin'] },
-    { id: 'reset_queue', label: 'Reset Queue', icon: '🔐', roles: ['admin'] },
+
 
     { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'admin', 'team_lead'], badge: 'messages' },
@@ -50,10 +51,12 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, messages, settings, showPasswordChange, announcements } = useApp()
+  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, canApproveTimesheets, messages, settings, showPasswordChange, announcements } = useApp()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(local.get('sidebar_collapsed', false))
   const [notifOpen, setNotifOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const notifRef = useRef<HTMLDivElement>(null)
 
   // Close sidebar on navigation (mobile)
@@ -70,14 +73,24 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const canApprove = canApproveTimesheets()
   const navItems = getNavItems(user?.role || 'staff').filter(item => {
-    const toggleKey = item.id === 'leaderboard' ? 'leaderboard' : 
+    if (item.id === 'approvals' && !canApprove) return false
+
+    // Feature toggle check
+    const toggleKey = item.id === 'leaderboard' ? 'leaderboard' :
                      item.id === 'messages' ? 'messages' :
                      item.id === 'org_chart' ? 'org_chart' :
                      item.id === 'analytics' ? 'analytics' : null
     if (toggleKey && settings?.featureToggles) {
-      return (settings.featureToggles as any)[toggleKey] !== false
+      if ((settings.featureToggles as any)[toggleKey] === false) return false
     }
+
+    // Search filter
+    if (searchQuery.trim() && !item.isHeader) {
+      return item.label.toLowerCase().includes(searchQuery.toLowerCase())
+    }
+
     return true
   })
 
@@ -133,11 +146,12 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
         {/* ── SIDEBAR ── */}
         <aside style={{
-          width: SIDEBAR_W,
+          width: collapsed && !isMobile ? 80 : SIDEBAR_W,
           background: 'var(--bg-card)',
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column',
           flexShrink: 0, zIndex: 100,
+          transition: 'width 0.2s cubic-bezier(0.4,0,0.2,1)',
           ...(isMobile ? {
             position: 'fixed', top: 0, bottom: 0, left: 0,
             transform: sidebarOpen ? 'translateX(0)' : `translateX(-${SIDEBAR_W}px)`,
@@ -147,9 +161,81 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
             transform: 'none',
           })
         }}>
-          <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <img src={logoUrl || "/dsn.png"} alt="Logo" style={{ height: 48, objectFit: 'contain' }} />
+          <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+            {(!collapsed || isMobile) ? (
+              <img src={logoUrl || "/dsn.png"} alt="Logo" style={{ height: 48, objectFit: 'contain' }} />
+            ) : (
+              <div style={{ height: 48, width: 48, background: 'var(--accent)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 20 }}>D</div>
+            )}
+            
+            {!isMobile && (
+              <button 
+                onClick={() => { const next = !collapsed; setCollapsed(next); local.set('sidebar_collapsed', next) }}
+                style={{ position: 'absolute', right: -12, top: 34, width: 24, height: 24, borderRadius: '50%', background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+              >
+                <div style={{ transform: collapsed ? 'rotate(180deg)' : 'none', fontSize: 10 }}>◀</div>
+              </button>
+            )}
           </div>
+
+          {/* Search Bar */}
+          {(!collapsed || isMobile) && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Search menu..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 32px 8px 12px',
+                    fontSize: 12,
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-1)',
+                    outline: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-3)',
+                      fontSize: 14,
+                      padding: 4
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+                {!searchQuery && (
+                  <span style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--text-4)',
+                    fontSize: 12,
+                    pointerEvents: 'none'
+                  }}>
+                    🔍
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Nav */}
           <nav style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column' }}>
@@ -172,9 +258,10 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                     textTransform: 'uppercase', 
                     letterSpacing: '0.08em',
                     padding: '16px 12px 6px',
-                    marginTop: idx === 0 ? 0 : 4
+                    marginTop: idx === 0 ? 0 : 4,
+                    textAlign: collapsed && !isMobile ? 'center' : 'left'
                   }}>
-                    {item.label}
+                    {collapsed && !isMobile ? '—' : item.label}
                   </div>
                 )
               }
@@ -198,7 +285,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
                 >
                   <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
-                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {(!collapsed || isMobile) && <span style={{ flex: 1 }}>{item.label}</span>}
                   {badge > 0 && (
                     <span style={{ background: 'var(--danger)', color: 'white', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{badge}</span>
                   )}
@@ -209,8 +296,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
           {/* User card & Toggle */}
           <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>{online ? '🟢 Online' : '🔴 Offline'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: (collapsed && !isMobile) ? 'center' : 'space-between', padding: '0 8px' }}>
+              {(!collapsed || isMobile) && <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>{online ? '🟢 Online' : '🔴 Offline'}</div>}
               <button 
                 onClick={toggleDark}
                 style={{ 
@@ -218,7 +305,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, 
                   color: darkMode ? '#fff' : 'var(--text-2)',
                   borderRadius: 20, 
-                  padding: '5px 12px', 
+                  padding: (collapsed && !isMobile) ? '5px' : '5px 12px', 
                   cursor: 'pointer', 
                   display: 'flex', 
                   alignItems: 'center', 
@@ -228,7 +315,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                 }}
               >
                 {darkMode ? <Sun size={12} color="#fbbf24" strokeWidth={3} /> : <Moon size={12} color="var(--accent)" strokeWidth={3} />}
-                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.02em' }}>{darkMode ? 'LIGHT MODE' : 'DARK MODE'}</span>
+                {(!collapsed || isMobile) && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.02em' }}>{darkMode ? 'LIGHT' : 'DARK'}</span>}
               </button>
             </div>
             
@@ -238,16 +325,18 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               onMouseEnter={e => { if (page !== 'profile') e.currentTarget.style.background = 'var(--bg-hover)' }}
               onMouseLeave={e => { if (page !== 'profile') e.currentTarget.style.background = 'transparent' }}
             >
-              <div className="avatar avatar-sm" style={{ background: avatarColor(user?.name || ''), fontSize: 10, flexShrink: 0 }}>
+              <div className="avatar avatar-sm" title={user?.name} style={{ background: avatarColor(user?.name || ''), fontSize: 10, flexShrink: 0 }}>
                 {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'capitalize' }}>{user?.jobTitle || user?.role?.replace('_', ' ')}</div>
-              </div>
+              {(!collapsed || isMobile) && (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'capitalize' }}>{user?.jobTitle || user?.role?.replace('_', ' ')}</div>
+                </div>
+              )}
             </div>
             
-            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            <div style={{ display: (collapsed && !isMobile) ? 'none' : 'flex', gap: 4, marginTop: 4 }}>
               {(user?.role === 'admin') && (
                 <button 
                   className="btn btn-secondary btn-sm" 
@@ -344,4 +433,3 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     </div>
   )
 }
-

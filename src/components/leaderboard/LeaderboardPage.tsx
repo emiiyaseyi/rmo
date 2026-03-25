@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BADGES, genId } from '../../lib/utils'
+import { BADGES, genId, exportCSV, exportPDF, avatarColor } from '../../lib/utils'
 import { Staff, HofEntry, Reward, Redemption } from '../../types'
 import toast from 'react-hot-toast'
 
@@ -27,6 +27,8 @@ export default function LeaderboardPage() {
   const [showAddReward, setShowAddReward] = useState(false)
   const [rewardForm, setRewardForm] = useState({ name: '', desc: '', cost: '', icon: '🎁' })
   const [recoveryForm, setRecoveryForm] = useState({ weekId: '', reason: '' })
+  const [search, setSearch] = useState('')
+  const [deptFilter, setDeptFilter] = useState('')
 
   // Rankings
   const ranked: RankedStaff[] = useMemo(() =>
@@ -41,8 +43,13 @@ export default function LeaderboardPage() {
           return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
         })()
       }))
+      .filter(s => {
+        const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
+        const matchDept = !deptFilter || s.department === deptFilter
+        return matchSearch && matchDept
+      })
       .sort((a, b) => (b.points || 0) - (a.points || 0)),
-    [staff, entries]
+    [staff, entries, search, deptFilter]
   )
 
   const myRank = ranked.findIndex(s => s.id === user?.id) + 1
@@ -164,6 +171,35 @@ export default function LeaderboardPage() {
     toast.success('Reward fulfilled!')
   }
 
+  const handleExport = (format: 'csv' | 'pdf') => {
+    const data = ranked.map((s, i) => ({
+      Rank: i + 1,
+      Name: s.name,
+      Department: s.department || '—',
+      Points: s.points || 0,
+      SubmissionRate: s.submissionRate + '%',
+      Streak: s.streak || 0
+    }))
+    
+    if (format === 'csv') {
+      exportCSV(data, `leaderboard_${new Date().toISOString().slice(0, 10)}.csv`)
+      toast.success('Exported CSV')
+    } else {
+      const cols = [
+        { key: 'Rank', label: '#' },
+        { key: 'Name', label: 'Name' },
+        { key: 'Department', label: 'Dept' },
+        { key: 'Points', label: 'Pts' },
+        { key: 'SubmissionRate', label: 'Rate' },
+        { key: 'Streak', label: '🔥' }
+      ]
+      exportPDF(data, cols, 'Staff Leaderboard', `leaderboard_${new Date().toISOString().slice(0, 10)}.pdf`)
+      toast.success('Exported PDF')
+    }
+  }
+
+  const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ... rest of the UI ... */}
@@ -215,6 +251,24 @@ export default function LeaderboardPage() {
 
       {tab === 'individual' && (
         <div className="flex flex-col gap-4">
+          <div className="card flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex gap-3 flex-1 min-w-[300px]">
+              <input 
+                className="form-input flex-1" 
+                placeholder="Search staff..." 
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+              />
+              <select className="form-select w-48" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+                <option value="">All Departments</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>💾 CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>📕 PDF</button>
+            </div>
+          </div>
           {/* Pinned My Rank Card (if not in top 25) */}
           {(myRank > 25 || myRank === 0) && (
             <div className="card border-accent bg-accent-subtle relative overflow-hidden">

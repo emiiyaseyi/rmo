@@ -45,6 +45,7 @@ export interface Staff {
     cdsDay?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | null;
     weeklyHourGoal?: number;
     fontSize?: string | number;
+    exemptFromTimesheet?: boolean;
 }
 
 export interface ApprovalHistoryEntry {
@@ -231,6 +232,14 @@ export interface AppSettings {
         minutes: number;
     };
     categories: string[];
+    utilizationThresholds?: {
+        low: number;
+        high: number;
+    };
+    security?: {
+        defaultPassword?: string;
+        requireTwoFactor?: boolean;
+    };
     // Keep legacy fields for compatibility during migration if needed
     app_name?: string;
     welcome_message?: string;
@@ -481,6 +490,7 @@ export interface AppContextType {
     awardPoints: (staffId: string, points: number, action: string, weekId?: string) => void;
     grantBadge: (staffId: string, badgeId: string) => void;
     pendingApprovals: () => Entry[];
+    canApproveTimesheets: () => boolean;
     sendMessage: (msg: Partial<AppMessage>) => AppMessage;
     getOrCreateThread: (type: 'direct' | 'group', participants: string[], name?: string, icon?: string) => MessageThread;
     getThreadMessages: (threadId: string) => AppMessage[];
@@ -511,4 +521,3 @@ export interface AppContextType {
     // Add other fields as needed or use any for complex legacy state
     [key: string]: any;
 }
-

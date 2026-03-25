@@ -1,3 +1,6 @@
+import { doc, setDoc } from 'firebase/firestore'
+import { db } from './firebase'
+
 const PREFIX = 'dsn_'
 
 export const local = {
@@ -19,9 +22,29 @@ export const local = {
 }
 
 export function logAudit(action: string, detail: string, userId: string, userName: string): void {
-  const logs = local.get<any[]>('audit_logs', []) || [];
-  logs.unshift({ id: Date.now().toString(), action, detail, userId, userName, timestamp: new Date().toISOString() })
+  const id = Date.now().toString() + Math.random().toString(36).slice(2, 8)
+  const timestamp = new Date().toISOString()
+  const device = typeof navigator !== 'undefined'
+    ? `${navigator.platform} (${navigator.language}) | ${navigator.userAgent.slice(0, 80)}`
+    : 'unknown'
+  const entry = {
+    id,
+    action,
+    detail,
+    userId,
+    userName,
+    performedBy: userName || 'System',
+    targetId: userId || 'unknown',
+    device,
+    ipAddress: 'Local Browser',
+    timestamp,
+    metadata: { detail, source: 'ui' },
+  }
+  const logs = local.get<any[]>('audit_logs', []) || []
+  logs.unshift(entry)
   local.set('audit_logs', logs.slice(0, 5000))
+  // Mirror to Firebase for platform-wide filtering and persistence
+  setDoc(doc(db, 'auditLogs', id), entry, { merge: true }).catch(() => {})
 }
 
 export const genId = (): string => Date.now().toString(36) + Math.random().toString(36).slice(2)

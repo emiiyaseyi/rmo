@@ -209,10 +209,11 @@ export default function Dashboard({ setPage }: DashboardProps) {
       
       {/* Action Items */}
       {(() => {
+        const clarificationEntries = entries.filter(e => e.staffId === user?.id && e.status === 'pending_clarification' && !e.deleted)
         const rejectedEntries = entries.filter(e => e.staffId === user?.id && e.status === 'rejected' && !e.deleted)
         const pendingLeaves = leaves.filter(l => l.staffId === user?.id && l.status === 'pending')
         
-        if (rejectedEntries.length === 0 && pendingLeaves.length === 0) return null
+        if (rejectedEntries.length === 0 && pendingLeaves.length === 0 && clarificationEntries.length === 0) return null
         
         return (
           <div style={{ 
@@ -235,6 +236,15 @@ export default function Dashboard({ setPage }: DashboardProps) {
                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Reason: {e.rejectionReason || 'No reason provided'}</div>
                   </div>
                   <button className="btn btn-primary btn-sm" onClick={() => setPage('timesheet')}>Resubmit</button>
+                </div>
+              ))}
+              {clarificationEntries.map(e => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>Clarification Needed: {e.project}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Request: {e.clarificationNote || 'No details provided'}</div>
+                  </div>
+                  <button className="btn btn-primary btn-sm" onClick={() => setPage('timesheet')}>Explain</button>
                 </div>
               ))}
               {pendingLeaves.map(l => (

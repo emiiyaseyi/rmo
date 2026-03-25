@@ -88,7 +88,7 @@ export default function AnalyticsPage() {
     
     const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
     const activeStaffCount = staffWithEntries.length
-    const notSubmittedList = activeStaff.filter(s => !staffWithEntries.includes(s.id))
+    const notSubmittedList = activeStaff.filter(s => !staffWithEntries.includes(s.id) && !s.exemptFromTimesheet)
 
     return {
       totalHours: parseFloat(totalHours.toFixed(1)),

@@ -350,15 +350,28 @@ export default function SettingsPage() {
         {tab === 'weeks' && (
           <div className="card flex flex-col gap-4">
             <h3 className="font-bold">🔐 Week Locking</h3>
-            <p className="text-xs text-3">Locking a week prevents all staff from adding or submitting entries.</p>
-            <div className="flex gap-2 p-4 bg-2 rounded-lg border border-3 mb-2">
-               <input type="date" className="form-input text-xs" id="lock-date-input" />
-               <button 
+            <p className="text-xs text-3">Locking a week range prevents all staff from adding or submitting entries during that period.</p>
+            <div className="flex gap-2 p-4 bg-2 rounded-lg border border-3 mb-2 flex-wrap">
+               <div className="flex items-center gap-2">
+                 <label className="text-xs text-3 font-medium">From:</label>
+                 <input type="date" className="form-input text-xs" id="lock-start-date" />
+               </div>
+               <div className="flex items-center gap-2">
+                 <label className="text-xs text-3 font-medium">To:</label>
+                 <input type="date" className="form-input text-xs" id="lock-end-date" />
+               </div>
+               <button
                 className="btn btn-danger btn-sm whitespace-nowrap"
                 onClick={() => {
-                  const date = (document.getElementById('lock-date-input') as HTMLInputElement).value
-                  if (!date) return
-                  const weekId = date // Simplify for now or format to YYYY-WXX
+                  const startDate = (document.getElementById('lock-start-date') as HTMLInputElement).value
+                  const endDate = (document.getElementById('lock-end-date') as HTMLInputElement).value
+                  if (!startDate) {
+                    toast.error('Please select a start date')
+                    return
+                  }
+                  // If no end date provided, use start date as single day lock
+                  const finalEndDate = endDate || startDate
+                  const weekId = startDate === finalEndDate ? startDate : `${startDate} to ${finalEndDate}`
                   const newLock: WeekLock = {
                     id: genId(),
                     weekId,
@@ -367,10 +380,10 @@ export default function SettingsPage() {
                     lockedAt: new Date().toISOString()
                   }
                   saveWeekLocks([...weekLocks, newLock])
-                  logAudit('settings_change', weekId, { action: 'lock_week' })
-                  toast.success(`Week ${weekId} locked`)
+                  logAudit('settings_change', weekId, { action: 'lock_week_range' })
+                  toast.success(`Week range locked: ${weekId}`)
                 }}
-               >Lock Week</button>
+               >Lock Week Range</button>
             </div>
             <div className="grid gap-2">
               {weekLocks.length === 0 ? (

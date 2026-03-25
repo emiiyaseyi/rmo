@@ -761,6 +761,7 @@ export default function ApprovalsPage() {
                 {staff
                   .filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted))
                   .filter(s => !filterDept || s.department === filterDept)
+                  .filter(s => !s.exemptFromTimesheet)
                   .map(s => (
                     <tr key={s.id}>
                       <td style={{ fontWeight: 600 }}>{s.name}</td>
@@ -770,7 +771,7 @@ export default function ApprovalsPage() {
                       <td><span className="badge badge-gray">Not Submitted</span></td>
                     </tr>
                 ))}
-                {staff.filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted)).filter(s => !filterDept || s.department === filterDept).length === 0 && (
+                {staff.filter(s => !entries.some(e => e.staffId === s.id && e.weekKey === (new Date().toISOString().split('T')[0]) && !e.deleted)).filter(s => !filterDept || s.department === filterDept).filter(s => !s.exemptFromTimesheet).length === 0 && (
                   <tr>
                     <td colSpan={5} style={{ textAlign: 'center', padding: 30, color: 'var(--text-3)' }}>
                       🎉 Everyone has submitted!

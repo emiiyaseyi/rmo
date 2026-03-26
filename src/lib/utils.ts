@@ -95,6 +95,134 @@ export function isSubmissionOpen(): boolean {
   return false
 }
 
+// Submission window utilities
+const DAY_MAP: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+  thursday: 4, friday: 5, saturday: 6
+}
+
+export interface SubmissionWindowStatus {
+  isOpen: boolean;
+  isClosed: boolean;
+  isPastDeadline: boolean;
+  deadline: Date | null;
+  hoursLate: number;
+  periodsLate: number;
+  penalty: number;
+  nextOpens: Date | null;
+}
+
+export function getSubmissionWindowStatus(
+  submissionWindow?: {
+    enabled: boolean;
+    schedule: {
+      startDay: string;
+      startTime: string;
+      endDay: string;
+      endTime: string;
+    };
+    latePenalty: {
+      enabled: boolean;
+      pointsPerPeriod: number;
+      periodHours: number;
+    };
+    timezone: string;
+  }
+): SubmissionWindowStatus {
+  // Default to always open if not configured
+  if (!submissionWindow || !submissionWindow.enabled) {
+    return {
+      isOpen: true,
+      isClosed: false,
+      isPastDeadline: false,
+      deadline: null,
+      hoursLate: 0,
+      periodsLate: 0,
+      penalty: 0,
+      nextOpens: null
+    }
+  }
+
+  const now = new Date()
+  const { schedule, latePenalty } = submissionWindow
+
+  // Calculate this week's deadline
+  const startDayNum = DAY_MAP[schedule.startDay.toLowerCase()]
+  const endDayNum = DAY_MAP[schedule.endDay.toLowerCase()]
+
+  // Get current week's Monday
+  const currentDay = now.getDay()
+  const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay
+  const monday = new Date(now)
+  monday.setDate(monday.getDate() + mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+
+  // Calculate window start
+  const windowStart = new Date(monday)
+  windowStart.setDate(windowStart.getDate() + (startDayNum - 1))
+  const [startHour, startMin] = schedule.startTime.split(':').map(Number)
+  windowStart.setHours(startHour, startMin, 0, 0)
+
+  // Calculate window end (deadline)
+  const deadline = new Date(monday)
+  deadline.setDate(deadline.getDate() + (endDayNum - 1))
+  const [endHour, endMin] = schedule.endTime.split(':').map(Number)
+  deadline.setHours(endHour, endMin, 0, 0)
+
+  const isOpen = now >= windowStart && now <= deadline
+  const isPastDeadline = now > deadline
+  const isClosed = now < windowStart
+
+  // Calculate late penalty
+  let hoursLate = 0
+  let periodsLate = 0
+  let penalty = 0
+
+  if (isPastDeadline && latePenalty.enabled) {
+    const msLate = now.getTime() - deadline.getTime()
+    hoursLate = msLate / (1000 * 60 * 60)
+    periodsLate = Math.floor(hoursLate / latePenalty.periodHours)
+    penalty = periodsLate * latePenalty.pointsPerPeriod
+  }
+
+  // Calculate next window opening
+  let nextOpens: Date | null = null
+  if (isClosed) {
+    nextOpens = windowStart
+  } else if (isPastDeadline) {
+    // Next week
+    nextOpens = new Date(windowStart)
+    nextOpens.setDate(nextOpens.getDate() + 7)
+  }
+
+  return {
+    isOpen,
+    isClosed,
+    isPastDeadline,
+    deadline,
+    hoursLate,
+    periodsLate,
+    penalty,
+    nextOpens
+  }
+}
+
+export function formatTimeUntilDeadline(deadline: Date): string {
+  const now = new Date()
+  const diff = deadline.getTime() - now.getTime()
+
+  if (diff <= 0) return 'Deadline passed'
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+  return `${minutes}m ${seconds}s`
+}
+
 export const DEFAULT_POINTS = {
   onTimeSubmission: 15, 
   mondayBonus: 10,

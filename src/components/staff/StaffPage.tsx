@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF, avatarColor, initials, logAudit } from '../../lib/utils'
 import { db } from '../../lib/firebase'
 import { doc, updateDoc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore'
-import { Search, Plus, Download, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square, Unlock } from 'lucide-react'
+import { Search, Plus, Download, Upload, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square, Unlock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Staff, Entry } from '../../types'
 
@@ -403,6 +403,8 @@ export default function StaffPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   const [activeSessions, setActiveSessions] = useState<any[]>([])
+  const [importRows, setImportRows] = useState<any[]>([])
+  const [showImportPreview, setShowImportPreview] = useState(false)
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
 
@@ -589,6 +591,109 @@ export default function StaffPage() {
     toast.success('Exported ' + rows.length + ' staff')
   }
 
+  function downloadStaffTemplate() {
+    exportCSV([
+      { Name: 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Department: 'AI Engineering', Role: 'staff', 'Job Title': 'Data Scientist', Phone: '+2348012345678', 'Lead Email': 'lead@datasciencenigeria.ai', 'Weekly Cap': 45, Status: 'active', Password: 'dsn-staff', 'Exempt From Timesheet': 'No' },
+      { Name: 'John Manager', Email: 'john.manager@datasciencenigeria.ai', Department: 'Leadership', Role: 'team_lead', 'Job Title': 'Team Lead', Phone: '+2348098765432', 'Lead Email': '', 'Weekly Cap': '', Status: 'active', Password: '', 'Exempt From Timesheet': 'No' },
+    ], 'staff_import_template.csv')
+    toast.success('Template downloaded')
+  }
+
+  function openStaffImport() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,.xlsx,.xls'
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+      if (!['csv', 'xlsx', 'xls'].includes(ext)) { toast.error('Only CSV or Excel files accepted'); return }
+      import('xlsx').then(XLSX => {
+        const reader = new FileReader()
+        reader.onload = ev => {
+          try {
+            const content = ev.target?.result
+            if (!content) return
+            const wb = XLSX.read(content, { type: 'binary', cellDates: true })
+            const ws = wb.Sheets[wb.SheetNames[0]]
+            const raw = XLSX.utils.sheet_to_json(ws, { raw: false }) as any[]
+            if (raw.length === 0) { toast.error('File is empty'); return }
+
+            const normalize = (v: any) => (v ?? '').toString().trim()
+            const yesNo = (v: any) => ['yes', 'true', '1'].includes(normalize(v).toLowerCase())
+
+            const rows = raw.map(r => ({
+              name: normalize(r['Name'] || r['Full Name'] || r['name']),
+              email: normalize(r['Email'] || r['email']),
+              department: normalize(r['Department'] || r['Dept'] || r['department']),
+              role: normalize(r['Role'] || r['role']) || 'staff',
+              jobTitle: normalize(r['Job Title'] || r['Title'] || r['jobTitle'] || r['job_title']),
+              phone: normalize(r['Phone'] || r['phone']),
+              leadEmail: normalize(r['Lead Email'] || r['Lead'] || r['leadEmail'] || r['lead_email']),
+              weekly_cap: normalize(r['Weekly Cap'] || r['Cap'] || r['weekly_cap'] || r['weeklyCap']),
+              status: normalize(r['Status'] || r['status']) || 'active',
+              password: normalize(r['Password'] || r['password']),
+              exemptFromTimesheet: yesNo(r['Exempt From Timesheet'] || r['Exempt'] || r['exemptFromTimesheet'])
+            }))
+
+            setImportRows(rows)
+            setShowImportPreview(true)
+          } catch (err) {
+            console.error(err)
+            toast.error('Failed to parse file. Check format and try again.')
+          }
+        }
+        reader.readAsBinaryString(file)
+      })
+    }
+    input.click()
+  }
+
+  function handleImportConfirm(rows: any[]) {
+    if (rows.length === 0) { toast.error('No valid rows to import'); return }
+    const now = new Date().toISOString()
+    const updated = [...staff]
+    const existingEmails = new Set(staff.map(s => s.email?.toLowerCase()))
+
+    rows.forEach(r => {
+      const email = r.email?.toLowerCase().trim()
+      if (!email || existingEmails.has(email)) return
+      const normalizedRole = (r.role || 'staff').toLowerCase().replace(/\s+/g, '_')
+      const role = ['staff', 'team_lead', 'admin'].includes(normalizedRole) ? normalizedRole : 'staff'
+      const status = (r.status || 'active').toLowerCase() === 'suspended' ? 'suspended' : 'active'
+      const lead = staff.find(s => s.email?.toLowerCase() === (r.leadEmail || '').toLowerCase())
+
+      const ns: Staff = {
+        id: genId(),
+        name: r.name,
+        email,
+        department: r.department,
+        jobTitle: r.jobTitle || '',
+        role: role as any,
+        status: status as any,
+        leadId: lead?.id || '',
+        leadName: lead?.name || '',
+        phone: r.phone || '',
+        weekly_cap: r.weekly_cap ? Number(r.weekly_cap) : '',
+        password: r.password || 'dsn-staff',
+        first_login: true,
+        points: 0,
+        streak: 0,
+        badges: [],
+        exemptFromTimesheet: !!r.exemptFromTimesheet,
+        createdAt: now,
+      }
+      updated.push(ns)
+      existingEmails.add(email)
+      notify(ns.id, 'Welcome to Data Science Nigeria RMO! Your account has been created with default password "dsn-staff" or as specified by your admin. Please change it on your first login.', 'info', 'Welcome to DSN-RMO', ns.id, 'message', ns.email)
+    })
+
+    saveStaff(updated)
+    logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
+    toast.success(`Imported ${rows.length} staff`)
+    setShowImportPreview(false)
+  }
+
   async function exportStaffPDF() {
     const rows = staff.map(s => ({
       name: s.name, email: s.email, department: s.department || '-',
@@ -680,6 +785,12 @@ export default function StaffPage() {
               <Download size={13} /> {selected.size > 0 ? `Export ${selected.size}` : 'Export All'}
             </button>
           </div>
+          <button className="btn btn-secondary btn-sm" onClick={downloadStaffTemplate}>
+            <Download size={13} /> CSV Template
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={openStaffImport}>
+            <Upload size={13} /> Bulk Import
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={exportStaffPDF}>PDF</button>
           <button className="btn btn-primary" onClick={() => { setEditStaff(null); setShowModal(true) }}>
             <Plus size={14} /> Add Staff
@@ -935,6 +1046,14 @@ export default function StaffPage() {
       {/* ── Modals ── */}
       {showModal && <StaffModal existing={editStaff} allStaff={staff} onSave={handleSave} onClose={() => { setShowModal(false); setEditStaff(null) }} />}
       {showBulkEdit && <BulkEditModal count={selected.size} allStaff={staff} onApply={handleBulkEdit} onClose={() => setShowBulkEdit(false)} />}
+      {showImportPreview && (
+        <ImportPreviewModal
+          rows={importRows}
+          existingEmails={new Set(staff.map(s => s.email?.toLowerCase()))}
+          onConfirm={handleImportConfirm}
+          onClose={() => setShowImportPreview(false)}
+        />
+      )}
     </div>
   )
 }

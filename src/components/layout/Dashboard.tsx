@@ -1,47 +1,48 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { getWeekKey, weekRange, fmtDate, isSubmissionOpen, initials, avatarColor } from '../../lib/utils'
+import { getWeekKey, weekRange, fmtDate, isSubmissionOpen, initials, avatarColor, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import PageHeader from '../common/PageHeader'
 import Skeleton from '../common/Skeleton'
 
 function Countdown() {
+  const { settings } = useApp()
   const [timeLeft, setTimeLeft] = useState('')
   const [status, setStatus] = useState<'safe' | 'urgent'>('safe')
 
+  const submissionWindow = settings?.submissionWindow || {
+    enabled: true,
+    schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
+    latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
+    timezone: 'Africa/Windhoek'
+  }
+
   useEffect(() => {
     function calc() {
-      const now = new Date()
-      const wat = new Date(now.getTime() + 60 * 60 * 1000)
-      const day = wat.getUTCDay()
-      const hour = wat.getUTCHours()
+      const windowStatus = getSubmissionWindowStatus(submissionWindow)
 
-      // Deadline: Tuesday 4pm WAT
-      let deadlineWAT = new Date(wat)
-      // Find next Tuesday 16:00 WAT
-      const daysUntilTue = (2 - day + 7) % 7 || (day === 2 && (hour < 16) ? 0 : 7)
-      deadlineWAT.setUTCDate(deadlineWAT.getUTCDate() + daysUntilTue)
-      deadlineWAT.setUTCHours(16, 0, 0, 0)
-
-      // Open: Monday 8am WAT
-      const openWAT = new Date(deadlineWAT)
-      openWAT.setUTCDate(openWAT.getUTCDate() - 1)
-      openWAT.setUTCHours(8, 0, 0, 0)
-
-      if (wat.getTime() < openWAT.getTime()) {
-        const diff = openWAT.getTime() - wat.getTime()
-        const dh = Math.floor(diff / 3600000)
-        const dm = Math.floor((diff % 3600000) / 60000)
-        setTimeLeft(`Opens in ${dh}h ${dm}m`)
+      if (!submissionWindow.enabled) {
+        setTimeLeft('Always open')
         setStatus('safe')
-      } else if (wat.getTime() <= deadlineWAT.getTime()) {
-        const diff = deadlineWAT.getTime() - wat.getTime()
-        const dh = Math.floor(diff / 3600000)
-        const dm = Math.floor((diff % 3600000) / 60000)
-        const ds = Math.floor((diff % 60000) / 1000)
-        setTimeLeft(`${String(dh).padStart(2, '0')}:${String(dm).padStart(2, '0')}:${String(ds).padStart(2, '0')}`)
-        setStatus(dh < 2 ? 'urgent' : 'safe')
+        return
+      }
+
+      if (windowStatus.isClosed && windowStatus.nextOpens) {
+        // Window hasn't opened yet
+        const formatted = formatTimeUntilDeadline(windowStatus.nextOpens)
+        setTimeLeft(`Opens in ${formatted}`)
+        setStatus('safe')
+      } else if (windowStatus.isOpen && windowStatus.deadline) {
+        // Window is currently open - show countdown to deadline
+        const formatted = formatTimeUntilDeadline(windowStatus.deadline)
+        setTimeLeft(formatted)
+
+        // Check if less than 2 hours remaining
+        const diff = windowStatus.deadline.getTime() - new Date().getTime()
+        const hoursLeft = diff / (1000 * 60 * 60)
+        setStatus(hoursLeft < 2 ? 'urgent' : 'safe')
       } else {
+        // Past deadline
         setTimeLeft('Submission closed')
         setStatus('safe')
       }
@@ -49,9 +50,22 @@ function Countdown() {
     calc()
     const t = setInterval(calc, 1000)
     return () => clearInterval(t)
-  }, [])
+  }, [submissionWindow])
 
-  const isOpen = isSubmissionOpen()
+  const isOpen = isSubmissionOpen(submissionWindow)
+
+  // Format schedule display
+  const formatTime = (time: string) => {
+    const [h, m] = time.split(':')
+    const hour = parseInt(h)
+    const ampm = hour >= 12 ? 'pm' : 'am'
+    const hour12 = hour % 12 || 12
+    return `${hour12}:${m}${ampm}`
+  }
+
+  const titleCase = (str: string) => str.charAt(0).toUpperCase() + str.slice(1)
+  const scheduleText = `${titleCase(submissionWindow.schedule.startDay).slice(0, 3)} ${formatTime(submissionWindow.schedule.startTime)} – ${titleCase(submissionWindow.schedule.endDay).slice(0, 3)} ${formatTime(submissionWindow.schedule.endTime)} ${submissionWindow.timezone.split('/')[1] || 'WAT'}`
+
   return (
     <div style={{
       background: 'var(--bg-card)', 
@@ -100,7 +114,7 @@ function Countdown() {
              )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, fontWeight: 500, opacity: 0.8 }}>
-             Schedule: Mon 8:00am – Tue 4:00pm WAT
+             Schedule: {scheduleText}
           </div>
         </div>
       </div>

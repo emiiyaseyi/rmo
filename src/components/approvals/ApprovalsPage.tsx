@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
-import { fmtDate, weekRange, genId, logAudit } from '../../lib/utils'
+import { fmtDate, weekRange, genId, logAudit, getWeekKey } from '../../lib/utils'
 import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
@@ -268,6 +268,11 @@ export default function ApprovalsPage() {
   const pending = relevantEntries.filter(e => ['draft', 'submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
   const pending2ndLevel = isAdmin ? entries.filter(e => e.status === 'pending_2nd_approval' && !e.deleted) : []
   const history = entries.filter(e => ['approved', 'rejected'].includes(e.status) && !e.deleted && (isAdmin || approvableStaffIds.includes(e.staffId)))
+  const currentWeekKey = getWeekKey(new Date())
+  const [secondLevelWeek, setSecondLevelWeek] = useState<string>(currentWeekKey)
+  const secondLevelWeekEntries = isAdmin
+    ? entries.filter(e => !e.deleted && e.weekKey === secondLevelWeek && e.hours >= secondLevelThreshold)
+    : []
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean).map(d => d as string)))
   const weeks = Array.from(new Set(relevantEntries.map(e => e.weekKey))).sort().reverse()
@@ -632,6 +637,7 @@ export default function ApprovalsPage() {
         <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending ({displayPending.length})</button>
         <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>
         <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
+        {isAdmin && <button className={`tab ${tab === '2nd_level' ? 'active' : ''}`} onClick={() => setTab('2nd_level')}>2nd-Level Review ({secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})</button>}
         {isTaskOwner && <button className={`tab ${tab === 'delegations' ? 'active' : ''}`} onClick={() => setTab('delegations')}>Delegations</button>}
       </div>
 
@@ -748,10 +754,26 @@ export default function ApprovalsPage() {
 
       {tab === '2nd_level' && isAdmin && (
         <>
-          {pending2ndLevel.length === 0 ? (
+          <div className="card" style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              Week in view: <strong>{weekRange(secondLevelWeek)}</strong>
+            </div>
+            <select
+              className="form-select"
+              style={{ width: 'auto' }}
+              value={secondLevelWeek}
+              onChange={e => setSecondLevelWeek(e.target.value)}
+            >
+              {weeks.map(w => (
+                <option key={w} value={w}>{weekRange(w)}</option>
+              ))}
+            </select>
+          </div>
+
+          {secondLevelWeekEntries.length === 0 ? (
             <div className="empty-state card">
               <div className="empty-state-icon">✅</div>
-              <div className="empty-state-title">No 2nd-level approvals pending</div>
+              <div className="empty-state-title">No 2nd-level items this week</div>
             </div>
           ) : (
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -765,11 +787,15 @@ export default function ApprovalsPage() {
                       <th>Hours</th>
                       <th>Week</th>
                       <th>1st Approver</th>
+                      <th>Review Status</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pending2ndLevel.map(e => (
+                    {secondLevelWeekEntries.map(e => {
+                      const reviewStatus = e.status === 'pending_2nd_approval' ? 'Pending Admin Review' : e.status === 'approved' ? 'Approved' : e.status === 'rejected' ? 'Rejected' : 'In Review'
+                      const badge = e.status === 'pending_2nd_approval' ? 'yellow' : e.status === 'approved' ? 'green' : e.status === 'rejected' ? 'red' : 'gray'
+                      return (
                       <tr key={e.id}>
                         <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                         <td>{e.project}</td>
@@ -778,12 +804,19 @@ export default function ApprovalsPage() {
                         <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>
                         <td style={{ fontSize: 12 }}>{e.approvedByName || '—'}</td>
                         <td>
-                          <button className="btn btn-primary btn-sm" onClick={() => setSelectedEntry(e)}>
-                            Review
-                          </button>
+                          <span className={`badge badge-${badge}`}>{reviewStatus}</span>
+                        </td>
+                        <td>
+                          {e.status === 'pending_2nd_approval' ? (
+                            <button className="btn btn-primary btn-sm" onClick={() => setSelectedEntry(e)}>
+                              Review
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>—</span>
+                          )}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>

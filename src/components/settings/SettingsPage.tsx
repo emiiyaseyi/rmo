@@ -1,5 +1,5 @@
 'use client'
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { exportCSV, genId } from '../../lib/utils'
 import { AppSettings, WeekLock, PublicHoliday } from '../../types'
@@ -30,7 +30,6 @@ export default function SettingsPage() {
   const [brandForm, setBrandForm] = useState(settings?.branding || { appName: 'DSN Timesheet', welcomeMessage: 'Welcome', primaryColour: '#4F46E5', secondaryColour: '#10B981', logoBase64: null })
   const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
-  const [toggles, setToggles] = useState(settings?.featureToggles || { gamification: true, leaderboard: true, messaging: true, bulkImports: true, darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true, firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true, profilePhotos: true, streakRecovery: true, duplicateDetection: true, announcements: true, orgChart: true })
   const [securityForm, setSecurityForm] = useState(settings?.security || { defaultPassword: 'dsn-staff', requireTwoFactor: false })
   const [submissionWindowForm, setSubmissionWindowForm] = useState(settings?.submissionWindow || {
     enabled: true,
@@ -45,7 +44,6 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'branding', label: 'Branding' },
-    { id: 'toggles', label: 'Toggles' },
     { id: 'points', label: 'Points' },
     { id: 'caps', label: 'Caps' },
     { id: 'submission', label: 'Submission Window' },
@@ -71,6 +69,12 @@ export default function SettingsPage() {
       return true
     })
   }, [auditLogs, auditSearch, auditAction, auditFrom, auditTo])
+
+  useEffect(() => {
+    if (settings?.submissionWindow) {
+      setSubmissionWindowForm(settings.submissionWindow)
+    }
+  }, [settings?.submissionWindow])
 
   const saveAllSettings = (updates: Partial<AppSettings>) => {
     const newData = { ...settings, ...updates } as AppSettings
@@ -106,6 +110,18 @@ export default function SettingsPage() {
     }
     reader.readAsDataURL(file)
   }
+
+  const scheduleDays = [
+    { short: 'Sun', value: 'sunday' },
+    { short: 'Mon', value: 'monday' },
+    { short: 'Tue', value: 'tuesday' },
+    { short: 'Wed', value: 'wednesday' },
+    { short: 'Thu', value: 'thursday' },
+    { short: 'Fri', value: 'friday' },
+    { short: 'Sat', value: 'saturday' },
+  ] as const
+  const commonTimes = ['08:00', '09:00', '12:00', '16:00', '18:00'] as const
+  const titleCaseDay = (day: string) => day.charAt(0).toUpperCase() + day.slice(1)
 
   return (
     <div className="flex flex-col gap-6">
@@ -215,34 +231,6 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
-
-        {/* FEATURE TOGGLES */}
-        {tab === 'toggles' && (
-          <div className="card flex flex-col gap-4">
-            <h3 className="font-bold">🎛️ Feature Toggles</h3>
-            <p className="text-xs text-3 mb-2">Enable or disable specific modules across the platform.</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Object.entries(toggles).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between p-3 bg-2 rounded-lg border border-3">
-                  <span className="text-xs font-medium capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                   <button
-                    onClick={() => {
-                      const next = { ...toggles, [key]: !value }
-                      setToggles(next)
-                      saveAllSettings({ featureToggles: next })
-                    }}
-                    className={`w-10 h-5 rounded-full relative transition-all ${value ? 'bg-success' : 'bg-3'}`}
-                  >
-                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm transition-all ${value ? 'left-6' : 'left-1'}`}></div>
-                  </button>
-                </div>
-              ))}
-            </div>
-          <div className="mt-4 p-4 bg-soft-primary rounded-lg text-xs text-primary">
-            ℹ️ Changes to feature toggles will take effect immediately for all users.
-          </div>
-        </div>
-      )}
 
         {/* POINTS CONFIG */}
         {tab === 'points' && (
@@ -370,198 +358,198 @@ export default function SettingsPage() {
 
         {/* SUBMISSION WINDOW */}
         {tab === 'submission' && (
-          <div className="card flex flex-col gap-6">
-            <div>
-              <h3 className="font-bold">🔓 Submission Window Configuration</h3>
-              <p className="text-xs text-3 mt-1">Configure when staff can submit timesheets and late submission penalties</p>
-            </div>
-
-            {/* Enable/Disable Toggle */}
-            <div className="flex items-center gap-3 p-4 bg-2 rounded-lg border border-3">
-              <button
-                onClick={() => setSubmissionWindowForm({...submissionWindowForm, enabled: !submissionWindowForm.enabled})}
-                className={`w-10 h-5 rounded-full relative transition-all ${submissionWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${submissionWindowForm.enabled ? 'left-6' : 'left-1'}`}></div>
-              </button>
-              <div>
-                <div className="text-xs font-bold">Enable Submission Window</div>
-                <div className="text-[10px] text-3">Control when staff can submit their timesheets. When disabled, submissions are always allowed.</div>
+          <div className="flex flex-col gap-6">
+            {/* Header Card */}
+            <div className="card">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-1">🔓 Submission Window</h3>
+                  <p className="text-sm text-3">Configure timesheet submission schedule and penalties</p>
+                </div>
+                <button
+                  onClick={() => setSubmissionWindowForm({...submissionWindowForm, enabled: !submissionWindowForm.enabled})}
+                  className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${submissionWindowForm.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                </button>
               </div>
             </div>
 
             {submissionWindowForm.enabled && (
               <>
-                {/* Schedule Configuration */}
-                <div className="border border-3 rounded-lg p-4 bg-2">
-                  <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
-                    📅 Submission Schedule
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Window Opens */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-medium text-3">Window Opens</label>
-                      <div className="flex gap-2">
-                        <select
-                          className="form-select text-xs flex-1"
-                          value={submissionWindowForm.schedule.startDay}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            schedule: {...submissionWindowForm.schedule, startDay: e.target.value as any}
-                          })}
-                        >
-                          <option value="monday">Monday</option>
-                          <option value="tuesday">Tuesday</option>
-                          <option value="wednesday">Wednesday</option>
-                          <option value="thursday">Thursday</option>
-                          <option value="friday">Friday</option>
-                          <option value="saturday">Saturday</option>
-                          <option value="sunday">Sunday</option>
-                        </select>
-                        <input
-                          type="time"
-                          className="form-input text-xs w-24"
-                          value={submissionWindowForm.schedule.startTime}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            schedule: {...submissionWindowForm.schedule, startTime: e.target.value}
-                          })}
-                        />
-                      </div>
+                {/* Active Window Schedule */}
+                <div className="rounded-[32px] border-2 border-cyan-400/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl">
+                  {/* Header */}
+                  <div className="text-center mb-8">
+                    <div className="text-sm font-bold mb-4 text-slate-200">Active Window:</div>
+                    <div className="text-5xl md:text-6xl font-black tracking-tight leading-tight mb-6" style={{ fontSize: '3.5rem', fontWeight: '900' }}>
+                      {titleCaseDay(submissionWindowForm.schedule.startDay)}, {submissionWindowForm.schedule.startTime.replace(/^0/, '')}
+                      <span className="text-cyan-400/60"> - </span>
+                      {titleCaseDay(submissionWindowForm.schedule.endDay)} {submissionWindowForm.schedule.endTime.replace(/^0/, '')}
                     </div>
-
-                    {/* Window Closes */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-medium text-3">Window Closes (Deadline)</label>
-                      <div className="flex gap-2">
-                        <select
-                          className="form-select text-xs flex-1"
-                          value={submissionWindowForm.schedule.endDay}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            schedule: {...submissionWindowForm.schedule, endDay: e.target.value as any}
-                          })}
-                        >
-                          <option value="monday">Monday</option>
-                          <option value="tuesday">Tuesday</option>
-                          <option value="wednesday">Wednesday</option>
-                          <option value="thursday">Thursday</option>
-                          <option value="friday">Friday</option>
-                          <option value="saturday">Saturday</option>
-                          <option value="sunday">Sunday</option>
-                        </select>
-                        <input
-                          type="time"
-                          className="form-input text-xs w-24"
-                          value={submissionWindowForm.schedule.endTime}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            schedule: {...submissionWindowForm.schedule, endTime: e.target.value}
-                          })}
-                        />
-                      </div>
+                    <div className="flex items-center justify-center gap-3 flex-wrap">
+                      <span className="text-lg font-bold text-slate-200">Timezone:</span>
+                      <select
+                        className="rounded-lg border-2 border-slate-600 bg-slate-800/80 px-4 py-2 text-base text-white font-bold focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transition-all"
+                        value={submissionWindowForm.timezone}
+                        onChange={e => setSubmissionWindowForm({...submissionWindowForm, timezone: e.target.value})}
+                      >
+                        <option className="bg-slate-800" value="Africa/Windhoek">Africa/Windhoek</option>
+                        <option className="bg-slate-800" value="Africa/Lagos">Africa/Lagos</option>
+                        <option className="bg-slate-800" value="Africa/Johannesburg">Africa/Johannesburg</option>
+                        <option className="bg-slate-800" value="UTC">UTC</option>
+                        <option className="bg-slate-800" value="America/New_York">America/New_York</option>
+                        <option className="bg-slate-800" value="Europe/London">Europe/London</option>
+                      </select>
                     </div>
                   </div>
 
-                  <div className="mt-4 p-3 bg-soft-primary rounded-lg text-xs text-primary">
-                    ℹ️ Example: Monday 8:00 AM to Tuesday 4:00 PM WAT
+                  {/* Opens and Closes Sections - Side by Side */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                    {/* Opens */}
+                    <div className="rounded-[28px] border-2 border-slate-600/70 bg-slate-800/40 backdrop-blur-sm p-6 hover:border-cyan-400/50 transition-all">
+                      <div className="text-center text-4xl font-black mb-6 text-white">Opens</div>
+
+                      {/* Days */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                        {scheduleDays.filter(d => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d.value)).map((day) => (
+                          <button
+                            key={day.value}
+                            onClick={() => setSubmissionWindowForm({
+                              ...submissionWindowForm,
+                              schedule: { ...submissionWindowForm.schedule, startDay: day.value }
+                            })}
+                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${
+                              submissionWindowForm.schedule.startDay === day.value
+                                ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
+                                : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
+                            }`}
+                          >
+                            {day.short}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Time Input */}
+                      <input
+                        type="time"
+                        className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/30 transition-all"
+                        style={{ width: '100%' }}
+                        value={submissionWindowForm.schedule.startTime}
+                        onChange={e => setSubmissionWindowForm({
+                          ...submissionWindowForm,
+                          schedule: { ...submissionWindowForm.schedule, startTime: e.target.value }
+                        })}
+                      />
+                    </div>
+
+                    {/* Closes */}
+                    <div className="rounded-[28px] border-2 border-slate-600/70 bg-slate-800/40 backdrop-blur-sm p-6 hover:border-cyan-400/50 transition-all">
+                      <div className="text-center text-4xl font-black mb-6 text-white">Closes</div>
+
+                      {/* Days */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                        {scheduleDays.filter(d => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d.value)).map((day) => (
+                          <button
+                            key={`end-${day.value}`}
+                            onClick={() => setSubmissionWindowForm({
+                              ...submissionWindowForm,
+                              schedule: { ...submissionWindowForm.schedule, endDay: day.value }
+                            })}
+                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${
+                              submissionWindowForm.schedule.endDay === day.value
+                                ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
+                                : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
+                            }`}
+                          >
+                            {day.short}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Time Input */}
+                      <input
+                        type="time"
+                        className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/30 transition-all"
+                        style={{ width: '100%' }}
+                        value={submissionWindowForm.schedule.endTime}
+                        onChange={e => setSubmissionWindowForm({
+                          ...submissionWindowForm,
+                          schedule: { ...submissionWindowForm.schedule, endTime: e.target.value }
+                        })}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Late Penalty Configuration */}
-                <div className="border border-warning-subtle rounded-lg p-4 bg-warning-bg">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-bold flex items-center gap-2">
-                      ⚠️ Late Submission Penalties
-                    </h4>
+                {/* Late Penalties */}
+                <div className="card">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h4 className="text-sm font-bold mb-1">⚠️ Late Penalties</h4>
+                      <p className="text-xs text-3">Deduct points for late submissions</p>
+                    </div>
                     <button
                       onClick={() => setSubmissionWindowForm({
                         ...submissionWindowForm,
                         latePenalty: {...submissionWindowForm.latePenalty, enabled: !submissionWindowForm.latePenalty.enabled}
                       })}
-                      className={`w-10 h-5 rounded-full relative transition-all ${submissionWindowForm.latePenalty.enabled ? 'bg-warning' : 'bg-3'}`}
+                      className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.latePenalty.enabled ? 'bg-warning' : 'bg-3'}`}
                     >
-                      <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${submissionWindowForm.latePenalty.enabled ? 'left-6' : 'left-1'}`}></div>
+                      <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${submissionWindowForm.latePenalty.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
                     </button>
                   </div>
 
                   {submissionWindowForm.latePenalty.enabled && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Points Deducted Per Period</label>
-                        <input
-                          type="number"
-                          className="form-input text-xs"
-                          value={submissionWindowForm.latePenalty.pointsPerPeriod}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            latePenalty: {...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value)}
-                          })}
-                          placeholder="-5"
-                        />
-                        <span className="text-[10px] text-3 mt-1">Use negative numbers (e.g., -5)</span>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-semibold text-3 mb-2 block">Points per Period</label>
+                          <input
+                            type="number"
+                            className="form-input text-center text-xl font-bold w-full"
+                            value={submissionWindowForm.latePenalty.pointsPerPeriod}
+                            onChange={e => setSubmissionWindowForm({
+                              ...submissionWindowForm,
+                              latePenalty: {...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value)}
+                            })}
+                            placeholder="-5"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-3 mb-2 block">Period Length (hours)</label>
+                          <input
+                            type="number"
+                            className="form-input text-center text-xl font-bold w-full"
+                            value={submissionWindowForm.latePenalty.periodHours}
+                            onChange={e => setSubmissionWindowForm({
+                              ...submissionWindowForm,
+                              latePenalty: {...submissionWindowForm.latePenalty, periodHours: Number(e.target.value)}
+                            })}
+                            min="1"
+                            placeholder="12"
+                          />
+                        </div>
                       </div>
 
-                      <div className="form-group">
-                        <label className="form-label text-xs">Penalty Period (hours)</label>
-                        <input
-                          type="number"
-                          className="form-input text-xs"
-                          value={submissionWindowForm.latePenalty.periodHours}
-                          onChange={e => setSubmissionWindowForm({
-                            ...submissionWindowForm,
-                            latePenalty: {...submissionWindowForm.latePenalty, periodHours: Number(e.target.value)}
-                          })}
-                          min="1"
-                          placeholder="12"
-                        />
-                        <span className="text-[10px] text-3 mt-1">Hours per penalty period</span>
+                      <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                        <div className="text-xs text-amber-900">
+                          <span className="font-semibold">Example:</span> 25 hours late = <span className="font-bold">{Math.floor(25 / submissionWindowForm.latePenalty.periodHours) * submissionWindowForm.latePenalty.pointsPerPeriod} points</span> ({Math.floor(25 / submissionWindowForm.latePenalty.periodHours)} periods × {submissionWindowForm.latePenalty.pointsPerPeriod})
+                        </div>
                       </div>
                     </div>
                   )}
-
-                  <div className="mt-4 p-3 bg-white/50 rounded-lg text-xs text-warning">
-                    💡 Example: -5 points every 12 hours means submitting 25 hours late = -10 points (2 periods)
-                  </div>
-                </div>
-
-                {/* Timezone */}
-                <div className="form-group">
-                  <label className="form-label">Timezone</label>
-                  <select
-                    className="form-select text-xs"
-                    value={submissionWindowForm.timezone}
-                    onChange={e => setSubmissionWindowForm({...submissionWindowForm, timezone: e.target.value})}
-                  >
-                    <option value="Africa/Windhoek">Africa/Windhoek (WAT)</option>
-                    <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
-                    <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
-                    <option value="UTC">UTC</option>
-                    <option value="America/New_York">America/New_York (EST/EDT)</option>
-                    <option value="Europe/London">Europe/London (GMT/BST)</option>
-                  </select>
-                  <span className="text-[10px] text-3 mt-1">All submission window times are in this timezone</span>
                 </div>
               </>
             )}
 
+            {/* Save Button */}
             <button
-              className="btn btn-primary w-fit"
+              className="btn btn-primary btn-lg w-full sm:w-auto"
               onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}
             >
-              Save Submission Window Settings
+              Save Changes
             </button>
-
-            <div className="p-4 bg-soft-warning rounded-lg border border-warning-subtle text-xs">
-              <div className="font-bold mb-2">⚠️ Important Notes:</div>
-              <ul className="list-disc list-inside space-y-1 text-warning">
-                <li>Submissions are <strong>still allowed after the deadline</strong> - late penalties will apply if enabled</li>
-                <li>Staff will see warnings when submitting late, showing the penalty they will receive</li>
-                <li>Turning off the window allows submissions at any time with no penalties</li>
-                <li>Changes take effect immediately for all staff</li>
-              </ul>
-            </div>
           </div>
         )}
 

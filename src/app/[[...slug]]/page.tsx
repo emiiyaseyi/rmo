@@ -20,7 +20,6 @@ import LeaveRequestPage from '@/components/leave/LeaveRequestPage'
 import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
-import BackendPage from '@/components/settings/BackendPage'
 import ProjectsPage from '@/components/admin/ProjectsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
@@ -36,8 +35,6 @@ const PAGE_ROLES: Record<string, string[]> = {
   org_chart: ['admin'],
   audit: ['admin'],
   settings: ['admin'],
-
-  backend: ['admin'],
   profile: ['staff', 'team_lead', 'admin'],
   leave: ['staff', 'team_lead', 'admin'],
   help: ['staff', 'team_lead', 'admin'],
@@ -198,8 +195,6 @@ export default function Home() {
       case 'staff': return <StaffPage />
       case 'org_chart': return <OrgChartPage />
       case 'audit': return <AuditPage />
-      case 'backend': return <BackendPage />
-
       case 'settings': return <SettingsPage />
       case 'profile': return <ProfilePage setPage={navigate} />
       case 'help': return <HelpPage />

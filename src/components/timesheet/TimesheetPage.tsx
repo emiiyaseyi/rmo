@@ -516,7 +516,7 @@ export default function TimesheetPage() {
 
   const currentWeek = getWeekKey()
   const isCurrentWeek = selectedWeek === currentWeek
-  const isWindowOpen = isSubmissionOpen()
+  const isWindowOpen = isSubmissionOpen(settings?.submissionWindow)
 
   // Calculate submission window status
   const windowStatus = useMemo(() =>

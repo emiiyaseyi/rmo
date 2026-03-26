@@ -221,9 +221,11 @@ interface ImportPreviewModalProps {
   existingEmails: Set<string>;
   onConfirm: (rows: any[]) => void;
   onClose: () => void;
+  importing?: boolean;
+  progress?: { current: number; total: number };
 }
 
-function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: ImportPreviewModalProps) {
+function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose, importing, progress }: ImportPreviewModalProps) {
   const validation = useMemo(() => {
     return rows.map(r => {
       const email = r.email?.toLowerCase().trim()
@@ -252,6 +254,9 @@ function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: Import
     existing: validation.filter(v => v.importStatus === 'existing').length,
     invalid: validation.filter(v => v.importStatus === 'invalid').length,
   }
+  const total = progress?.total || stats.new
+  const current = progress?.current || 0
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -313,11 +318,24 @@ function ImportPreviewModal({ rows, existingEmails, onConfirm, onClose }: Import
             </table>
           </div>
         </div>
-        <div className="modal-footer" style={{ background: 'var(--bg-app)', borderTop: '1px solid var(--border)' }}>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel Import</button>
-          <button className="btn btn-primary" disabled={stats.new === 0} onClick={() => onConfirm(validation.filter(v => v.importStatus === 'new'))}>
-            Confirm and Import {stats.new} Staff
-          </button>
+        <div className="modal-footer" style={{ background: 'var(--bg-app)', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {importing && (
+            <div style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>
+                <span>Importing…</span>
+                <span>{current}/{total} ({pct}%)</span>
+              </div>
+              <div style={{ width: '100%', height: 8, background: 'var(--border)', borderRadius: 999 }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 999, transition: 'width 200ms ease' }} />
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, width: '100%' }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancel Import</button>
+            <button className="btn btn-primary" disabled={stats.new === 0 || importing} onClick={() => onConfirm(validation.filter(v => v.importStatus === 'new'))}>
+              {importing ? `Importing ${current}/${total}` : `Confirm and Import ${stats.new} Staff`}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -405,6 +423,8 @@ export default function StaffPage() {
   const [activeSessions, setActiveSessions] = useState<any[]>([])
   const [importRows, setImportRows] = useState<any[]>([])
   const [showImportPreview, setShowImportPreview] = useState(false)
+  const [importingStaff, setImportingStaff] = useState(false)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
 
@@ -651,13 +671,16 @@ export default function StaffPage() {
 
   function handleImportConfirm(rows: any[]) {
     if (rows.length === 0) { toast.error('No valid rows to import'); return }
+    setImportingStaff(true)
+    setImportProgress({ current: 0, total: rows.length })
     const now = new Date().toISOString()
     const updated = [...staff]
     const existingEmails = new Set(staff.map(s => s.email?.toLowerCase()))
 
+    let processed = 0
     rows.forEach(r => {
       const email = r.email?.toLowerCase().trim()
-      if (!email || existingEmails.has(email)) return
+      if (!email || existingEmails.has(email)) { processed += 1; setImportProgress({ current: processed, total: rows.length }); return }
       const normalizedRole = (r.role || 'staff').toLowerCase().replace(/\s+/g, '_')
       const role = ['staff', 'team_lead', 'admin'].includes(normalizedRole) ? normalizedRole : 'staff'
       const status = (r.status || 'active').toLowerCase() === 'suspended' ? 'suspended' : 'active'
@@ -686,11 +709,14 @@ export default function StaffPage() {
       updated.push(ns)
       existingEmails.add(email)
       notify(ns.id, 'Welcome to Data Science Nigeria RMO! Your account has been created with default password "dsn-staff" or as specified by your admin. Please change it on your first login.', 'info', 'Welcome to DSN-RMO', ns.id, 'message', ns.email)
+      processed += 1
+      setImportProgress({ current: processed, total: rows.length })
     })
 
     saveStaff(updated)
     logAudit('BULK_IMPORT_STAFF', `${user?.name} imported ${rows.length} staff`, user?.id || '', user?.name || '')
     toast.success(`Imported ${rows.length} staff`)
+    setImportingStaff(false)
     setShowImportPreview(false)
   }
 
@@ -1052,6 +1078,8 @@ export default function StaffPage() {
           existingEmails={new Set(staff.map(s => s.email?.toLowerCase()))}
           onConfirm={handleImportConfirm}
           onClose={() => setShowImportPreview(false)}
+          importing={importingStaff}
+          progress={importProgress}
         />
       )}
     </div>

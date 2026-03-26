@@ -1,47 +1,55 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { getWeekKey, weekRange, fmtDate, isSubmissionOpen, initials, avatarColor } from '../../lib/utils'
+import { getWeekKey, weekRange, fmtDate, isSubmissionOpen, initials, avatarColor, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import PageHeader from '../common/PageHeader'
 import Skeleton from '../common/Skeleton'
 
 function Countdown() {
+  const { settings } = useApp()
   const [timeLeft, setTimeLeft] = useState('')
   const [status, setStatus] = useState<'safe' | 'urgent'>('safe')
 
+  const submissionWindow = settings?.submissionWindow || {
+    enabled: true,
+    schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
+    latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
+    timezone: 'Africa/Windhoek'
+  }
+
+  const [windowStatus, setWindowStatus] = useState<any>(null)
+
   useEffect(() => {
     function calc() {
-      const now = new Date()
-      const wat = new Date(now.getTime() + 60 * 60 * 1000)
-      const day = wat.getUTCDay()
-      const hour = wat.getUTCHours()
+      const status = getSubmissionWindowStatus(submissionWindow)
+      setWindowStatus(status)
 
-      // Deadline: Tuesday 4pm WAT
-      let deadlineWAT = new Date(wat)
-      // Find next Tuesday 16:00 WAT
-      const daysUntilTue = (2 - day + 7) % 7 || (day === 2 && (hour < 16) ? 0 : 7)
-      deadlineWAT.setUTCDate(deadlineWAT.getUTCDate() + daysUntilTue)
-      deadlineWAT.setUTCHours(16, 0, 0, 0)
-
-      // Open: Monday 8am WAT
-      const openWAT = new Date(deadlineWAT)
-      openWAT.setUTCDate(openWAT.getUTCDate() - 1)
-      openWAT.setUTCHours(8, 0, 0, 0)
-
-      if (wat.getTime() < openWAT.getTime()) {
-        const diff = openWAT.getTime() - wat.getTime()
-        const dh = Math.floor(diff / 3600000)
-        const dm = Math.floor((diff % 3600000) / 60000)
-        setTimeLeft(`Opens in ${dh}h ${dm}m`)
+      if (!submissionWindow.enabled) {
+        setTimeLeft('Always open')
         setStatus('safe')
-      } else if (wat.getTime() <= deadlineWAT.getTime()) {
-        const diff = deadlineWAT.getTime() - wat.getTime()
-        const dh = Math.floor(diff / 3600000)
-        const dm = Math.floor((diff % 3600000) / 60000)
-        const ds = Math.floor((diff % 60000) / 1000)
-        setTimeLeft(`${String(dh).padStart(2, '0')}:${String(dm).padStart(2, '0')}:${String(ds).padStart(2, '0')}`)
-        setStatus(dh < 2 ? 'urgent' : 'safe')
+        return
+      }
+
+      if (status.isClosed && status.nextOpens) {
+        // Window hasn't opened yet
+        const formatted = formatTimeUntilDeadline(status.nextOpens)
+        setTimeLeft(`Opens in ${formatted}`)
+        setStatus('safe')
+      } else if (status.isOpen && status.deadline) {
+        // Window is currently open - show countdown to deadline
+        const formatted = formatTimeUntilDeadline(status.deadline)
+        setTimeLeft(formatted)
+
+        // Check if less than 2 hours remaining
+        const diff = status.deadline.getTime() - new Date().getTime()
+        const hoursLeft = diff / (1000 * 60 * 60)
+        setStatus(hoursLeft < 2 ? 'urgent' : 'safe')
+      } else if (status.isPastDeadline) {
+        // Past deadline - late submission with penalty
+        setTimeLeft(`Late submission (${status.penalty} pts penalty)`)
+        setStatus('urgent')
       } else {
+        // Fallback
         setTimeLeft('Submission closed')
         setStatus('safe')
       }
@@ -49,9 +57,22 @@ function Countdown() {
     calc()
     const t = setInterval(calc, 1000)
     return () => clearInterval(t)
-  }, [])
+  }, [submissionWindow])
 
-  const isOpen = isSubmissionOpen()
+  const isOpen = windowStatus?.isOpen || false
+
+  // Format schedule display
+  const formatTime = (time: string) => {
+    const [h, m] = time.split(':')
+    const hour = parseInt(h)
+    const ampm = hour >= 12 ? 'pm' : 'am'
+    const hour12 = hour % 12 || 12
+    return `${hour12}:${m}${ampm}`
+  }
+
+  const titleCase = (str: string) => str.charAt(0).toUpperCase() + str.slice(1)
+  const scheduleText = `${titleCase(submissionWindow.schedule.startDay).slice(0, 3)} ${formatTime(submissionWindow.schedule.startTime)} – ${titleCase(submissionWindow.schedule.endDay).slice(0, 3)} ${formatTime(submissionWindow.schedule.endTime)} ${submissionWindow.timezone.split('/')[1] || 'WAT'}`
+
   return (
     <div style={{
       background: 'var(--bg-card)', 
@@ -70,43 +91,43 @@ function Countdown() {
       <div style={{ position: 'absolute', bottom: -30, left: -30, width: 100, height: 100, borderRadius: '50%', background: 'var(--accent-subtle)', opacity: 0.1, filter: 'blur(30px)' }}></div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, position: 'relative', zIndex: 1 }}>
-        <div style={{ 
-          width: 56, height: 56, borderRadius: 14, 
-          background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
+        <div style={{
+          width: 56, height: 56, borderRadius: 14,
+          background: windowStatus?.isPastDeadline ? 'var(--warning-bg)' : (isOpen ? 'var(--success-bg)' : 'var(--danger-bg)'),
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 28,
         }}>
-          {isOpen ? '⏰' : '🔒'}
+          {windowStatus?.isPastDeadline ? '⚠️' : (isOpen ? '⏰' : '🔒')}
         </div>
-        
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Submission Window
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-             <div style={{ 
-                display: 'flex', alignItems: 'center', gap: 6, 
-                padding: '4px 14px', borderRadius: 20, 
-                background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
-                color: isOpen ? 'var(--success)' : 'var(--danger)',
-                fontSize: 12, fontWeight: 800, 
-                border: `1px solid ${isOpen ? 'var(--success)' : 'var(--danger)'}33`
+             <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 14px', borderRadius: 20,
+                background: windowStatus?.isPastDeadline ? 'var(--warning-bg)' : (isOpen ? 'var(--success-bg)' : 'var(--danger-bg)'),
+                color: windowStatus?.isPastDeadline ? 'var(--warning)' : (isOpen ? 'var(--success)' : 'var(--danger)'),
+                fontSize: 12, fontWeight: 800,
+                border: `1px solid ${windowStatus?.isPastDeadline ? 'var(--warning)' : (isOpen ? 'var(--success)' : 'var(--danger)')}33`
              }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', boxShadow: '0 0 8px currentColor' }} />
-                {isOpen ? 'WINDOW OPEN' : 'WINDOW CLOSED'}
+                {windowStatus?.isPastDeadline ? 'LATE SUBMISSION' : (isOpen ? 'WINDOW OPEN' : 'WINDOW CLOSED')}
              </div>
              {!isOpen && timeLeft.startsWith('Opens') && (
                <span style={{ fontSize: 14, color: 'var(--text-1)', fontWeight: 700 }}>{timeLeft}</span>
              )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, fontWeight: 500, opacity: 0.8 }}>
-             Schedule: Mon 8:00am – Tue 4:00pm WAT
+             Schedule: {scheduleText}
           </div>
         </div>
       </div>
 
       {isOpen && (
-        <div style={{ 
+        <div style={{
           textAlign: 'right',
           position: 'relative',
           zIndex: 1
@@ -114,9 +135,9 @@ function Countdown() {
           <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 2, letterSpacing: '0.1em', opacity: 0.7 }}>
             Remaining Time
           </div>
-          <div style={{ 
-            fontSize: 56, 
-            fontWeight: 900, 
+          <div style={{
+            fontSize: 56,
+            fontWeight: 900,
             color: status === 'urgent' ? 'var(--danger)' : 'var(--text-1)',
             fontFamily: 'var(--mono)',
             letterSpacing: '-0.02em',
@@ -128,7 +149,7 @@ function Countdown() {
       )}
 
       {!isOpen && !timeLeft.startsWith('Opens') && (
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)', opacity: 0.5, fontStyle: 'italic' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: windowStatus?.isPastDeadline ? 'var(--warning)' : 'var(--text-3)', opacity: windowStatus?.isPastDeadline ? 1 : 0.5, fontStyle: windowStatus?.isPastDeadline ? 'normal' : 'italic' }}>
           {timeLeft}
         </div>
       )}

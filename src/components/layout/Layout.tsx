@@ -39,7 +39,6 @@ function getNavItems(role: string): NavItem[] {
     { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'admin', 'team_lead'], badge: 'messages' },
     { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin'] },
-    { id: 'backend', label: 'Backend Docs', icon: '🔧', roles: ['admin'] },
   ]
   return all.filter(n => n.roles.includes(role))
 }
@@ -94,7 +93,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       { id: 'settings', label: 'Public Holidays', keywords: ['holidays', 'public holiday', 'days off'], type: 'page' as const },
       { id: 'settings', label: 'Security Settings', keywords: ['security', 'password', 'authentication', '2fa', 'two factor'], type: 'page' as const },
       { id: 'settings', label: 'Activity Log', keywords: ['activity', 'log', 'audit', 'history', 'events'], type: 'page' as const },
-      { id: 'settings', label: 'Backend Admin', keywords: ['backend', 'storage', 'database', 'tables', 'technical'], type: 'page' as const },
       // Staff management features
       { id: 'staff', label: 'Leave Approvals', keywords: ['leave', 'approvals', 'approve leave', 'vacation', 'time off'], type: 'page' as const },
       { id: 'staff', label: 'Staff Accounts', keywords: ['staff', 'accounts', 'users', 'employees', 'team members'], type: 'page' as const },

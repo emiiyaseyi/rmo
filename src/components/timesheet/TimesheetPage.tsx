@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen } from '../../lib/utils'
+import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save } from 'lucide-react'
 import { Entry, Staff } from '../../types'
@@ -309,38 +309,56 @@ function ClarifyModal({ entry, onSave, onClose }: ClarifyModalProps) {
 }
 
 /* ────────────────────────────────────────────────────────────── */
-/*  Countdown Timer                                               */
+/*  Countdown Timer with Window Status                           */
 /* ────────────────────────────────────────────────────────────── */
-function CountdownTimer({ weekKey }: { weekKey: string }) {
+function CountdownTimer({ weekKey, submissionWindow }: { weekKey: string; submissionWindow?: any }) {
   const [timeLeft, setTimeLeft] = useState('')
-  
-  useEffect(() => {
-    const weekStart = new Date(weekKey)
-    const deadline = new Date(weekStart)
-    deadline.setDate(deadline.getDate() + 1) // Monday
-    deadline.setDate(deadline.getDate() + 1) // Tuesday
-    deadline.setHours(16, 0, 0, 0) // 4:00pm
+  const [status, setStatus] = useState<any>(null)
 
+  useEffect(() => {
     const tick = () => {
-      const now = new Date()
-      const diff = deadline.getTime() - now.getTime()
-      if (diff <= 0) { setTimeLeft('Deadline passed'); return }
-      
-      const d = Math.floor(diff / 86400000)
-      const h = Math.floor((diff % 86400000) / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setTimeLeft(`${d > 0 ? d + 'd ' : ''}${h}h ${m}m ${s}s`)
+      const windowStatus = getSubmissionWindowStatus(submissionWindow)
+      setStatus(windowStatus)
+
+      if (windowStatus.deadline) {
+        setTimeLeft(formatTimeUntilDeadline(windowStatus.deadline))
+      } else {
+        // Fallback to old logic if no window configured
+        const weekStart = new Date(weekKey)
+        const deadline = new Date(weekStart)
+        deadline.setDate(deadline.getDate() + 1) // Monday
+        deadline.setDate(deadline.getDate() + 1) // Tuesday
+        deadline.setHours(16, 0, 0, 0) // 4:00pm
+        setTimeLeft(formatTimeUntilDeadline(deadline))
+      }
     }
-    
+
     tick()
     const t = setInterval(tick, 1000)
     return () => clearInterval(t)
-  }, [weekKey])
+  }, [weekKey, submissionWindow])
+
+  if (!status) return null
+
+  if (status.isClosed) {
+    return (
+      <div className="badge badge-gray" style={{ fontSize: 11, fontWeight: 700 }}>
+        🔒 Window Closed
+      </div>
+    )
+  }
+
+  if (status.isPastDeadline) {
+    return (
+      <div className="badge badge-red" style={{ fontSize: 11, fontWeight: 700 }}>
+        ⚠️ Late Submission ({status.penalty < 0 ? status.penalty : 0} pts penalty)
+      </div>
+    )
+  }
 
   return (
     <div className="badge badge-yellow" style={{ fontSize: 11, fontWeight: 700 }}>
-       ⏳ {timeLeft} left to submit
+      ⏳ {timeLeft} left to submit
     </div>
   )
 }
@@ -348,7 +366,10 @@ function CountdownTimer({ weekKey }: { weekKey: string }) {
 /* ────────────────────────────────────────────────────────────── */
 /*  Submission Confirmation Modal                                 */
 /* ────────────────────────────────────────────────────────────── */
-function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onClose }: any) {
+function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, onConfirm, onClose }: any) {
+  const isLate = windowStatus?.isPastDeadline
+  const penalty = windowStatus?.penalty || 0
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -358,6 +379,17 @@ function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onCl
         </div>
         <div className="modal-body">
           <p style={{ fontSize: 14, marginBottom: 16 }}>You are about to submit <strong>{entries.length} entries</strong> totaling <strong>{totalHours}h</strong>.</p>
+
+          {isLate && penalty < 0 && (
+            <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', padding: '12px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16, color: 'var(--danger)' }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Late Submission Warning</div>
+              <div>You are submitting after the deadline. A penalty of <strong>{penalty} points</strong> will be applied.</div>
+              <div style={{ fontSize: 11, marginTop: 4, opacity: 0.9 }}>
+                Hours late: {Math.floor(windowStatus.hoursLate)}h | Penalty periods: {windowStatus.periodsLate}
+              </div>
+            </div>
+          )}
+
           <div style={{ background: 'var(--bg-card)', padding: 12, borderRadius: 8, fontSize: 13 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span>Base Cap:</span>
@@ -367,12 +399,20 @@ function SubmissionConfirmationModal({ entries, totalHours, cap, onConfirm, onCl
               <span>Total Hours:</span>
               <span>{totalHours}h {totalHours > cap ? `(${totalHours - cap}h OT)` : ''}</span>
             </div>
+            {isLate && penalty < 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', fontWeight: 700, color: 'var(--danger)' }}>
+                <span>Late Penalty:</span>
+                <span>{penalty} points</span>
+              </div>
+            )}
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 16 }}>Once submitted, this week will be locked for review.</p>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={onConfirm}>Confirm & Submit</button>
+          <button className="btn btn-primary" onClick={onConfirm}>
+            {isLate && penalty < 0 ? 'Submit with Penalty' : 'Confirm & Submit'}
+          </button>
         </div>
       </div>
     </div>
@@ -436,6 +476,8 @@ export default function TimesheetPage() {
   const [resubmitEntry, setResubmitEntry] = useState<Entry | null>(null)
   const [clarifyEntry, setClarifyEntry] = useState<Entry | null>(null)
   const [staffSearch, setStaffSearch] = useState('')
+  const [showStaffSuggestions, setShowStaffSuggestions] = useState(false)
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
 
@@ -476,6 +518,12 @@ export default function TimesheetPage() {
   const isCurrentWeek = selectedWeek === currentWeek
   const isWindowOpen = isSubmissionOpen()
 
+  // Calculate submission window status
+  const windowStatus = useMemo(() =>
+    getSubmissionWindowStatus(settings?.submissionWindow),
+    [settings?.submissionWindow]
+  )
+
   // Only show entries for the effective user (staff privacy enforced)
   const weekEntries = useMemo(() =>
     entries.filter(e => e.staffId === effectiveUserId && e.weekKey === selectedWeek && !e.deleted)
@@ -491,6 +539,81 @@ export default function TimesheetPage() {
   const isOwnSheet = effectiveUserId === user?.id
   const canSubmit = isOwnSheet && !submitted && weekEntries.length > 0 && !isLocked
   const myTemplates = templates.filter(t => t.staffId === user?.id)
+
+  // Handle keyboard navigation in search suggestions
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (!showStaffSuggestions || searchStaff.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedSuggestionIndex(prev => (prev + 1) % searchStaff.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedSuggestionIndex(prev => (prev - 1 + searchStaff.length) % searchStaff.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const selected = searchStaff[selectedSuggestionIndex]
+      if (selected) {
+        setViewingStaffId(selected.id)
+        setStaffSearch('')
+        setShowStaffSuggestions(false)
+        setSelectedSuggestionIndex(0)
+      }
+    } else if (e.key === 'Escape') {
+      setShowStaffSuggestions(false)
+      setSelectedSuggestionIndex(0)
+    }
+  }
+
+  // Semantic staff search with fuzzy matching
+  const searchStaff = useMemo(() => {
+    if (!staffSearch.trim()) return []
+
+    const query = staffSearch.toLowerCase().trim()
+    const results = staff
+      .filter(s => s.id !== user?.id)
+      .map(s => {
+        const name = s.name.toLowerCase()
+        const dept = (s.department || '').toLowerCase()
+        const email = (s.email || '').toLowerCase()
+
+        // Calculate relevance score
+        let score = 0
+
+        // Exact match gets highest score
+        if (name === query) score += 100
+
+        // Starts with query
+        if (name.startsWith(query)) score += 50
+
+        // Contains query
+        if (name.includes(query)) score += 25
+
+        // Department match
+        if (dept.includes(query)) score += 15
+
+        // Email match
+        if (email.includes(query)) score += 10
+
+        // Fuzzy match: all characters in order
+        let queryIndex = 0
+        for (let i = 0; i < name.length && queryIndex < query.length; i++) {
+          if (name[i] === query[queryIndex]) {
+            queryIndex++
+            score += 5
+          }
+        }
+        if (queryIndex === query.length) score += 20 // All chars found in order
+
+        return { staff: s, score }
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8) // Top 8 results
+      .map(r => r.staff)
+
+    return results
+  }, [staffSearch, staff, user?.id])
 
   function updateEntry(entryId: string, updates: any) {
     saveEntries(entries.map(e => e.id === entryId ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e))
@@ -695,49 +818,133 @@ export default function TimesheetPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <PageHeader 
-        title="Timesheet"
-        icon="📋"
-        subtitle={`${weekRange(selectedWeek)}${viewingStaffId ? ` | 👁 Viewing: ${targetUser?.name}` : ''}`}
-        actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {isCurrentWeek && isWindowOpen && <CountdownTimer weekKey={selectedWeek} />}
-            {/* Admin: view another staff's timesheet */}
-            {isAdmin && (
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <input 
-                  className="form-input text-xs" 
-                  style={{ width: 120 }} 
-                  placeholder="Search staff..." 
-                  value={staffSearch}
-                  onChange={e => setStaffSearch(e.target.value)}
-                />
-                <select className="form-select" style={{ width: 150, borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
-                  <option value="">My Timesheet</option>
-                  {staff
-                    .filter(s => s.id !== user?.id && (!staffSearch || s.name.toLowerCase().includes(staffSearch.toLowerCase())))
-                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-            )}
-            <select className="form-select" style={{ width: 'auto' }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
-              {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
-            </select>
-            <button className="btn btn-secondary btn-sm" title="Download Template" onClick={downloadTemplate}>📄</button>
-            <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-              <Upload size={13} /> Import
-              <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
-            </label>
-            <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}><Download size={13} /> CSV</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>PDF</button>
+      <div className="card" style={{ padding: 20 }}>
+        {/* Top Row: Title, Status Badge, and Primary Action */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 24 }}>📋</div>
+            <div>
+              <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Timesheet</h1>
+              {viewingStaffId && (
+                <p style={{ fontSize: 13, color: 'var(--text-3)', margin: 0 }}>
+                  Viewing: <strong>{targetUser?.name}</strong>
+                </p>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
             {canEdit && !isLocked && (
               <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
                 <Plus size={14} /> Log Hours
               </button>
             )}
           </div>
-        }
-      />
+        </div>
+
+        {/* Second Row: Week Selector + Admin Search/View Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>Week:</span>
+            <select className="form-select text-xs" style={{ width: 'auto', minWidth: 180 }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
+              {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
+            </select>
+          </div>
+
+          {isAdmin && (
+            <>
+              <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 300, position: 'relative' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>View Staff:</span>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    className="form-input text-xs"
+                    style={{ width: '100%', maxWidth: 220 }}
+                    placeholder="🔍 Search staff..."
+                    value={staffSearch}
+                    onChange={e => {
+                      setStaffSearch(e.target.value)
+                      setShowStaffSuggestions(true)
+                      setSelectedSuggestionIndex(0)
+                    }}
+                    onKeyDown={handleSearchKeyDown}
+                    onFocus={() => setShowStaffSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowStaffSuggestions(false), 200)}
+                  />
+                  {showStaffSuggestions && searchStaff.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: 4,
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      maxHeight: 320,
+                      overflowY: 'auto',
+                      zIndex: 1000
+                    }}>
+                      {searchStaff.map((s, idx) => (
+                        <div
+                          key={s.id}
+                          style={{
+                            padding: '10px 14px',
+                            cursor: 'pointer',
+                            borderBottom: idx < searchStaff.length - 1 ? '1px solid var(--border)' : 'none',
+                            transition: 'background 0.15s',
+                            background: idx === selectedSuggestionIndex ? 'var(--accent-subtle)' : viewingStaffId === s.id ? 'rgba(79, 70, 229, 0.05)' : 'transparent'
+                          }}
+                          onMouseEnter={() => setSelectedSuggestionIndex(idx)}
+                          onClick={() => {
+                            setViewingStaffId(s.id)
+                            setStaffSearch('')
+                            setShowStaffSuggestions(false)
+                            setSelectedSuggestionIndex(0)
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {s.name}
+                            {viewingStaffId === s.id && <span style={{ fontSize: 10, color: 'var(--accent)' }}>✓ viewing</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                            {s.department || 'No department'} · {s.role}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <select className="form-select text-xs" style={{ width: 'auto', minWidth: 160, borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
+                  <option value="">My Timesheet</option>
+                  {staff
+                    .filter(s => s.id !== user?.id)
+                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Third Row: Export/Import Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, marginRight: 4 }}>Actions:</span>
+          <button className="btn btn-secondary btn-sm" title="Download CSV Template" onClick={downloadTemplate}>
+            📄 Template
+          </button>
+          <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+            <Upload size={13} /> Import
+            <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
+          </label>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>
+            <Download size={13} /> CSV
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>
+            <Download size={13} /> PDF
+          </button>
+        </div>
+      </div>
 
       {/* Dynamic Banners */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -898,6 +1105,7 @@ export default function TimesheetPage() {
           entries={weekEntries}
           totalHours={totalHours}
           cap={weekCap}
+          windowStatus={windowStatus}
           onConfirm={handleConfirmSubmit}
           onClose={() => setShowConfirm(false)}
         />

@@ -114,6 +114,8 @@ export interface WeekSubmission {
     status: 'submitted' | 'no_work';
     submittedAt: string;
     totalHours: number;
+    latePenalty?: number; // Points deducted for late submission
+    isLate?: boolean; // Whether submitted after deadline
 }
 
 export interface AppNotification {
@@ -230,6 +232,21 @@ export interface AppSettings {
     };
     idleTimeout: {
         minutes: number;
+    };
+    submissionWindow: {
+        enabled: boolean;
+        schedule: {
+            startDay: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+            startTime: string; // HH:mm format
+            endDay: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+            endTime: string; // HH:mm format
+        };
+        latePenalty: {
+            enabled: boolean;
+            pointsPerPeriod: number; // e.g., -5
+            periodHours: number; // e.g., 12
+        };
+        timezone: string; // e.g., 'Africa/Windhoek' for WAT
     };
     categories: string[];
     utilizationThresholds?: {
@@ -363,6 +380,9 @@ export interface ApprovalDelegation {
     createdAt: string;
     revokedAt?: string;
     reason?: string;
+    projectId?: string;
+    projectName?: string;
+    scope?: 'all' | 'project'; // 'all' for all approvals, 'project' for specific project only
 }
 
 export interface Reward {

@@ -101,7 +101,12 @@ function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) 
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button
             className="btn btn-primary"
-            disabled={!action || ((action === 'reject' || action === 'clarify' || (action === 'approve_correction' && !note)))}
+            disabled={
+              !action ||
+              (action === 'reject' && !note.trim()) ||
+              (action === 'clarify' && !note.trim()) ||
+              (action === 'approve_correction' && !note.trim())
+            }
             onClick={() => onAction(entry.id, action, note, correctedHours)}
           >
             Submit Decision
@@ -116,10 +121,18 @@ interface DelegationModalProps {
   onSave: (delegation: Partial<ApprovalDelegation>) => void;
   onClose: () => void;
   taskOwners: Staff[];
+  projects: any[];
 }
 
-function DelegationModal({ onSave, onClose, taskOwners }: DelegationModalProps) {
-  const [form, setForm] = useState({ delegateId: '', startDate: '', endDate: '', reason: '' })
+function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationModalProps) {
+  const [form, setForm] = useState({
+    delegateId: '',
+    startDate: '',
+    endDate: '',
+    reason: '',
+    scope: 'all' as 'all' | 'project',
+    projectId: ''
+  })
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -132,30 +145,50 @@ function DelegationModal({ onSave, onClose, taskOwners }: DelegationModalProps) 
           <div className="form-group">
             <label className="form-label">Delegate To *</label>
             <select className="form-select" value={form.delegateId} onChange={e => setForm({ ...form, delegateId: e.target.value })}>
-              <option value="">Select a Task Owner...</option>
+              <option value="">Select a team lead or admin...</option>
               {taskOwners.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+
+          <div className="form-group">
+            <label className="form-label">Delegation Scope *</label>
+            <select className="form-select" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value as 'all' | 'project', projectId: '' })}>
+              <option value="all">All Approvals</option>
+              <option value="project">Specific Project Only</option>
+            </select>
+            <span className="form-hint">Choose whether to delegate all your approvals or just a specific project</span>
+          </div>
+
+          {form.scope === 'project' && (
+            <div className="form-group">
+              <label className="form-label">Project/Task *</label>
+              <select className="form-select" value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+                <option value="">Select a project...</option>
+                {projects.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Start Date *</label>
+              <label className="form-label">From Date *</label>
               <input className="form-input" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">End Date *</label>
+              <label className="form-label">Until Date *</label>
               <input className="form-input" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Reason (optional)</label>
-            <textarea className="form-textarea" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="e.g., On leave, Out of office..." />
+            <input className="form-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="e.g. Annual leave" />
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button
             className="btn btn-primary"
-            disabled={!form.delegateId || !form.startDate || !form.endDate}
+            disabled={!form.delegateId || !form.startDate || !form.endDate || (form.scope === 'project' && !form.projectId)}
             onClick={() => onSave(form)}
           >
             Create Delegation
@@ -167,7 +200,7 @@ function DelegationModal({ onSave, onClose, taskOwners }: DelegationModalProps) 
 }
 
 export default function ApprovalsPage() {
-  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations } = useApp()
+  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations, projects } = useApp()
   const [tab, setTab] = useState<string>('pending') // pending, history, delegations, outstanding
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -450,6 +483,12 @@ export default function ApprovalsPage() {
     const delegate = staff.find(s => s.id === form.delegateId)
     if (!delegate) return
 
+    let projectName = undefined
+    if (form.scope === 'project' && form.projectId && projects) {
+      const project = projects.find((p: any) => p.id === form.projectId)
+      projectName = project?.name
+    }
+
     const delegation: ApprovalDelegation = {
       id: genId(),
       taskOwnerId: user.id,
@@ -460,11 +499,15 @@ export default function ApprovalsPage() {
       endDate: form.endDate,
       isActive: true,
       createdAt: new Date().toISOString(),
-      reason: form.reason
+      reason: form.reason,
+      scope: form.scope || 'all',
+      projectId: form.projectId,
+      projectName
     }
 
     saveApprovalDelegations([...approvalDelegations, delegation])
-    notify(form.delegateId, `📋 ${user.name} has delegated approval duties to you from ${form.startDate} to ${form.endDate}`, 'delegation_assigned', 'Delegation Assigned', delegation.id, 'message')
+    const scopeText = form.scope === 'project' && projectName ? ` for ${projectName}` : ''
+    notify(form.delegateId, `📋 ${user.name} has delegated approval duties${scopeText} to you from ${form.startDate} to ${form.endDate}`, 'delegation_assigned', 'Delegation Assigned', delegation.id, 'message')
     toast.success('Delegation created')
     setShowDelegationModal(false)
   }
@@ -869,6 +912,7 @@ export default function ApprovalsPage() {
                   <thead>
                     <tr>
                       <th>Delegate</th>
+                      <th>Scope</th>
                       <th>Start Date</th>
                       <th>End Date</th>
                       <th>Reason</th>
@@ -888,6 +932,13 @@ export default function ApprovalsPage() {
                         return (
                           <tr key={d.id}>
                             <td style={{ fontWeight: 600 }}>{d.delegateName}</td>
+                            <td style={{ fontSize: 12 }}>
+                              {d.scope === 'project' && d.projectName ? (
+                                <span className="badge badge-blue">{d.projectName}</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-3)' }}>All Approvals</span>
+                              )}
+                            </td>
                             <td style={{ fontSize: 12 }}>{fmtDate(d.startDate)}</td>
                             <td style={{ fontSize: 12 }}>{fmtDate(d.endDate)}</td>
                             <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{d.reason || '—'}</td>
@@ -928,6 +979,7 @@ export default function ApprovalsPage() {
           onSave={createDelegation}
           onClose={() => setShowDelegationModal(false)}
           taskOwners={taskOwners}
+          projects={projects || []}
         />
       )}
     </div>

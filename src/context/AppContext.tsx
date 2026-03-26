@@ -746,7 +746,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
        else if (linkedType === 'leave') link = `/staff`
        else if (linkedType === 'message') link = `/messages`
        else if (linkedId) link = `/dashboard` // generic fallback
-       sendEmailNotification(targetUser.email, title || 'New Notification', message, link)
+       sendEmailNotification(targetEmail, title || 'New Notification', message, link)
     }
 
     return notif

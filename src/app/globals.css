@@ -41,10 +41,13 @@
 
   --success: #22C55E;
   --success-bg: rgba(34, 197, 94, 0.1);
+  --success-subtle: rgba(34, 197, 94, 0.05);
   --warning: #EAB308;
   --warning-bg: rgba(234, 179, 8, 0.1);
+  --warning-subtle: rgba(234, 179, 8, 0.2);
   --danger: #D8001A;
   --danger-bg: rgba(216, 0, 26, 0.05);
+  --danger-subtle: rgba(216, 0, 26, 0.2);
   --purple: #8B5CF6;
   --purple-bg: rgba(139, 92, 246, 0.1);
 
@@ -1182,4 +1185,106 @@ h2 {
 
 .font-dm {
   font-family: var(--font-dm);
+}
+
+/* Additional Color Utilities for Submission Window */
+.bg-2 {
+  background-color: var(--bg-surface);
+}
+
+.bg-3 {
+  background-color: var(--bg-elevated);
+}
+
+.text-1 {
+  color: var(--text-1);
+}
+
+.text-2 {
+  color: var(--text-2);
+}
+
+.text-3 {
+  color: var(--text-3);
+}
+
+.text-4 {
+  color: var(--text-4);
+}
+
+.border-3 {
+  border-color: var(--border);
+}
+
+.soft-primary {
+  background-color: var(--accent-subtle);
+}
+
+.bg-soft-primary {
+  background-color: var(--accent-subtle);
+}
+
+.bg-soft-success {
+  background-color: var(--success-bg);
+}
+
+.bg-soft-warning {
+  background-color: var(--warning-bg);
+}
+
+.bg-soft-danger {
+  background-color: var(--danger-bg);
+}
+
+.border-warning-subtle {
+  border-color: var(--warning-subtle);
+}
+
+.border-danger-subtle {
+  border-color: var(--danger-subtle);
+}
+
+.border-success\/20 {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.border-danger\/20 {
+  border-color: rgba(216, 0, 26, 0.2);
+}
+
+.border-accent\/20 {
+  border-color: rgba(7, 108, 4, 0.2);
+}
+
+.border-accent\/30 {
+  border-color: rgba(7, 108, 4, 0.3);
+}
+
+.border-warning\/30 {
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.border-warning\/40 {
+  border-color: rgba(234, 179, 8, 0.4);
+}
+
+.bg-accent\/10 {
+  background-color: rgba(7, 108, 4, 0.1);
+}
+
+.bg-warning\/10 {
+  background-color: rgba(234, 179, 8, 0.1);
+}
+
+.bg-warning\/20 {
+  background-color: rgba(234, 179, 8, 0.2);
+}
+
+.btn-xs {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.min-w-\[200px\] {
+  min-width: 200px;
 }

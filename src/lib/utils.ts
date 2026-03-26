@@ -85,14 +85,32 @@ export function initials(name: string = ''): string {
   return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
-export function isSubmissionOpen(): boolean {
-  const now = new Date()
-  const wat = new Date(now.getTime() + 60 * 60 * 1000)
-  const day = wat.getUTCDay()
-  const hour = wat.getUTCHours()
-  if (day === 1 && hour >= 8) return true
-  if (day === 2 && hour < 16) return true
-  return false
+export function isSubmissionOpen(submissionWindow?: {
+  enabled: boolean;
+  schedule: {
+    startDay: string;
+    startTime: string;
+    endDay: string;
+    endTime: string;
+  };
+  latePenalty: {
+    enabled: boolean;
+    pointsPerPeriod: number;
+    periodHours: number;
+  };
+  timezone: string;
+}): boolean {
+  if (!submissionWindow) {
+    // Fallback to old hardcoded behavior if no settings provided
+    const now = new Date()
+    const wat = new Date(now.getTime() + 60 * 60 * 1000)
+    const day = wat.getUTCDay()
+    const hour = wat.getUTCHours()
+    if (day === 1 && hour >= 8) return true
+    if (day === 2 && hour < 16) return true
+    return false
+  }
+  return getSubmissionWindowStatus(submissionWindow).isOpen
 }
 
 // Submission window utilities

@@ -17,9 +17,12 @@ function Countdown() {
     timezone: 'Africa/Windhoek'
   }
 
+  const [windowStatus, setWindowStatus] = useState<any>(null)
+
   useEffect(() => {
     function calc() {
-      const windowStatus = getSubmissionWindowStatus(submissionWindow)
+      const status = getSubmissionWindowStatus(submissionWindow)
+      setWindowStatus(status)
 
       if (!submissionWindow.enabled) {
         setTimeLeft('Always open')
@@ -27,22 +30,26 @@ function Countdown() {
         return
       }
 
-      if (windowStatus.isClosed && windowStatus.nextOpens) {
+      if (status.isClosed && status.nextOpens) {
         // Window hasn't opened yet
-        const formatted = formatTimeUntilDeadline(windowStatus.nextOpens)
+        const formatted = formatTimeUntilDeadline(status.nextOpens)
         setTimeLeft(`Opens in ${formatted}`)
         setStatus('safe')
-      } else if (windowStatus.isOpen && windowStatus.deadline) {
+      } else if (status.isOpen && status.deadline) {
         // Window is currently open - show countdown to deadline
-        const formatted = formatTimeUntilDeadline(windowStatus.deadline)
+        const formatted = formatTimeUntilDeadline(status.deadline)
         setTimeLeft(formatted)
 
         // Check if less than 2 hours remaining
-        const diff = windowStatus.deadline.getTime() - new Date().getTime()
+        const diff = status.deadline.getTime() - new Date().getTime()
         const hoursLeft = diff / (1000 * 60 * 60)
         setStatus(hoursLeft < 2 ? 'urgent' : 'safe')
+      } else if (status.isPastDeadline) {
+        // Past deadline - late submission with penalty
+        setTimeLeft(`Late submission (${status.penalty} pts penalty)`)
+        setStatus('urgent')
       } else {
-        // Past deadline
+        // Fallback
         setTimeLeft('Submission closed')
         setStatus('safe')
       }
@@ -52,7 +59,7 @@ function Countdown() {
     return () => clearInterval(t)
   }, [submissionWindow])
 
-  const isOpen = isSubmissionOpen(submissionWindow)
+  const isOpen = windowStatus?.isOpen || false
 
   // Format schedule display
   const formatTime = (time: string) => {
@@ -84,30 +91,30 @@ function Countdown() {
       <div style={{ position: 'absolute', bottom: -30, left: -30, width: 100, height: 100, borderRadius: '50%', background: 'var(--accent-subtle)', opacity: 0.1, filter: 'blur(30px)' }}></div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, position: 'relative', zIndex: 1 }}>
-        <div style={{ 
-          width: 56, height: 56, borderRadius: 14, 
-          background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
+        <div style={{
+          width: 56, height: 56, borderRadius: 14,
+          background: windowStatus?.isPastDeadline ? 'var(--warning-bg)' : (isOpen ? 'var(--success-bg)' : 'var(--danger-bg)'),
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 28,
         }}>
-          {isOpen ? '⏰' : '🔒'}
+          {windowStatus?.isPastDeadline ? '⚠️' : (isOpen ? '⏰' : '🔒')}
         </div>
-        
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Submission Window
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-             <div style={{ 
-                display: 'flex', alignItems: 'center', gap: 6, 
-                padding: '4px 14px', borderRadius: 20, 
-                background: isOpen ? 'var(--success-bg)' : 'var(--danger-bg)',
-                color: isOpen ? 'var(--success)' : 'var(--danger)',
-                fontSize: 12, fontWeight: 800, 
-                border: `1px solid ${isOpen ? 'var(--success)' : 'var(--danger)'}33`
+             <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 14px', borderRadius: 20,
+                background: windowStatus?.isPastDeadline ? 'var(--warning-bg)' : (isOpen ? 'var(--success-bg)' : 'var(--danger-bg)'),
+                color: windowStatus?.isPastDeadline ? 'var(--warning)' : (isOpen ? 'var(--success)' : 'var(--danger)'),
+                fontSize: 12, fontWeight: 800,
+                border: `1px solid ${windowStatus?.isPastDeadline ? 'var(--warning)' : (isOpen ? 'var(--success)' : 'var(--danger)')}33`
              }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', boxShadow: '0 0 8px currentColor' }} />
-                {isOpen ? 'WINDOW OPEN' : 'WINDOW CLOSED'}
+                {windowStatus?.isPastDeadline ? 'LATE SUBMISSION' : (isOpen ? 'WINDOW OPEN' : 'WINDOW CLOSED')}
              </div>
              {!isOpen && timeLeft.startsWith('Opens') && (
                <span style={{ fontSize: 14, color: 'var(--text-1)', fontWeight: 700 }}>{timeLeft}</span>
@@ -120,7 +127,7 @@ function Countdown() {
       </div>
 
       {isOpen && (
-        <div style={{ 
+        <div style={{
           textAlign: 'right',
           position: 'relative',
           zIndex: 1
@@ -128,9 +135,9 @@ function Countdown() {
           <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 2, letterSpacing: '0.1em', opacity: 0.7 }}>
             Remaining Time
           </div>
-          <div style={{ 
-            fontSize: 56, 
-            fontWeight: 900, 
+          <div style={{
+            fontSize: 56,
+            fontWeight: 900,
             color: status === 'urgent' ? 'var(--danger)' : 'var(--text-1)',
             fontFamily: 'var(--mono)',
             letterSpacing: '-0.02em',
@@ -142,7 +149,7 @@ function Countdown() {
       )}
 
       {!isOpen && !timeLeft.startsWith('Opens') && (
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)', opacity: 0.5, fontStyle: 'italic' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: windowStatus?.isPastDeadline ? 'var(--warning)' : 'var(--text-3)', opacity: windowStatus?.isPastDeadline ? 1 : 0.5, fontStyle: windowStatus?.isPastDeadline ? 'normal' : 'italic' }}>
           {timeLeft}
         </div>
       )}

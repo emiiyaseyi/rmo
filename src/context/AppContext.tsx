@@ -219,6 +219,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNots(data)
     }))
 
+    // 4. Approval Delegations (own + delegated to me)
+    unsubs.push(onSnapshot(query(collection(db, 'approvalDelegations'), where('taskOwnerId', '==', user.id)), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalDelegation))
+      setApprovalDelegations(prev => {
+        const delegatedToMe = prev.filter(p => p.delegateId === user.id)
+        const merged = [...delegatedToMe, ...data]
+        const unique = new Map<string, ApprovalDelegation>()
+        merged.forEach(d => unique.set(d.id, d))
+        return Array.from(unique.values())
+      })
+    }))
+    unsubs.push(onSnapshot(query(collection(db, 'approvalDelegations'), where('delegateId', '==', user.id)), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalDelegation))
+      setApprovalDelegations(prev => {
+        const ownedByMe = prev.filter(p => p.taskOwnerId === user.id)
+        const merged = [...ownedByMe, ...data]
+        const unique = new Map<string, ApprovalDelegation>()
+        merged.forEach(d => unique.set(d.id, d))
+        return Array.from(unique.values())
+      })
+    }))
+
     // 4. Settings
     unsubs.push(onSnapshot(doc(db, 'settings', 'global'), (snap) => {
       if (snap.exists()) {
@@ -582,6 +604,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(d => { setDoc(doc(db, 'delegations', d.id), d, { merge: true }).catch(() => {}) })
   }
   function saveApprovalDelegations(data: ApprovalDelegation[]) {
+    setApprovalDelegations(data)
+    localStorage.setItem('approvalDelegations', JSON.stringify(data))
     data.forEach(d => { setDoc(doc(db, 'approvalDelegations', d.id), d, { merge: true }).catch(() => {}) })
   }
   function saveLockedWeeks(data: string[]) {
@@ -1076,7 +1100,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const weekStart = new Date(weekKey)
     const submissionId = `${staffId}_${weekKey}`
 
-    // Deadline Override Logic
+    // Get submission window status using the new configuration
+    const { getSubmissionWindowStatus } = await import('../lib/utils')
+    const windowStatus = getSubmissionWindowStatus(settings?.submissionWindow)
+
+    // Deadline Override Logic (legacy support)
     let deadline = new Date(weekStart)
     deadline.setDate(deadline.getDate() + 1) // Monday
     deadline.setDate(deadline.getDate() + 1) // Tuesday
@@ -1087,33 +1115,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
        const override = new Date(caps.deadlineOverride)
        if (!isNaN(override.getTime())) deadline = override
     }
-    
+
+    // Use window deadline if configured
+    if (windowStatus.deadline) {
+      deadline = windowStatus.deadline
+    }
+
     // New Gamification Point Logic
     const pConfig = settings?.pointsConfig || DEFAULT_POINTS
     const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, 2=Tue...
     const hour = now.getHours()
-    
+
     let totalAward = pConfig.onTimeSubmission || 0
     let bonusDesc = 'On-time submission'
-    
-    if (dayOfWeek === 1) { // Monday
-      totalAward += (pConfig.mondayBonus || 0)
-      bonusDesc += ' + Monday Bonus'
-    } else if (dayOfWeek === 2 && hour < 10) { // Tuesday Early
-      totalAward += (pConfig.earlyBonus || 0)
-      bonusDesc += ' + Early Bonus'
-    }
+    let latePenalty = 0
+    let isLate = false
 
-    const diffMs = now.getTime() - deadline.getTime()
-    if (diffMs > 0) {
-      const hoursLate = diffMs / 3600000
-      const periods = Math.floor(hoursLate / 12)
-      totalAward = totalAward - (periods * 5)
-      bonusDesc = periods > 0 ? `Late submission (${periods * 5} pts deduction)` : 'On-time submission'
-      
-      const extendedDeadline = new Date(deadline)
-      extendedDeadline.setHours(extendedDeadline.getHours() + 168) // 1 week grace for late submissions
-      if (now > extendedDeadline) totalAward = -50 // Heavy penalty for extremely late
+    // Check if submission is late using window status
+    if (windowStatus.isPastDeadline && windowStatus.penalty < 0) {
+      isLate = true
+      latePenalty = windowStatus.penalty
+      totalAward += latePenalty // Add negative penalty
+      bonusDesc = `Late submission (${Math.abs(latePenalty)} pts penalty, ${windowStatus.periodsLate} period${windowStatus.periodsLate !== 1 ? 's' : ''} late)`
+    } else {
+      // Apply on-time bonuses
+      if (dayOfWeek === 1) { // Monday
+        totalAward += (pConfig.mondayBonus || 0)
+        bonusDesc += ' + Monday Bonus'
+      } else if (dayOfWeek === 2 && hour < 10) { // Tuesday Early
+        totalAward += (pConfig.earlyBonus || 0)
+        bonusDesc += ' + Early Bonus'
+      }
     }
 
     const submission: WeekSubmission = {
@@ -1122,7 +1154,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       weekKey,
       status: 'submitted',
       submittedAt: now.toISOString(),
-      totalHours
+      totalHours,
+      latePenalty: isLate ? latePenalty : undefined,
+      isLate
     }
 
     // Update entries status
@@ -1175,7 +1209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     awardPoints, grantBadge,
     pendingApprovals, canApproveTimesheets, sendMessage, getOrCreateThread, getThreadMessages, getThreadUnreadCount,
     loadAll, checkReminders,
-    idleCountdown, showPasswordChange, setShowPasswordChange,
+    idleCountdown, resetIdle, showPasswordChange, setShowPasswordChange,
     calculateWeekCap, updateEntry, submitWeekEntries,
     prefillTemplate, setPrefillTemplate,
     passwordResetRequests, savePasswordResetRequests,
@@ -1245,6 +1279,21 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   idleTimeout: {
     minutes: 30
+  },
+  submissionWindow: {
+    enabled: true,
+    schedule: {
+      startDay: 'monday' as const,
+      startTime: '08:00',
+      endDay: 'tuesday' as const,
+      endTime: '16:00'
+    },
+    latePenalty: {
+      enabled: true,
+      pointsPerPeriod: -5,
+      periodHours: 12
+    },
+    timezone: 'Africa/Windhoek'
   },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],
 }

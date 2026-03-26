@@ -32,16 +32,23 @@ export default function SettingsPage() {
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
   const [toggles, setToggles] = useState(settings?.featureToggles || { gamification: true, leaderboard: true, messaging: true, bulkImports: true, darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true, firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true, profilePhotos: true, streakRecovery: true, duplicateDetection: true, announcements: true, orgChart: true })
   const [securityForm, setSecurityForm] = useState(settings?.security || { defaultPassword: 'dsn-staff', requireTwoFactor: false })
+  const [submissionWindowForm, setSubmissionWindowForm] = useState(settings?.submissionWindow || {
+    enabled: true,
+    schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
+    latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
+    timezone: 'Africa/Windhoek'
+  })
   const [auditSearch, setAuditSearch] = useState('')
   const [auditAction, setAuditAction] = useState('')
   const [auditFrom, setAuditFrom] = useState('')
   const [auditTo, setAuditTo] = useState('')
-  
+
   const tabs = [
     { id: 'branding', label: 'Branding' },
     { id: 'toggles', label: 'Toggles' },
     { id: 'points', label: 'Points' },
     { id: 'caps', label: 'Caps' },
+    { id: 'submission', label: 'Submission Window' },
     { id: 'weeks', label: 'Weeks' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'security', label: 'Security' },
@@ -358,6 +365,203 @@ export default function SettingsPage() {
             <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ hourCaps: capsForm })}>
               Save Cap Settings
             </button>
+          </div>
+        )}
+
+        {/* SUBMISSION WINDOW */}
+        {tab === 'submission' && (
+          <div className="card flex flex-col gap-6">
+            <div>
+              <h3 className="font-bold">🔓 Submission Window Configuration</h3>
+              <p className="text-xs text-3 mt-1">Configure when staff can submit timesheets and late submission penalties</p>
+            </div>
+
+            {/* Enable/Disable Toggle */}
+            <div className="flex items-center gap-3 p-4 bg-2 rounded-lg border border-3">
+              <button
+                onClick={() => setSubmissionWindowForm({...submissionWindowForm, enabled: !submissionWindowForm.enabled})}
+                className={`w-10 h-5 rounded-full relative transition-all ${submissionWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
+              >
+                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${submissionWindowForm.enabled ? 'left-6' : 'left-1'}`}></div>
+              </button>
+              <div>
+                <div className="text-xs font-bold">Enable Submission Window</div>
+                <div className="text-[10px] text-3">Control when staff can submit their timesheets. When disabled, submissions are always allowed.</div>
+              </div>
+            </div>
+
+            {submissionWindowForm.enabled && (
+              <>
+                {/* Schedule Configuration */}
+                <div className="border border-3 rounded-lg p-4 bg-2">
+                  <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
+                    📅 Submission Schedule
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Window Opens */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium text-3">Window Opens</label>
+                      <div className="flex gap-2">
+                        <select
+                          className="form-select text-xs flex-1"
+                          value={submissionWindowForm.schedule.startDay}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            schedule: {...submissionWindowForm.schedule, startDay: e.target.value as any}
+                          })}
+                        >
+                          <option value="monday">Monday</option>
+                          <option value="tuesday">Tuesday</option>
+                          <option value="wednesday">Wednesday</option>
+                          <option value="thursday">Thursday</option>
+                          <option value="friday">Friday</option>
+                          <option value="saturday">Saturday</option>
+                          <option value="sunday">Sunday</option>
+                        </select>
+                        <input
+                          type="time"
+                          className="form-input text-xs w-24"
+                          value={submissionWindowForm.schedule.startTime}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            schedule: {...submissionWindowForm.schedule, startTime: e.target.value}
+                          })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Window Closes */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium text-3">Window Closes (Deadline)</label>
+                      <div className="flex gap-2">
+                        <select
+                          className="form-select text-xs flex-1"
+                          value={submissionWindowForm.schedule.endDay}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            schedule: {...submissionWindowForm.schedule, endDay: e.target.value as any}
+                          })}
+                        >
+                          <option value="monday">Monday</option>
+                          <option value="tuesday">Tuesday</option>
+                          <option value="wednesday">Wednesday</option>
+                          <option value="thursday">Thursday</option>
+                          <option value="friday">Friday</option>
+                          <option value="saturday">Saturday</option>
+                          <option value="sunday">Sunday</option>
+                        </select>
+                        <input
+                          type="time"
+                          className="form-input text-xs w-24"
+                          value={submissionWindowForm.schedule.endTime}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            schedule: {...submissionWindowForm.schedule, endTime: e.target.value}
+                          })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 bg-soft-primary rounded-lg text-xs text-primary">
+                    ℹ️ Example: Monday 8:00 AM to Tuesday 4:00 PM WAT
+                  </div>
+                </div>
+
+                {/* Late Penalty Configuration */}
+                <div className="border border-warning-subtle rounded-lg p-4 bg-warning-bg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-bold flex items-center gap-2">
+                      ⚠️ Late Submission Penalties
+                    </h4>
+                    <button
+                      onClick={() => setSubmissionWindowForm({
+                        ...submissionWindowForm,
+                        latePenalty: {...submissionWindowForm.latePenalty, enabled: !submissionWindowForm.latePenalty.enabled}
+                      })}
+                      className={`w-10 h-5 rounded-full relative transition-all ${submissionWindowForm.latePenalty.enabled ? 'bg-warning' : 'bg-3'}`}
+                    >
+                      <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${submissionWindowForm.latePenalty.enabled ? 'left-6' : 'left-1'}`}></div>
+                    </button>
+                  </div>
+
+                  {submissionWindowForm.latePenalty.enabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="form-group">
+                        <label className="form-label text-xs">Points Deducted Per Period</label>
+                        <input
+                          type="number"
+                          className="form-input text-xs"
+                          value={submissionWindowForm.latePenalty.pointsPerPeriod}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            latePenalty: {...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value)}
+                          })}
+                          placeholder="-5"
+                        />
+                        <span className="text-[10px] text-3 mt-1">Use negative numbers (e.g., -5)</span>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label text-xs">Penalty Period (hours)</label>
+                        <input
+                          type="number"
+                          className="form-input text-xs"
+                          value={submissionWindowForm.latePenalty.periodHours}
+                          onChange={e => setSubmissionWindowForm({
+                            ...submissionWindowForm,
+                            latePenalty: {...submissionWindowForm.latePenalty, periodHours: Number(e.target.value)}
+                          })}
+                          min="1"
+                          placeholder="12"
+                        />
+                        <span className="text-[10px] text-3 mt-1">Hours per penalty period</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 p-3 bg-white/50 rounded-lg text-xs text-warning">
+                    💡 Example: -5 points every 12 hours means submitting 25 hours late = -10 points (2 periods)
+                  </div>
+                </div>
+
+                {/* Timezone */}
+                <div className="form-group">
+                  <label className="form-label">Timezone</label>
+                  <select
+                    className="form-select text-xs"
+                    value={submissionWindowForm.timezone}
+                    onChange={e => setSubmissionWindowForm({...submissionWindowForm, timezone: e.target.value})}
+                  >
+                    <option value="Africa/Windhoek">Africa/Windhoek (WAT)</option>
+                    <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
+                    <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">America/New_York (EST/EDT)</option>
+                    <option value="Europe/London">Europe/London (GMT/BST)</option>
+                  </select>
+                  <span className="text-[10px] text-3 mt-1">All submission window times are in this timezone</span>
+                </div>
+              </>
+            )}
+
+            <button
+              className="btn btn-primary w-fit"
+              onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}
+            >
+              Save Submission Window Settings
+            </button>
+
+            <div className="p-4 bg-soft-warning rounded-lg border border-warning-subtle text-xs">
+              <div className="font-bold mb-2">⚠️ Important Notes:</div>
+              <ul className="list-disc list-inside space-y-1 text-warning">
+                <li>Submissions are <strong>still allowed after the deadline</strong> - late penalties will apply if enabled</li>
+                <li>Staff will see warnings when submitting late, showing the penalty they will receive</li>
+                <li>Turning off the window allows submissions at any time with no penalties</li>
+                <li>Changes take effect immediately for all staff</li>
+              </ul>
+            </div>
           </div>
         )}
 

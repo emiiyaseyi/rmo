@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { genId, fmtDate } from '../../lib/utils'
 import { Staff, ApprovalDelegation } from '../../types'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../common/ConfirmModal'
 
 export default function DelegationPage() {
   const { user, staff, approvalDelegations, saveApprovalDelegations, notify, projects } = useApp()
@@ -15,6 +16,7 @@ export default function DelegationPage() {
     scope: 'all' as 'all' | 'project',
     projectId: ''
   })
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   const now = new Date()
   const myDelegations = (approvalDelegations || []).filter(d => d.taskOwnerId === user?.id)
@@ -81,12 +83,18 @@ export default function DelegationPage() {
   }
 
   function revoke(id: string) {
-    if (!window.confirm('Revoke this delegation?')) return
-    const updated = approvalDelegations.map(d =>
-      d.id === id ? { ...d, isActive: false, revokedAt: new Date().toISOString() } : d
-    )
-    saveApprovalDelegations(updated)
-    toast.success('Delegation revoked')
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const updated = approvalDelegations.map(d =>
+          d.id === id ? { ...d, isActive: false, revokedAt: new Date().toISOString() } : d
+        )
+        saveApprovalDelegations(updated)
+        toast.success('Delegation revoked')
+      },
+      message: 'Revoke this delegation?',
+      title: 'Revoke Delegation'
+    })
   }
 
   return (
@@ -242,6 +250,14 @@ export default function DelegationPage() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

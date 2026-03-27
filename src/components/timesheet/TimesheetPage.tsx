@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save } from 'lucide-react'
 import { Entry, Staff } from '../../types'
 import PageHeader from '../common/PageHeader'
+import ConfirmModal from '../common/ConfirmModal'
 
 interface EntryFormProps {
   entry: Partial<Entry> | null;
@@ -480,6 +481,7 @@ export default function TimesheetPage() {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   useEffect(() => {
     if (prefillTemplate) {
@@ -535,9 +537,12 @@ export default function TimesheetPage() {
   const isOver = totalHours > weekCap
   const submitted = weekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
   const hasRejected = weekEntries.some(e => e.status === 'rejected')
+  const hasDraftEntries = weekEntries.some(e => e.status === 'draft')
   const canEdit = isAdmin || (!submitted && !isLocked)
   const isOwnSheet = effectiveUserId === user?.id
-  const canSubmit = isOwnSheet && !submitted && weekEntries.length > 0 && !isLocked
+  // Allow adding new entries even after submission (unless week is locked)
+  const canAddEntry = isOwnSheet && !isLocked
+  const canSubmit = isOwnSheet && hasDraftEntries && !isLocked
   const myTemplates = templates.filter(t => t.staffId === user?.id)
 
   // Handle keyboard navigation in search suggestions
@@ -622,11 +627,29 @@ export default function TimesheetPage() {
   function saveEntry(form: any) {
     const isEdit = !!editEntry?.id
     const leadMatch = leads.find(l => l.name.toLowerCase() === String(form.lead || '').toLowerCase())
-    const normalizedForm = { ...form, leadId: leadMatch?.id || form.leadId || '' }
+    // If no lead specified in entry, inherit from staff member's leadId
+    const inheritedLeadId = leadMatch?.id || form.leadId || targetUser?.leadId || ''
+    const normalizedForm = { ...form, leadId: inheritedLeadId }
     if (!isEdit) {
       const similar = weekEntries.find(e => e.project === form.project && e.category === form.category)
-      if (similar && !window.confirm('A similar entry (same project + category) already exists for this week. Add anyway?')) return
+      if (similar) {
+        setConfirmAction({
+          isOpen: true,
+          action: () => {
+            continueAddEntry(normalizedForm)
+          },
+          message: 'A similar entry (same project + category) already exists for this week. Add anyway?',
+          title: 'Duplicate Entry Warning'
+        })
+        return
+      }
     }
+
+    continueAddEntry(normalizedForm)
+  }
+
+  function continueAddEntry(normalizedForm: any) {
+    const isEdit = !!editEntry?.id
 
     if (isEdit && editEntry) {
       updateEntry(editEntry.id, normalizedForm)
@@ -652,14 +675,22 @@ export default function TimesheetPage() {
   }
 
   function deleteEntry(id: string) {
-    if (!window.confirm('Delete this entry? Restorable within 30 days.')) return
-    saveEntries(entries.map(e => e.id === id ? { ...e, deleted: true, deletedAt: new Date().toISOString() } : e))
-    logAudit('DELETE_ENTRY', `${user?.name} deleted entry`, user?.id || '', user?.name || '')
-    toast.success('Deleted (restorable 30 days)')
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        saveEntries(entries.map(e => e.id === id ? { ...e, deleted: true, deletedAt: new Date().toISOString() } : e))
+        logAudit('DELETE_ENTRY', `${user?.name} deleted entry`, user?.id || '', user?.name || '')
+        toast.success('Deleted (restorable 30 days)')
+      },
+      message: 'Delete this entry? Restorable within 30 days.',
+      title: 'Delete Entry'
+    })
   }
 
   function duplicateEntry(e: Entry) {
-    const ne: Entry = { ...e, id: genId(), status: 'draft', date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    // Ensure leadId is inherited from staff member if not set
+    const inheritedLeadId = e.leadId || targetUser?.leadId || ''
+    const ne: Entry = { ...e, id: genId(), status: 'draft', leadId: inheritedLeadId, date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     saveEntries([...entries, ne])
     toast.success('Entry duplicated')
   }
@@ -698,6 +729,7 @@ export default function TimesheetPage() {
       weekKey: selectedWeek,
       project: 'N/A',
       lead: '',
+      leadId: user.leadId || '', // Inherit staff member's leadId
       description: 'No work this week',
       date: today,
       startDate: today,
@@ -761,6 +793,8 @@ export default function TimesheetPage() {
             const endDate = r['End Date'] || r.endDate || startDate
             const leadName = r.Lead || r.lead || ''
             const leadMatch = leads.find(l => l.name.toLowerCase() === String(leadName).toLowerCase())
+            // Inherit staff member's leadId if no lead specified in import
+            const inheritedLeadId = leadMatch?.id || targetUser?.leadId || ''
             return {
               id: genId(),
               staffId: effectiveUserId,
@@ -768,7 +802,7 @@ export default function TimesheetPage() {
               weekKey: selectedWeek,
               project: r.Project || r.project || '',
               lead: leadName,
-              leadId: leadMatch?.id || '',
+              leadId: inheritedLeadId,
               description: r.Description || r.description || '',
               date: startDate,
               startDate,
@@ -794,7 +828,19 @@ export default function TimesheetPage() {
   }
 
   function downloadTemplate() {
-    exportCSV([{ Project: 'Project Alpha', Lead: 'John Doe', Description: 'Client meeting', Date: selectedWeek, Hours: 2, Category: 'Client Work' }], 'timesheet_template.csv')
+    const today = new Date().toISOString().slice(0, 10)
+    exportCSV([
+      {
+        'Staff Name': targetUser?.name || '',
+        Project: 'Project Alpha',
+        Lead: 'John Doe',
+        Description: 'Client meeting',
+        'Start Date': today,
+        'End Date': today,
+        Hours: 2,
+        Category: 'Client Work'
+      }
+    ], 'timesheet_template.csv')
   }
 
   async function handleExport(format: string) {
@@ -834,7 +880,7 @@ export default function TimesheetPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
-            {canEdit && !isLocked && (
+            {canAddEntry && (
               <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
                 <Plus size={14} /> Log Hours
               </button>
@@ -994,7 +1040,7 @@ export default function TimesheetPage() {
         </div>
       )}
       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Project, Lead, Description, Start Date, End Date, Hours, Category)
+        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Staff Name, Project, Lead, Description, Start Date, End Date, Hours, Category)
       </div>
 
       {/* Entries table */}
@@ -1002,7 +1048,7 @@ export default function TimesheetPage() {
         <div className="empty-state card">
           <div className="empty-state-icon">📋</div>
           <div className="empty-state-title">No entries {targetUser?.id !== user?.id ? `for ${targetUser?.name}` : ''} this week</div>
-          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
+          {canAddEntry && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -1116,6 +1162,14 @@ export default function TimesheetPage() {
           onClose={() => setShowNoWorkModal(false)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

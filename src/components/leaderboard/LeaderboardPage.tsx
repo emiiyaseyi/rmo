@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { BADGES, genId, exportCSV, exportPDF, avatarColor } from '../../lib/utils'
 import { Staff, HofEntry, Reward, Redemption } from '../../types'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../common/ConfirmModal'
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
@@ -29,6 +30,7 @@ export default function LeaderboardPage() {
   const [recoveryForm, setRecoveryForm] = useState({ weekId: '', reason: '' })
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   // Rankings
   const ranked: RankedStaff[] = useMemo(() =>
@@ -105,9 +107,11 @@ export default function LeaderboardPage() {
     if (reward.stock <= 0) { toast.error('Item out of stock'); return }
     const myPts = user.points || 0
     if (myPts < reward.cost) { toast.error('Not enough points'); return }
-    if (!window.confirm(`Redeem "${reward.name}" for ${reward.cost} pts?`)) return
-    
-    const redeem: Redemption = {
+
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const redeem: Redemption = {
       id: genId(),
       staffId: user.id,
       staffName: user.name,
@@ -121,10 +125,14 @@ export default function LeaderboardPage() {
     // Deduct stock
     const updatedRewards = rewards.map(r => r.id === reward.id ? { ...r, stock: r.stock - 1 } : r)
     saveRewards(updatedRewards)
-    
-    saveRedeems([...redeems, redeem])
-    awardPoints(user.id, -reward.cost, `Redeemed ${reward.name}`)
-    toast.success('🎁 Redemption request sent to admin!')
+
+        saveRedeems([...redeems, redeem])
+        awardPoints(user.id, -reward.cost, `Redeemed ${reward.name}`)
+        toast.success('🎁 Redemption request sent to admin!')
+      },
+      message: `Redeem "${reward.name}" for ${reward.cost} pts?`,
+      title: 'Confirm Redemption'
+    })
   }
 
   function handleRecoveryRequest() {
@@ -650,6 +658,14 @@ export default function LeaderboardPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

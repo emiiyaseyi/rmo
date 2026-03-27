@@ -725,32 +725,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('dark', next)
   }
 
-  function notify(userId: string, message: string, type = 'info', title = 'New Notification', linkedId?: string, linkedType?: string, overrideEmail?: string) {
+  function notify(userId: string, message: string, type = 'info', title = 'New Notification', linkedId?: string, linkedType?: string, overrideEmail?: string, sendEmail = true) {
     // Provide defaults for optional fields to avoid undefined
-    const notif: AppNotification = { 
-      id: genId(), 
-      userId, 
-      message, 
-      type, 
-      read: false, 
-      createdAt: new Date().toISOString(), 
-      title: title || 'New Notification', 
-      linkedId: linkedId || '', 
-      linkedType: linkedType || '' 
+    const notif: AppNotification = {
+      id: genId(),
+      userId,
+      message,
+      type,
+      read: false,
+      createdAt: new Date().toISOString(),
+      title: title || 'New Notification',
+      linkedId: linkedId || '',
+      linkedType: linkedType || ''
     }
     const updated = [notif, ...local.get<AppNotification[]>('notifications', [])]
     saveNots(updated)
-    
-    // Simulate email send
+
+    // Only send email if sendEmail flag is true
+    // For routine notifications (timesheets, leave approvals), only send in-app notifications
     const targetUser = staff.find(s => s.id === userId)
     const targetEmail = overrideEmail || targetUser?.email
-    if (targetEmail && targetEmail.endsWith('@datasciencenigeria.ai')) {
-       let link = ''
-       if (linkedType === 'entry') link = `/approvals`
-       else if (linkedType === 'leave') link = `/staff`
-       else if (linkedType === 'message') link = `/messages`
-       else if (linkedId) link = `/dashboard` // generic fallback
-       sendEmailNotification(targetEmail, title || 'New Notification', message, link)
+
+    if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai')) {
+       // Skip email for routine notifications (timesheets, leave approvals, delegations)
+       // These are better handled as in-app notifications for all users
+       const isRoutineNotification = ['approval', 'leave_request', 'delegation_assigned'].includes(type)
+
+       if (isRoutineNotification) {
+         // All users get in-app notification only for routine items
+         console.log(`Skipping email for routine notification: ${title}`)
+       } else {
+         // Send email for critical notifications (password resets, welcome emails, system alerts, etc.)
+         let link = ''
+         if (linkedType === 'entry') link = `/approvals`
+         else if (linkedType === 'leave') link = `/staff`
+         else if (linkedType === 'message') link = `/messages`
+         else if (linkedId) link = `/dashboard` // generic fallback
+         sendEmailNotification(targetEmail, title || 'New Notification', message, link)
+       }
     }
 
     return notif

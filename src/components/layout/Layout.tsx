@@ -498,7 +498,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                     </div>
                     {notifications.length === 0 ? (
                       <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>No notifications</div>
-                    ) : (notifications || []).slice(0, 30).map(n => {
+                    ) : (notifications || []).sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()).slice(0, 30).map(n => {
                       const handleClick = () => {
                         if (!n.read) markRead(n.id)
                         let targetPage = n.linkedType === 'entry' ? 'approvals' :

@@ -10,7 +10,7 @@ export default function LeaveRequestPage() {
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
 
   const myLeaves = leaves.filter(l => l.staffId === user?.id).sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()
   )
 
   function submitLeave(e: React.FormEvent) {

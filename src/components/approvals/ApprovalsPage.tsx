@@ -6,6 +6,7 @@ import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../ty
 import toast from 'react-hot-toast'
 import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
 import PageHeader from '../common/PageHeader'
+import ConfirmModal from '../common/ConfirmModal'
 
 interface ApprovalModalProps {
   entry: Entry;
@@ -54,7 +55,7 @@ function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) 
               <div>
                 <span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block', marginBottom: 4 }}>Previous Actions</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {entry.approvalHistory.map(h => (
+                  {entry.approvalHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(h => (
                     <div key={h.id} style={{ fontSize: 11, padding: '4px 8px', background: 'var(--bg-card)', borderRadius: 4 }}>
                       <strong>{h.reviewerName}</strong> ({h.reviewerRole}) - {h.action} {h.correctedHours ? `(${h.correctedHours}h)` : ''}
                       {h.note && <span> - {h.note}</span>}
@@ -207,6 +208,7 @@ export default function ApprovalsPage() {
   const [filterDept, setFilterDept] = useState<string>('')
   const [filterWeek, setFilterWeek] = useState<string>('')
   const [showDelegationModal, setShowDelegationModal] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 20
   const isAdmin = user?.role === 'admin'
@@ -425,9 +427,11 @@ export default function ApprovalsPage() {
 
   function bulkApprove(ids: string[]) {
     if (!user) return
-    if (!window.confirm(`Approve ${ids.length} entries?`)) return
 
-    const now = new Date().toISOString()
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const now = new Date().toISOString()
     const reviewerRole: 'task_owner' | 'admin' = isAdmin ? 'admin' : 'task_owner'
 
     const updated = entries.map(e => {
@@ -480,9 +484,13 @@ export default function ApprovalsPage() {
         notify(admin.id, `⚠️ ${escalated} entries require 2nd-level approval`, 'approval')
       })
       toast.success(`${ids.length - escalated} approved, ${escalated} escalated for 2nd-level review`)
-    } else {
-      toast.success(`${ids.length} entries approved`)
-    }
+        } else {
+          toast.success(`${ids.length} entries approved`)
+        }
+      },
+      message: `Approve ${ids.length} entries?`,
+      title: 'Bulk Approve'
+    })
   }
 
   function createDelegation(form: Partial<ApprovalDelegation>) {
@@ -521,12 +529,18 @@ export default function ApprovalsPage() {
   }
 
   function revokeDelegation(id: string) {
-    if (!window.confirm('Revoke this delegation?')) return
-    const updated = approvalDelegations.map(d =>
-      d.id === id ? { ...d, isActive: false, revokedAt: new Date().toISOString() } : d
-    )
-    saveApprovalDelegations(updated)
-    toast.success('Delegation revoked')
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const updated = approvalDelegations.map(d =>
+          d.id === id ? { ...d, isActive: false, revokedAt: new Date().toISOString() } : d
+        )
+        saveApprovalDelegations(updated)
+        toast.success('Delegation revoked')
+      },
+      message: 'Revoke this delegation?',
+      title: 'Revoke Delegation'
+    })
   }
 
   const displayPending = getFilteredPending()
@@ -534,41 +548,47 @@ export default function ApprovalsPage() {
 
   function handleBulkApprove() {
     if (selectedIds.length === 0) return
-    if (!confirm(`Are you sure you want to approve ${selectedIds.length} entries?`)) return
 
-    const now = new Date().toISOString()
-    const approvableStatuses = new Set(['submitted', 'resubmitted', 'pending_clarification'])
-    const updatedEntries = entries.map(e => {
-      if (selectedIds.includes(e.id) && approvableStatuses.has(e.status)) {
-        const history: ApprovalHistoryEntry = {
-          id: genId(),
-          reviewerId: user?.id || '',
-          reviewerName: user?.name || '',
-          reviewerRole: user?.role || '',
-          action: 'approved',
-          timestamp: now
-        }
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const now = new Date().toISOString()
+        const approvableStatuses = new Set(['submitted', 'resubmitted', 'pending_clarification'])
+        const updatedEntries = entries.map(e => {
+          if (selectedIds.includes(e.id) && approvableStatuses.has(e.status)) {
+            const history: ApprovalHistoryEntry = {
+              id: genId(),
+              reviewerId: user?.id || '',
+              reviewerName: user?.name || '',
+              reviewerRole: user?.role || '',
+              action: 'approved',
+              timestamp: now
+            }
 
-        // Award points
-        awardPoints(e.staffId, 5, 'Submission Approved', e.weekKey)
+            // Award points
+            awardPoints(e.staffId, 5, 'Submission Approved', e.weekKey)
 
-        // Notify
-        notify(e.staffId, `Your timesheet for ${e.project} has been approved`, 'approval', 'Timesheet Approved', e.id, 'entry')
+            // Notify
+            notify(e.staffId, `Your timesheet for ${e.project} has been approved`, 'approval', 'Timesheet Approved', e.id, 'entry')
 
-        return {
-          ...e,
-          status: 'approved',
-          approvedBy: user?.id,
-          approvedAt: now,
-          approvalHistory: [...(e.approvalHistory || []), history]
-        }
-      }
-      return e
+            return {
+              ...e,
+              status: 'approved',
+              approvedBy: user?.id,
+              approvedAt: now,
+              approvalHistory: [...(e.approvalHistory || []), history]
+            }
+          }
+          return e
+        })
+
+        saveEntries(updatedEntries as Entry[])
+        setSelectedIds([])
+        toast.success(`Successfully approved ${selectedIds.length} entries`)
+      },
+      message: `Are you sure you want to approve ${selectedIds.length} entries?`,
+      title: 'Bulk Approve Timesheets'
     })
-
-    saveEntries(updatedEntries as Entry[])
-    setSelectedIds([])
-    toast.success(`Successfully approved ${selectedIds.length} entries`)
   }
 
   return (
@@ -898,7 +918,7 @@ export default function ApprovalsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.slice(0, 100).map(e => (
+                  {history.sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.updatedAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.updatedAt || '').getTime()).slice(0, 100).map(e => (
                     <tr key={e.id}>
                       <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                       <td>{e.project}</td>
@@ -1020,6 +1040,14 @@ export default function ApprovalsPage() {
           projects={projects || []}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

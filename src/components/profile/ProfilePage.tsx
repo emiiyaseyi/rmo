@@ -363,7 +363,7 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
                 <table>
                   <thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th><th>Reason</th></tr></thead>
                   <tbody>
-                    {myLeaves.map(l => (
+                    {myLeaves.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()).map(l => (
                       <tr key={l.id}>
                         <td><span className="badge badge-blue">{l.type}</span></td>
                         <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{l.from}</td>

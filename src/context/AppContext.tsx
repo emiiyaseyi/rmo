@@ -284,6 +284,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog))
         .slice(0, 2000))
     }))
+    // 11. Projects
+    unsubs.push(onSnapshot(collection(db, 'projects'), (snap) => {
+      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }))
 
     return () => unsubs.forEach(u => u())
   }, [user?.id])

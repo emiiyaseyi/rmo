@@ -6,11 +6,13 @@ import { useApp } from '../../context/AppContext'
 import { fmtDate, timeAgo } from '../../lib/utils'
 import { Check, X, ShieldAlert, Clock, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../common/ConfirmModal'
 
 export default function ResetRequestsPage() {
   const { staff, saveStaff, notify } = useApp()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   useEffect(() => {
     const q = query(collection(db, 'reset_requests'), orderBy('timestamp', 'desc'))
@@ -23,8 +25,10 @@ export default function ResetRequestsPage() {
   }, [])
 
   const handleApprove = async (req: any) => {
-    if (!window.confirm(`Approve password reset for ${req.userName}?`)) return
-    try {
+    setConfirmAction({
+      isOpen: true,
+      action: async () => {
+        try {
       await updateDoc(doc(db, 'staff', req.userId), {
         password: '1234',
         first_login: true,
@@ -34,22 +38,32 @@ export default function ResetRequestsPage() {
       // Update local state if needed
       saveStaff(staff.map(s => s.id === req.userId ? { ...s, password: '1234', first_login: true, password_reset_pending: true } : s))
       
-      await deleteDoc(doc(db, 'reset_requests', req.id))
-      notify(req.userId, '🔒 Your password has been reset to "1234" by Admin. Please change it on next login.', 'info')
-      toast.success('Reset request approved')
-    } catch (e) {
-      toast.error('Failed to approve request')
-    }
+          await deleteDoc(doc(db, 'reset_requests', req.id))
+          notify(req.userId, '🔒 Your password has been reset to "1234" by Admin. Please change it on next login.', 'info')
+          toast.success('Reset request approved')
+        } catch (e) {
+          toast.error('Failed to approve request')
+        }
+      },
+      message: `Approve password reset for ${req.userName}?`,
+      title: 'Approve Password Reset'
+    })
   }
 
   const handleReject = async (id: string) => {
-    if (!window.confirm('Delete this request?')) return
-    try {
-      await deleteDoc(doc(db, 'reset_requests', id))
-      toast.success('Request removed')
-    } catch (e) {
-      toast.error('Failed to remove request')
-    }
+    setConfirmAction({
+      isOpen: true,
+      action: async () => {
+        try {
+          await deleteDoc(doc(db, 'reset_requests', id))
+          toast.success('Request removed')
+        } catch (e) {
+          toast.error('Failed to remove request')
+        }
+      },
+      message: 'Delete this request?',
+      title: 'Delete Request'
+    })
   }
 
   return (
@@ -140,6 +154,14 @@ export default function ResetRequestsPage() {
           <strong>Admin Policy:</strong> Approving a request will immediately terminate the user's active session, reset their password to <code>1234</code>, and force a mandatory password change on their next sign-in.
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

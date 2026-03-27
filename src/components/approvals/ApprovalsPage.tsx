@@ -255,6 +255,9 @@ export default function ApprovalsPage() {
     return entries.filter(e => {
       if (e.deleted) return false
 
+      // Exclude user's own entries (prevent self-approval)
+      if (e.staffId === user.id && !isAdmin) return false
+
       // Admin sees all entries including 2nd-level
       if (isAdmin) {
         return ['draft', 'submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)
@@ -635,7 +638,7 @@ export default function ApprovalsPage() {
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 20 }}>
         <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending ({displayPending.length})</button>
-        <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>
+        {isAdmin && <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>}
         <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
         {isAdmin && <button className={`tab ${tab === '2nd_level' ? 'active' : ''}`} onClick={() => setTab('2nd_level')}>2nd-Level Review ({secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})</button>}
         {isTaskOwner && <button className={`tab ${tab === 'delegations' ? 'active' : ''}`} onClick={() => setTab('delegations')}>Delegations</button>}
@@ -689,6 +692,7 @@ export default function ApprovalsPage() {
                       <th>Staff</th>
                       <th>Dept</th>
                       <th>Project</th>
+                      <th>Lead</th>
                       <th>Date</th>
                       <th>Hours</th>
                       <th>Category</th>
@@ -720,6 +724,7 @@ export default function ApprovalsPage() {
                           <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                           <td style={{ color: 'var(--text-3)' }}>{s?.department || '—'}</td>
                           <td>{e.project}</td>
+                          <td style={{ color: 'var(--text-3)', fontSize: 13 }}>{e.lead || '—'}</td>
                           <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{fmtDate(e.date)}</td>
                           <td style={{ fontWeight: 700 }}>
                             {e.hours}h

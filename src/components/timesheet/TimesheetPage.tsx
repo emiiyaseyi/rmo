@@ -538,6 +538,8 @@ export default function TimesheetPage() {
   const hasDraftEntries = weekEntries.some(e => e.status === 'draft')
   const canEdit = isAdmin || (!submitted && !isLocked)
   const isOwnSheet = effectiveUserId === user?.id
+  // Allow adding new entries even after submission (unless week is locked)
+  const canAddEntry = isOwnSheet && !isLocked
   const canSubmit = isOwnSheet && hasDraftEntries && !isLocked
   const myTemplates = templates.filter(t => t.staffId === user?.id)
 
@@ -623,7 +625,9 @@ export default function TimesheetPage() {
   function saveEntry(form: any) {
     const isEdit = !!editEntry?.id
     const leadMatch = leads.find(l => l.name.toLowerCase() === String(form.lead || '').toLowerCase())
-    const normalizedForm = { ...form, leadId: leadMatch?.id || form.leadId || '' }
+    // If no lead specified in entry, inherit from staff member's leadId
+    const inheritedLeadId = leadMatch?.id || form.leadId || targetUser?.leadId || ''
+    const normalizedForm = { ...form, leadId: inheritedLeadId }
     if (!isEdit) {
       const similar = weekEntries.find(e => e.project === form.project && e.category === form.category)
       if (similar && !window.confirm('A similar entry (same project + category) already exists for this week. Add anyway?')) return
@@ -660,7 +664,9 @@ export default function TimesheetPage() {
   }
 
   function duplicateEntry(e: Entry) {
-    const ne: Entry = { ...e, id: genId(), status: 'draft', date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    // Ensure leadId is inherited from staff member if not set
+    const inheritedLeadId = e.leadId || targetUser?.leadId || ''
+    const ne: Entry = { ...e, id: genId(), status: 'draft', leadId: inheritedLeadId, date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     saveEntries([...entries, ne])
     toast.success('Entry duplicated')
   }
@@ -699,6 +705,7 @@ export default function TimesheetPage() {
       weekKey: selectedWeek,
       project: 'N/A',
       lead: '',
+      leadId: user.leadId || '', // Inherit staff member's leadId
       description: 'No work this week',
       date: today,
       startDate: today,
@@ -762,6 +769,8 @@ export default function TimesheetPage() {
             const endDate = r['End Date'] || r.endDate || startDate
             const leadName = r.Lead || r.lead || ''
             const leadMatch = leads.find(l => l.name.toLowerCase() === String(leadName).toLowerCase())
+            // Inherit staff member's leadId if no lead specified in import
+            const inheritedLeadId = leadMatch?.id || targetUser?.leadId || ''
             return {
               id: genId(),
               staffId: effectiveUserId,
@@ -769,7 +778,7 @@ export default function TimesheetPage() {
               weekKey: selectedWeek,
               project: r.Project || r.project || '',
               lead: leadName,
-              leadId: leadMatch?.id || '',
+              leadId: inheritedLeadId,
               description: r.Description || r.description || '',
               date: startDate,
               startDate,
@@ -847,7 +856,7 @@ export default function TimesheetPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
-            {canEdit && !isLocked && (
+            {canAddEntry && (
               <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
                 <Plus size={14} /> Log Hours
               </button>
@@ -1015,7 +1024,7 @@ export default function TimesheetPage() {
         <div className="empty-state card">
           <div className="empty-state-icon">📋</div>
           <div className="empty-state-title">No entries {targetUser?.id !== user?.id ? `for ${targetUser?.name}` : ''} this week</div>
-          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
+          {canAddEntry && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>

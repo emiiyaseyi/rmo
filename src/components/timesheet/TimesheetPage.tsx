@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save } from 'lucide-react'
 import { Entry, Staff } from '../../types'
 import PageHeader from '../common/PageHeader'
+import ConfirmModal from '../common/ConfirmModal'
 
 interface EntryFormProps {
   entry: Partial<Entry> | null;
@@ -480,6 +481,7 @@ export default function TimesheetPage() {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   useEffect(() => {
     if (prefillTemplate) {
@@ -630,8 +632,24 @@ export default function TimesheetPage() {
     const normalizedForm = { ...form, leadId: inheritedLeadId }
     if (!isEdit) {
       const similar = weekEntries.find(e => e.project === form.project && e.category === form.category)
-      if (similar && !window.confirm('A similar entry (same project + category) already exists for this week. Add anyway?')) return
+      if (similar) {
+        setConfirmAction({
+          isOpen: true,
+          action: () => {
+            continueAddEntry(normalizedForm)
+          },
+          message: 'A similar entry (same project + category) already exists for this week. Add anyway?',
+          title: 'Duplicate Entry Warning'
+        })
+        return
+      }
     }
+
+    continueAddEntry(normalizedForm)
+  }
+
+  function continueAddEntry(normalizedForm: any) {
+    const isEdit = !!editEntry?.id
 
     if (isEdit && editEntry) {
       updateEntry(editEntry.id, normalizedForm)
@@ -657,10 +675,16 @@ export default function TimesheetPage() {
   }
 
   function deleteEntry(id: string) {
-    if (!window.confirm('Delete this entry? Restorable within 30 days.')) return
-    saveEntries(entries.map(e => e.id === id ? { ...e, deleted: true, deletedAt: new Date().toISOString() } : e))
-    logAudit('DELETE_ENTRY', `${user?.name} deleted entry`, user?.id || '', user?.name || '')
-    toast.success('Deleted (restorable 30 days)')
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        saveEntries(entries.map(e => e.id === id ? { ...e, deleted: true, deletedAt: new Date().toISOString() } : e))
+        logAudit('DELETE_ENTRY', `${user?.name} deleted entry`, user?.id || '', user?.name || '')
+        toast.success('Deleted (restorable 30 days)')
+      },
+      message: 'Delete this entry? Restorable within 30 days.',
+      title: 'Delete Entry'
+    })
   }
 
   function duplicateEntry(e: Entry) {
@@ -1138,6 +1162,14 @@ export default function TimesheetPage() {
           onClose={() => setShowNoWorkModal(false)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { doc, updateDoc, setDoc, deleteDoc, collection, onSnapshot, query } from
 import { Search, Plus, Download, Upload, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square, Unlock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Staff, Entry } from '../../types'
+import ConfirmModal from '../common/ConfirmModal'
 
 /* ─── Staff Modal ─────────────────────────────────────────────────── */
 interface StaffModalProps {
@@ -425,6 +426,7 @@ export default function StaffPage() {
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importingStaff, setImportingStaff] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
+  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string, confirmStyle?: 'primary' | 'danger' | 'warning'}>({isOpen: false, action: () => {}, message: ''})
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
 
@@ -513,33 +515,51 @@ export default function StaffPage() {
 
   function handleDelete(ids: Set<string>) {
     const names = staff.filter(s => ids.has(s.id)).map(s => s.name).join(', ')
-    if (!window.confirm(`Permanently delete ${ids.size} staff member(s): ${names}?\n\nThis cannot be undone.`)) return
-    
-    // Actually delete from Firestore
-    ids.forEach(id => {
-      deleteDoc(doc(db, 'staff', id)).catch(e => console.error('Delete failed:', e))
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        // Actually delete from Firestore
+        ids.forEach(id => {
+          deleteDoc(doc(db, 'staff', id)).catch(e => console.error('Delete failed:', e))
+        })
+
+        saveStaff(staff.filter(s => !ids.has(s.id)))
+        logAudit('DELETE_STAFF', `${user?.name} deleted ${ids.size} staff`, user?.id || '', user?.name || '')
+        setSelected(new Set())
+        toast.success(`${ids.size} staff deleted`)
+      },
+      message: `Permanently delete ${ids.size} staff member(s): ${names}?\n\nThis cannot be undone.`,
+      title: 'Delete Staff Members',
+      confirmStyle: 'danger' as any
     })
-    
-    saveStaff(staff.filter(s => !ids.has(s.id)))
-    logAudit('DELETE_STAFF', `${user?.name} deleted ${ids.size} staff`, user?.id || '', user?.name || '')
-    setSelected(new Set())
-    toast.success(`${ids.size} staff deleted`)
   }
 
   function toggleSuspend(s: Staff) {
     const action = (s.status === 'suspended' || s.suspended) ? 'unsuspend' : 'suspend'
     const newStatus = action === 'suspend' ? 'suspended' : 'active'
-    if (!window.confirm(`${action} ${s.name}?`)) return
-    saveStaff(staff.map(m => m.id === s.id ? { ...m, status: newStatus as any, suspended: newStatus === 'suspended' } : m))
-    toast.success(`${s.name} ${action}d`)
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        saveStaff(staff.map(m => m.id === s.id ? { ...m, status: newStatus as any, suspended: newStatus === 'suspended' } : m))
+        toast.success(`${s.name} ${action}d`)
+      },
+      message: `${action.charAt(0).toUpperCase() + action.slice(1)} ${s.name}?`,
+      title: `${action.charAt(0).toUpperCase() + action.slice(1)} Staff Member`
+    })
   }
 
   function bulkSuspend(suspend: boolean) {
     const newStatus = suspend ? 'suspended' : 'active'
-    if (!window.confirm(`${suspend ? 'Suspend' : 'Unsuspend'} ${selected.size} staff?`)) return
-    saveStaff(staff.map(s => selected.has(s.id) ? { ...s, status: newStatus as any, suspended: suspend } : s))
-    logAudit(suspend ? 'BULK_SUSPEND' : 'BULK_UNSUSPEND', `${user?.name} ${suspend ? 'suspended' : 'unsuspended'} ${selected.size} staff`, user?.id || '', user?.name || '')
-    setSelected(new Set()); toast.success(`Done`)
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        saveStaff(staff.map(s => selected.has(s.id) ? { ...s, status: newStatus as any, suspended: suspend } : s))
+        logAudit(suspend ? 'BULK_SUSPEND' : 'BULK_UNSUSPEND', `${user?.name} ${suspend ? 'suspended' : 'unsuspended'} ${selected.size} staff`, user?.id || '', user?.name || '')
+        setSelected(new Set()); toast.success(`Done`)
+      },
+      message: `${suspend ? 'Suspend' : 'Unsuspend'} ${selected.size} staff?`,
+      title: `Bulk ${suspend ? 'Suspend' : 'Unsuspend'}`
+    })
   }
 
   function handleBulkEdit(updates: any) {
@@ -550,50 +570,68 @@ export default function StaffPage() {
   }
 
   async function resetPassword(s: Staff) {
-    if (!window.confirm(`Reset password for ${s.name} to "dsn-staff"?`)) return
-    try {
-      await updateDoc(doc(db, 'staff', s.id), {
-        password: 'dsn-staff',
-        first_login: true,
-        password_reset_pending: true
-      })
-      saveStaff(staff.map(m => m.id === s.id ? { ...m, password: 'dsn-staff', first_login: true, password_reset_pending: true } : m))
-      notify(s.id, 'Your password has been reset by admin to "dsn-staff". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
-      toast.success('Password reset for ' + s.name)
-    } catch (e: any) {
-      toast.error('Failed to reset password.')
-    }
+    setConfirmAction({
+      isOpen: true,
+      action: async () => {
+        try {
+          await updateDoc(doc(db, 'staff', s.id), {
+            password: 'dsn-staff',
+            first_login: true,
+            password_reset_pending: true
+          })
+          saveStaff(staff.map(m => m.id === s.id ? { ...m, password: 'dsn-staff', first_login: true, password_reset_pending: true } : m))
+          notify(s.id, 'Your password has been reset by admin to "dsn-staff". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
+          toast.success('Password reset for ' + s.name)
+        } catch (e: any) {
+          toast.error('Failed to reset password.')
+        }
+      },
+      message: `Reset password for ${s.name} to "dsn-staff"?`,
+      title: 'Reset Password'
+    })
   }
 
   async function unlockAccount(s: Staff) {
-    if (!window.confirm(`Unlock account for ${s.name}?`)) return
-    try {
-      await updateDoc(doc(db, 'staff', s.id), {
-        failed_attempts: 0,
-        lockout_until: null
-      })
-      saveStaff(staff.map(m => m.id === s.id ? { ...m, failed_attempts: 0, lockout_until: undefined } : m))
-      notify(s.id, 'Your account has been unlocked by an administrator. You can now login.', 'account_unlock', 'Account Unlocked', s.id, 'message')
-      logAudit('ACCOUNT_UNLOCK', `${user?.name} unlocked account for ${s.name}`, user?.id || '', user?.name || '')
-      toast.success('Account unlocked for ' + s.name)
-    } catch (e: any) {
-      toast.error('Failed to unlock account.')
-    }
+    setConfirmAction({
+      isOpen: true,
+      action: async () => {
+        try {
+          await updateDoc(doc(db, 'staff', s.id), {
+            failed_attempts: 0,
+            lockout_until: null
+          })
+          saveStaff(staff.map(m => m.id === s.id ? { ...m, failed_attempts: 0, lockout_until: undefined } : m))
+          notify(s.id, 'Your account has been unlocked by an administrator. You can now login.', 'account_unlock', 'Account Unlocked', s.id, 'message')
+          logAudit('ACCOUNT_UNLOCK', `${user?.name} unlocked account for ${s.name}`, user?.id || '', user?.name || '')
+          toast.success('Account unlocked for ' + s.name)
+        } catch (e: any) {
+          toast.error('Failed to unlock account.')
+        }
+      },
+      message: `Unlock account for ${s.name}?`,
+      title: 'Unlock Account'
+    })
   }
 
   async function forceLogout(s: Staff) {
-    if (!window.confirm(`Force logout ${s.name}?`)) return
-    try {
-      // Set force_logout flag in Firestore
-      await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
+    setConfirmAction({
+      isOpen: true,
+      action: async () => {
+        try {
+          // Set force_logout flag in Firestore
+          await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
 
-      // Cleanup of local session mirror (if any existed) is handled by Firestore sync logic
+          // Cleanup of local session mirror (if any existed) is handled by Firestore sync logic
 
-      logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
-      toast.success(s.name + ' logged out')
-    } catch (e: any) {
-      toast.error('Failed to force logout.')
-    }
+          logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
+          toast.success(s.name + ' logged out')
+        } catch (e: any) {
+          toast.error('Failed to force logout.')
+        }
+      },
+      message: `Force logout ${s.name}?`,
+      title: 'Force Logout'
+    })
   }
 
   /* ── Export ── */
@@ -1082,6 +1120,15 @@ export default function StaffPage() {
           progress={importProgress}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        confirmStyle={confirmAction.confirmStyle}
+        onConfirm={confirmAction.action}
+        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+      />
     </div>
   )
 }

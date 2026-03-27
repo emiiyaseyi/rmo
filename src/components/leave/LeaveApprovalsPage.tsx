@@ -226,7 +226,7 @@ export default function LeaveApprovalsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {historyLeaves.slice(0, 100).map(leave => (
+                  {historyLeaves.sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.createdAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.createdAt || '').getTime()).slice(0, 100).map(leave => (
                     <tr key={leave.id}>
                       <td style={{ fontWeight: 600 }}>{leave.staffName}</td>
                       <td><span className="badge badge-blue">{leave.type}</span></td>

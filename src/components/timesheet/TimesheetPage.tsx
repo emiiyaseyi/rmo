@@ -535,9 +535,10 @@ export default function TimesheetPage() {
   const isOver = totalHours > weekCap
   const submitted = weekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
   const hasRejected = weekEntries.some(e => e.status === 'rejected')
+  const hasDraftEntries = weekEntries.some(e => e.status === 'draft')
   const canEdit = isAdmin || (!submitted && !isLocked)
   const isOwnSheet = effectiveUserId === user?.id
-  const canSubmit = isOwnSheet && !submitted && weekEntries.length > 0 && !isLocked
+  const canSubmit = isOwnSheet && hasDraftEntries && !isLocked
   const myTemplates = templates.filter(t => t.staffId === user?.id)
 
   // Handle keyboard navigation in search suggestions
@@ -794,7 +795,19 @@ export default function TimesheetPage() {
   }
 
   function downloadTemplate() {
-    exportCSV([{ Project: 'Project Alpha', Lead: 'John Doe', Description: 'Client meeting', Date: selectedWeek, Hours: 2, Category: 'Client Work' }], 'timesheet_template.csv')
+    const today = new Date().toISOString().slice(0, 10)
+    exportCSV([
+      {
+        'Staff Name': targetUser?.name || '',
+        Project: 'Project Alpha',
+        Lead: 'John Doe',
+        Description: 'Client meeting',
+        'Start Date': today,
+        'End Date': today,
+        Hours: 2,
+        Category: 'Client Work'
+      }
+    ], 'timesheet_template.csv')
   }
 
   async function handleExport(format: string) {
@@ -994,7 +1007,7 @@ export default function TimesheetPage() {
         </div>
       )}
       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Project, Lead, Description, Start Date, End Date, Hours, Category)
+        Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Staff Name, Project, Lead, Description, Start Date, End Date, Hours, Category)
       </div>
 
       {/* Entries table */}

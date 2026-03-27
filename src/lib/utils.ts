@@ -343,28 +343,33 @@ export function getActiveSessions(): any[] {
   return Object.values(sessions).filter((s: any) => new Date(s.lastSeen).getTime() > cutoff)
 }
 
-// Real Email Notification Sender
+// Real Email Notification Sender (Updated to use Resend with React Email templates)
 export async function sendEmailNotification(to: string, title: string, message: string, link?: string): Promise<void> {
-  let html = `<div style="font-family: sans-serif; padding: 20px;">
-    <h2>${title}</h2>
-    <p>${message}</p>`
-  
-  if (link) {
+  try {
     // Determine base URL depending on window / environment
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-    const fullLink = link.startsWith('http') ? link : `${baseUrl}${link}`
-    html += `<p><a href="${fullLink}" style="display:inline-block; padding: 10px 15px; background: #076C04; color: #fff; text-decoration: none; border-radius: 5px;">View Details</a></p>`
-  }
-  html += `</div>`
+    const fullLink = link ? (link.startsWith('http') ? link : `${baseUrl}${link}`) : undefined
 
-  try {
-    const res = await fetch('/api/email', {
+    // Use the new template-based email API
+    const res = await fetch('/api/email/send-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject: title, text: message, html })
+      body: JSON.stringify({
+        type: 'notification',
+        to,
+        title,
+        message,
+        actionUrl: fullLink,
+        actionText: 'View Details'
+      })
     })
+
     const data = await res.json()
-    if (!res.ok) console.warn('Email dispatch failed:', data.message || data.error)
+    if (!res.ok) {
+      console.warn('Email dispatch failed:', data.message || data.error)
+    } else {
+      console.log('Email sent successfully via Resend')
+    }
   } catch (err) {
     console.error('Failed to send email:', err)
   }

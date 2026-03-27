@@ -144,7 +144,7 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 500).map((l, i) => (
+                {filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 500).map((l, i) => (
                   <tr key={l.id || i}>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: 11, whiteSpace: 'nowrap', color: 'var(--text-3)' }}>
                       {l.timestamp ? new Date(l.timestamp).toLocaleString() : '—'}

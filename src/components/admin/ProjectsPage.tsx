@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF } from '../../lib/utils'
 import { Briefcase, Plus, Search, Download, Trash2, Edit2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../common/ConfirmModal'
 
 export default function ProjectsPage() {
   const { projects, saveProjects, entries, settings, saveSettings, logAudit } = useApp()
@@ -11,6 +12,7 @@ export default function ProjectsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState({ name: '', active: true, budget: 0 })
+  const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, projectId: string, projectName: string}>({isOpen: false, projectId: '', projectName: ''})
 
   const saveAllSettings = (updates: any) => {
     const newData = { ...settings, ...updates }
@@ -51,10 +53,14 @@ export default function ProjectsPage() {
   }
 
   const handleDelete = (id: string) => {
-    if (!window.confirm('Are you sure? This will not delete historical logs but will remove it from the active projects list.')) return
     const project = projects.find((p: any) => p.id === id)
-    saveProjects(projects.filter((p: any) => p.id !== id))
-    if (project) logAudit('project_delete', id, { name: project.name })
+    setConfirmDelete({isOpen: true, projectId: id, projectName: project?.name || ''})
+  }
+
+  const confirmDeleteProject = () => {
+    const project = projects.find((p: any) => p.id === confirmDelete.projectId)
+    saveProjects(projects.filter((p: any) => p.id !== confirmDelete.projectId))
+    if (project) logAudit('project_delete', confirmDelete.projectId, { name: project.name })
     toast.success('Project removed')
   }
 
@@ -91,12 +97,49 @@ export default function ProjectsPage() {
       if (!file) return
       const reader = new FileReader()
       reader.onload = (evt) => {
-        const text = evt.target?.result as string
-        const rows = text.split('\n').slice(1).filter(r => r.trim())
-        const newProjects = rows.map(r => ({ id: genId(), name: r.trim(), active: true, budget: 0 }))
-        saveProjects([...projects, ...newProjects])
-        logAudit('project_bulk_import', 'bulk', { count: newProjects.length, projects: newProjects.map(p => p.name) })
-        toast.success(`Imported ${newProjects.length} projects`)
+        try {
+          const text = evt.target?.result as string
+          const lines = text.split('\n').filter(r => r.trim())
+          if (lines.length === 0) {
+            toast.error('Empty CSV file')
+            return
+          }
+
+          // Parse header row
+          const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+
+          // Parse data rows
+          const newProjects = lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
+            const projectName = values[headers.indexOf('ProjectName')] || values[headers.indexOf('Project Name')] || values[headers.indexOf('Project')] || values[0]
+
+            if (!projectName || !projectName.trim()) return null
+
+            // Check for duplicates
+            if (projects.some((p: any) => p.name.toLowerCase() === projectName.toLowerCase())) {
+              return null
+            }
+
+            return {
+              id: genId(),
+              name: projectName.trim(),
+              active: true,
+              budget: 0
+            }
+          }).filter(Boolean)
+
+          if (newProjects.length === 0) {
+            toast.error('No valid projects found or all are duplicates')
+            return
+          }
+
+          saveProjects([...projects, ...newProjects])
+          logAudit('project_bulk_import', 'bulk', { count: newProjects.length, projects: newProjects.map((p: any) => p.name) })
+          toast.success(`Imported ${newProjects.length} projects`)
+        } catch (error) {
+          toast.error('Failed to parse CSV file')
+          console.error('Import error:', error)
+        }
       }
       reader.readAsText(file)
     }
@@ -247,6 +290,16 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmDelete.isOpen}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${confirmDelete.projectName}"?\n\nThis will not delete historical logs but will remove it from the active projects list.`}
+        confirmText="Delete"
+        confirmStyle="danger"
+        onConfirm={confirmDeleteProject}
+        onCancel={() => setConfirmDelete({isOpen: false, projectId: '', projectName: ''})}
+      />
     </div>
   )
 }

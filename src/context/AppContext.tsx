@@ -284,6 +284,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog))
         .slice(0, 2000))
     }))
+    // 11. Projects
+    unsubs.push(onSnapshot(collection(db, 'projects'), (snap) => {
+      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }))
 
     return () => unsubs.forEach(u => u())
   }, [user?.id])
@@ -1159,8 +1163,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLate
     }
 
-    // Update entries status
-    const updatedEntries = entries.map(e => (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') ? { ...e, status: 'submitted' as const, submittedAt: now.toISOString() } : e)
+    // Update entries status and ensure leadId is set
+    const updatedEntries = entries.map(e => {
+      if (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') {
+        // Inherit leadId from staff member if not set
+        const leadId = e.leadId || staffMember.leadId || ''
+        return { ...e, status: 'submitted' as const, submittedAt: now.toISOString(), leadId }
+      }
+      return e
+    })
     saveEntries(updatedEntries)
 
     // Save submission record

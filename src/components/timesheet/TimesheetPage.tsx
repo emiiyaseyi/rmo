@@ -463,9 +463,9 @@ function NoWorkConfirmationModal({ onConfirm, onClose }: { onConfirm: () => void
 /*  Main Page                                                     */
 /* ────────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
-  const { 
-    user, entries, saveEntries, staff, projects, settings, 
-    notify, awardPoints, grantBadge, templates, saveTemplates, 
+  const {
+    user, entries, saveEntries, staff, projects, settings,
+    notify, awardPoints, grantBadge, templates, saveTemplates,
     calculateWeekCap, submitWeekEntries, prefillTemplate, setPrefillTemplate,
     weekLocks
   } = useApp()
@@ -482,6 +482,8 @@ export default function TimesheetPage() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   useEffect(() => {
     if (prefillTemplate) {
@@ -527,17 +529,40 @@ export default function TimesheetPage() {
   )
 
   // Only show entries for the effective user (staff privacy enforced)
-  const weekEntries = useMemo(() =>
-    entries.filter(e => e.staffId === effectiveUserId && e.weekKey === selectedWeek && !e.deleted)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+  const weekEntries = useMemo(() => {
+    let filtered = entries.filter(e => e.staffId === effectiveUserId && e.weekKey === selectedWeek && !e.deleted)
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(e => e.status === statusFilter)
+    }
+
+    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [entries, effectiveUserId, selectedWeek, statusFilter])
+
+  // Get all entries for status counts (unfiltered)
+  const allWeekEntries = useMemo(() =>
+    entries.filter(e => e.staffId === effectiveUserId && e.weekKey === selectedWeek && !e.deleted),
     [entries, effectiveUserId, selectedWeek]
   )
 
-  const totalHours = weekEntries.reduce((s, e) => s + (e.hours || 0), 0)
+  // Status counts
+  const statusCounts = useMemo(() => ({
+    all: allWeekEntries.length,
+    draft: allWeekEntries.filter(e => e.status === 'draft').length,
+    submitted: allWeekEntries.filter(e => e.status === 'submitted').length,
+    approved: allWeekEntries.filter(e => e.status === 'approved').length,
+    rejected: allWeekEntries.filter(e => e.status === 'rejected').length,
+    resubmitted: allWeekEntries.filter(e => e.status === 'resubmitted').length,
+    pending_clarification: allWeekEntries.filter(e => e.status === 'pending_clarification').length,
+    pending_2nd_approval: allWeekEntries.filter(e => e.status === 'pending_2nd_approval').length,
+  }), [allWeekEntries])
+
+  const totalHours = allWeekEntries.reduce((s, e) => s + (e.hours || 0), 0)
   const isOver = totalHours > weekCap
-  const submitted = weekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
-  const hasRejected = weekEntries.some(e => e.status === 'rejected')
-  const hasDraftEntries = weekEntries.some(e => e.status === 'draft')
+  const submitted = allWeekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
+  const hasRejected = allWeekEntries.some(e => e.status === 'rejected')
+  const hasDraftEntries = allWeekEntries.some(e => e.status === 'draft')
   const canEdit = isAdmin || (!submitted && !isLocked)
   const isOwnSheet = effectiveUserId === user?.id
   // Allow adding new entries even after submission (unless week is locked)
@@ -1043,6 +1068,50 @@ export default function TimesheetPage() {
         Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Staff Name, Project, Lead, Description, Start Date, End Date, Hours, Category)
       </div>
 
+      {/* Status Filter Tabs */}
+      {allWeekEntries.length > 0 && (
+        <div className="tabs" style={{ marginBottom: 0, borderBottom: '1px solid var(--border)' }}>
+          <button className={`tab ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => setStatusFilter('all')}>
+            All ({statusCounts.all})
+          </button>
+          {statusCounts.draft > 0 && (
+            <button className={`tab ${statusFilter === 'draft' ? 'active' : ''}`} onClick={() => setStatusFilter('draft')}>
+              Draft ({statusCounts.draft})
+            </button>
+          )}
+          {statusCounts.submitted > 0 && (
+            <button className={`tab ${statusFilter === 'submitted' ? 'active' : ''}`} onClick={() => setStatusFilter('submitted')}>
+              Submitted ({statusCounts.submitted})
+            </button>
+          )}
+          {statusCounts.resubmitted > 0 && (
+            <button className={`tab ${statusFilter === 'resubmitted' ? 'active' : ''}`} onClick={() => setStatusFilter('resubmitted')}>
+              Resubmitted ({statusCounts.resubmitted})
+            </button>
+          )}
+          {statusCounts.approved > 0 && (
+            <button className={`tab ${statusFilter === 'approved' ? 'active' : ''}`} onClick={() => setStatusFilter('approved')}>
+              ✅ Approved ({statusCounts.approved})
+            </button>
+          )}
+          {statusCounts.rejected > 0 && (
+            <button className={`tab ${statusFilter === 'rejected' ? 'active' : ''}`} onClick={() => setStatusFilter('rejected')}>
+              ❌ Rejected ({statusCounts.rejected})
+            </button>
+          )}
+          {statusCounts.pending_clarification > 0 && (
+            <button className={`tab ${statusFilter === 'pending_clarification' ? 'active' : ''}`} onClick={() => setStatusFilter('pending_clarification')}>
+              Clarification ({statusCounts.pending_clarification})
+            </button>
+          )}
+          {statusCounts.pending_2nd_approval > 0 && (
+            <button className={`tab ${statusFilter === 'pending_2nd_approval' ? 'active' : ''}`} onClick={() => setStatusFilter('pending_2nd_approval')}>
+              2nd Level ({statusCounts.pending_2nd_approval})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Entries table */}
       {weekEntries.length === 0 ? (
         <div className="empty-state card">
@@ -1056,6 +1125,7 @@ export default function TimesheetPage() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 40 }}></th>
                   <th>Dates</th><th>Project</th><th>Lead</th><th>Description</th>
                   <th>Category</th><th>Hours</th><th>Status</th>
                   {isAdmin && <th>Override</th>}
@@ -1063,54 +1133,159 @@ export default function TimesheetPage() {
                 </tr>
               </thead>
               <tbody>
-                {weekEntries.map(e => (
-                  <tr key={e.id} style={{ background: e.overriddenBy ? 'rgba(245,158,11,0.04)' : '' }}>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {fmtDate(e.startDate || e.date)}
-                      {e.endDate && e.endDate !== (e.startDate || e.date) && (
-                        <div style={{ fontSize: 10, color: 'var(--text-3)' }}>→ {fmtDate(e.endDate)}</div>
+                {weekEntries.map(e => {
+                  const isExpanded = expandedEntryId === e.id
+                  const hasHistory = e.approvalHistory && e.approvalHistory.length > 0
+                  const hasFeedback = e.rejectionReason || e.clarificationNote || e.correctionNote || e.resubmitNote || hasHistory
+
+                  return (
+                    <React.Fragment key={e.id}>
+                      <tr style={{ background: e.overriddenBy ? 'rgba(245,158,11,0.04)' : '' }}>
+                        <td>
+                          {hasFeedback && (
+                            <button
+                              className="btn btn-icon btn-secondary btn-sm"
+                              onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}
+                              title="View feedback & approval history"
+                              style={{ padding: '2px 6px' }}
+                            >
+                              {isExpanded ? '▼' : '▶'}
+                            </button>
+                          )}
+                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                          {fmtDate(e.startDate || e.date)}
+                          {e.endDate && e.endDate !== (e.startDate || e.date) && (
+                            <div style={{ fontSize: 10, color: 'var(--text-3)' }}>→ {fmtDate(e.endDate)}</div>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 600, maxWidth: 140 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
+                          {e.overriddenBy && <div style={{ fontSize: 10, color: 'var(--warning)' }}>⚡ Overridden by {e.overriddenBy}</div>}
+                        </td>
+                        <td style={{ color: 'var(--text-3)' }}>{e.lead || '—'}</td>
+                        <td style={{ maxWidth: 200 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.description}>{e.description}</div>
+                        </td>
+                        <td><span className="badge badge-blue">{e.category}</span></td>
+                        <td style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{e.hours}h</td>
+                        <td>
+                          <span className={`badge badge-${statusBadge[e.status] || 'gray'}`}>{e.status}</span>
+                          {hasFeedback && (
+                            <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 2, cursor: 'pointer' }} onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}>
+                              💬 View feedback
+                            </div>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setOverrideEntry(e)}>Override</button>
+                          </td>
+                        )}
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {e.status === 'draft' && canEdit && !isLocked && (
+                              <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditEntry(e); setShowForm(true) }}><Edit2 size={12} /></button>
+                            )}
+                            <button className="btn btn-icon btn-secondary btn-sm" title="Duplicate" onClick={() => duplicateEntry(e)}><Copy size={12} /></button>
+                            {e.status === 'rejected' && !viewingStaffId && (
+                              <button className="btn btn-success btn-sm" onClick={() => setResubmitEntry(e)}>Resubmit</button>
+                            )}
+                            {e.status === 'pending_clarification' && !viewingStaffId && (
+                              <button className="btn btn-primary btn-sm" onClick={() => setClarifyEntry(e)}>Explain</button>
+                            )}
+                            {(e.status === 'draft' || isAdmin) && !isLocked && (
+                              <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => deleteEntry(e.id)}><Trash2 size={12} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable details row */}
+                      {isExpanded && hasFeedback && (
+                        <tr>
+                          <td colSpan={isAdmin ? 10 : 9} style={{ padding: 0, background: 'var(--bg-elevated)' }}>
+                            <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {/* Rejection Reason */}
+                                {e.rejectionReason && (
+                                  <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', borderRadius: 8, padding: '12px 16px' }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', marginBottom: 4, textTransform: 'uppercase' }}>Rejection Reason</div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-1)' }}>{e.rejectionReason}</div>
+                                    {e.rejectedBy && (
+                                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                                        By: {staff.find(s => s.id === e.rejectedBy)?.name || e.rejectedBy} • {e.rejectedAt && fmtDate(e.rejectedAt)}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Clarification Request */}
+                                {e.clarificationNote && (
+                                  <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent)', borderRadius: 8, padding: '12px 16px' }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 4, textTransform: 'uppercase' }}>Clarification Requested</div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-1)' }}>{e.clarificationNote}</div>
+                                  </div>
+                                )}
+
+                                {/* Correction Note */}
+                                {e.correctionNote && (
+                                  <div style={{ background: 'var(--warning-bg)', border: '1px solid var(--warning)', borderRadius: 8, padding: '12px 16px' }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--warning)', marginBottom: 4, textTransform: 'uppercase' }}>Correction Applied</div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-1)' }}>{e.correctionNote}</div>
+                                    {e.corrected && (
+                                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                                        Hours were adjusted during approval
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Resubmit Note */}
+                                {e.resubmitNote && (
+                                  <div style={{ background: 'var(--success-bg)', border: '1px solid var(--success)', borderRadius: 8, padding: '12px 16px' }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)', marginBottom: 4, textTransform: 'uppercase' }}>Your Response</div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-1)' }}>{e.resubmitNote}</div>
+                                  </div>
+                                )}
+
+                                {/* Approval History */}
+                                {hasHistory && (
+                                  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px' }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase' }}>Approval History</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                      {e.approvalHistory!.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((h, idx) => (
+                                        <div key={h.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px', background: 'var(--bg-elevated)', borderRadius: 6 }}>
+                                          <div style={{ fontSize: 18, flexShrink: 0 }}>
+                                            {h.action === 'approved' ? '✅' : h.action === 'rejected' ? '❌' : h.action === 'clarification' ? '❓' : h.action === 'correction' ? '✏️' : '📋'}
+                                          </div>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                              {h.action === 'approved' ? 'Approved' : h.action === 'rejected' ? 'Rejected' : h.action === 'clarification' ? 'Clarification Requested' : h.action === 'correction' ? 'Approved with Correction' : h.action}
+                                              {h.correctedHours !== undefined && ` (${h.correctedHours}h)`}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                                              By: <strong>{h.reviewerName}</strong> ({h.reviewerRole}) • {fmtDate(h.timestamp)}
+                                            </div>
+                                            {h.note && (
+                                              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4, fontStyle: 'italic' }}>
+                                                "{h.note}"
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td style={{ fontWeight: 600, maxWidth: 140 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
-                      {e.overriddenBy && <div style={{ fontSize: 10, color: 'var(--warning)' }}>⚡ Overridden by {e.overriddenBy}</div>}
-                    </td>
-                    <td style={{ color: 'var(--text-3)' }}>{e.lead || '—'}</td>
-                    <td style={{ maxWidth: 200 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.description}>{e.description}</div>
-                    </td>
-                    <td><span className="badge badge-blue">{e.category}</span></td>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{e.hours}h</td>
-                    <td>
-                      <span className={`badge badge-${statusBadge[e.status] || 'gray'}`}>{e.status}</span>
-                      {e.status === 'rejected' && e.rejectionReason && (
-                        <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2 }} title={e.rejectionReason}>⚠️ {e.rejectionReason.slice(0, 30)}{e.rejectionReason.length > 30 ? '…' : ''}</div>
-                      )}
-                    </td>
-                    {isAdmin && (
-                      <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setOverrideEntry(e)}>Override</button>
-                      </td>
-                    )}
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {e.status === 'draft' && canEdit && !isLocked && (
-                          <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditEntry(e); setShowForm(true) }}><Edit2 size={12} /></button>
-                        )}
-                        <button className="btn btn-icon btn-secondary btn-sm" title="Duplicate" onClick={() => duplicateEntry(e)}><Copy size={12} /></button>
-                        {e.status === 'rejected' && !viewingStaffId && (
-                          <button className="btn btn-success btn-sm" onClick={() => setResubmitEntry(e)}>Resubmit</button>
-                        )}
-                        {e.status === 'pending_clarification' && !viewingStaffId && (
-                          <button className="btn btn-primary btn-sm" onClick={() => setClarifyEntry(e)}>Explain</button>
-                        )}
-                        {(e.status === 'draft' || isAdmin) && !isLocked && (
-                          <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => deleteEntry(e.id)}><Trash2 size={12} /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </React.Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>

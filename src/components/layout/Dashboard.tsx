@@ -162,7 +162,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, unreadCount, settings, leaves } = useApp()
+  const { user, entries, staff, pendingApprovals, unreadCount, settings, leaves, approvalDelegations } = useApp()
   const thisWeek = getWeekKey()
 
   const myEntries = entries.filter(e => e.staffId === user?.id && e.weekKey === thisWeek && !e.deleted)
@@ -170,7 +170,16 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const submitted = myEntries.some(e => e.status === 'submitted' || e.status === 'approved' || e.status === 'resubmitted')
   const pendingCount = pendingApprovals().length
 
-  const isAdmin = ['admin', 'team_lead'].includes(user?.role || '')
+  // Check if user has active delegations (delegated TO them)
+  const now = new Date()
+  const hasActiveDelegation = approvalDelegations.some(d =>
+    d.delegateId === user?.id &&
+    d.isActive &&
+    new Date(d.startDate) <= now &&
+    new Date(d.endDate) >= now
+  )
+
+  const isAdmin = ['admin', 'team_lead'].includes(user?.role || '') || hasActiveDelegation
   const isTeamLead = user?.role === 'team_lead'
   const isHigherAdmin = ['admin'].includes(user?.role || '')
 

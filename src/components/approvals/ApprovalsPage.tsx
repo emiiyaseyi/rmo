@@ -131,8 +131,9 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
     startDate: '',
     endDate: '',
     reason: '',
-    scope: 'all' as 'all' | 'project',
-    projectId: ''
+    scope: 'all' as 'all' | 'project' | 'projects',
+    projectId: '',
+    projectIds: [] as string[]
   })
 
   return (
@@ -153,11 +154,12 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
 
           <div className="form-group">
             <label className="form-label">Delegation Scope *</label>
-            <select className="form-select" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value as 'all' | 'project', projectId: '' })}>
+            <select className="form-select" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value as 'all' | 'project' | 'projects', projectId: '', projectIds: [] })}>
               <option value="all">All Approvals</option>
-              <option value="project">Specific Project Only</option>
+              <option value="project">Single Project Only</option>
+              <option value="projects">Multiple Projects</option>
             </select>
-            <span className="form-hint">Choose whether to delegate all your approvals or just a specific project</span>
+            <span className="form-hint">Choose whether to delegate all your approvals or specific projects</span>
           </div>
 
           {form.scope === 'project' && (
@@ -167,6 +169,32 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
                 <option value="">Select a project...</option>
                 {projects.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+            </div>
+          )}
+
+          {form.scope === 'projects' && (
+            <div className="form-group">
+              <label className="form-label">Projects/Tasks *</label>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '12px', maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-card)' }}>
+                {projects.filter(p => p.active).map(p => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                    <input
+                      type="checkbox"
+                      id={`modal-project-${p.id}`}
+                      checked={form.projectIds.includes(p.id)}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setForm({ ...form, projectIds: [...form.projectIds, p.id] })
+                        } else {
+                          setForm({ ...form, projectIds: form.projectIds.filter(id => id !== p.id) })
+                        }
+                      }}
+                    />
+                    <label htmlFor={`modal-project-${p.id}`} style={{ fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>{p.name}</label>
+                  </div>
+                ))}
+              </div>
+              <span className="form-hint">{form.projectIds.length} project(s) selected</span>
             </div>
           )}
 
@@ -189,7 +217,7 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button
             className="btn btn-primary"
-            disabled={!form.delegateId || !form.startDate || !form.endDate || (form.scope === 'project' && !form.projectId)}
+            disabled={!form.delegateId || !form.startDate || !form.endDate || (form.scope === 'project' && !form.projectId) || (form.scope === 'projects' && form.projectIds.length === 0)}
             onClick={() => onSave(form)}
           >
             Create Delegation
@@ -500,9 +528,18 @@ export default function ApprovalsPage() {
     if (!delegate) return
 
     let projectName = undefined
+    let projectNames: string[] = []
+
     if (form.scope === 'project' && form.projectId && projects) {
       const project = projects.find((p: any) => p.id === form.projectId)
       projectName = project?.name
+    }
+
+    if (form.scope === 'projects' && form.projectIds && form.projectIds.length > 0 && projects) {
+      projectNames = form.projectIds.map(id => {
+        const project = projects.find((p: any) => p.id === id)
+        return project?.name || ''
+      }).filter(Boolean)
     }
 
     const delegation: ApprovalDelegation = {
@@ -518,11 +555,20 @@ export default function ApprovalsPage() {
       reason: form.reason,
       scope: form.scope || 'all',
       projectId: form.projectId,
-      projectName
+      projectName,
+      projectIds: form.scope === 'projects' ? form.projectIds : undefined,
+      projectNames: form.scope === 'projects' ? projectNames : undefined
     }
 
     saveApprovalDelegations([...approvalDelegations, delegation])
-    const scopeText = form.scope === 'project' && projectName ? ` for ${projectName}` : ''
+
+    let scopeText = ''
+    if (form.scope === 'project' && projectName) {
+      scopeText = ` for ${projectName}`
+    } else if (form.scope === 'projects' && projectNames.length > 0) {
+      scopeText = ` for ${projectNames.length} project${projectNames.length > 1 ? 's' : ''}: ${projectNames.join(', ')}`
+    }
+
     notify(form.delegateId, `📋 ${user.name} has delegated approval duties${scopeText} to you from ${form.startDate} to ${form.endDate}`, 'delegation_assigned', 'Delegation Assigned', delegation.id, 'message')
     toast.success('Delegation created')
     setShowDelegationModal(false)
@@ -544,7 +590,7 @@ export default function ApprovalsPage() {
   }
 
   const displayPending = getFilteredPending()
-  const taskOwners = staff.filter(s => ['team_lead', 'admin'].includes(s.role) && s.id !== user?.id)
+  const taskOwners = staff.filter(s => s.status === 'active' && !s.suspended && s.id !== user?.id)
 
   function handleBulkApprove() {
     if (selectedIds.length === 0) return
@@ -993,6 +1039,13 @@ export default function ApprovalsPage() {
                             <td style={{ fontSize: 12 }}>
                               {d.scope === 'project' && d.projectName ? (
                                 <span className="badge badge-blue">{d.projectName}</span>
+                              ) : d.scope === 'projects' && d.projectNames && d.projectNames.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <span className="badge badge-blue">{d.projectNames.length} projects</span>
+                                  <span style={{ fontSize: 10, color: 'var(--text-3)' }} title={d.projectNames.join(', ')}>
+                                    {d.projectNames.slice(0, 2).join(', ')}{d.projectNames.length > 2 ? ` +${d.projectNames.length - 2}` : ''}
+                                  </span>
+                                </div>
                               ) : (
                                 <span style={{ color: 'var(--text-3)' }}>All Approvals</span>
                               )}

@@ -382,7 +382,9 @@ export interface ApprovalDelegation {
     reason?: string;
     projectId?: string;
     projectName?: string;
-    scope?: 'all' | 'project'; // 'all' for all approvals, 'project' for specific project only
+    projectIds?: string[]; // Support for multiple projects
+    projectNames?: string[]; // Support for multiple project names
+    scope?: 'all' | 'project' | 'projects'; // 'all' for all approvals, 'project' for single project (legacy), 'projects' for multiple projects
 }
 
 export interface Reward {

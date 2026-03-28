@@ -875,6 +875,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function canApproveTimesheets() {
     if (!user) return false
     if (['admin', 'team_lead'].includes(user.role)) return true
+
+    // Check if user has active delegations (delegated TO them)
+    const now = new Date()
+    const hasActiveDelegation = approvalDelegations.some(d =>
+      d.delegateId === user.id &&
+      d.isActive &&
+      new Date(d.startDate) <= now &&
+      new Date(d.endDate) >= now
+    )
+    if (hasActiveDelegation) return true
+
     if (pendingApprovals().length > 0) return true
     const normalizedUserName = (user.name || '').trim().toLowerCase()
     return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))

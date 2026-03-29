@@ -293,7 +293,7 @@ export default function DelegationPage() {
                             </span>
                           </td>
                           <td>
-                            {isActive && (
+                            {(isActive || isFuture) && (
                               <button className="btn btn-danger btn-sm" onClick={() => revoke(d.id)}>Revoke</button>
                             )}
                           </td>

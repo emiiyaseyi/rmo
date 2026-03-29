@@ -637,6 +637,66 @@ export default function ApprovalsPage() {
     })
   }
 
+  function handleBulkReject() {
+    if (selectedIds.length === 0) return
+
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const now = new Date().toISOString()
+        const rejectableStatuses = new Set(['submitted', 'resubmitted', 'draft', 'pending_clarification'])
+        const updatedEntries = entries.map(e => {
+          if (selectedIds.includes(e.id) && rejectableStatuses.has(e.status)) {
+            const history: ApprovalHistoryEntry = {
+              id: genId(),
+              reviewerId: user?.id || '',
+              reviewerName: user?.name || '',
+              reviewerRole: user?.role || '',
+              action: 'rejected',
+              timestamp: now,
+              note: 'Bulk rejected'
+            }
+            notify(e.staffId, `Your timesheet for ${e.project} was rejected`, 'rejection', 'Timesheet Rejected', e.id, 'entry')
+            return {
+              ...e,
+              status: 'rejected',
+              rejectedBy: user?.id,
+              rejectedAt: now,
+              rejectionReason: 'Bulk rejected',
+              approvalHistory: [...(e.approvalHistory || []), history]
+            }
+          }
+          return e
+        })
+
+        saveEntries(updatedEntries as Entry[])
+        setSelectedIds([])
+        toast.success(`Rejected ${selectedIds.length} entries`)
+      },
+      message: `Reject ${selectedIds.length} selected entries? Staff will be notified.`,
+      title: 'Bulk Reject Timesheets'
+    })
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.length === 0) return
+
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const now = new Date().toISOString()
+        const updated = entries.map(e =>
+          selectedIds.includes(e.id) ? { ...e, deleted: true, deletedAt: now } : e
+        )
+        saveEntries(updated)
+        setSelectedIds([])
+        toast.success(`Deleted ${selectedIds.length} entries`)
+      },
+      message: `Permanently delete ${selectedIds.length} selected entries?`,
+      title: 'Bulk Delete Entries'
+    })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <PageHeader
@@ -644,11 +704,21 @@ export default function ApprovalsPage() {
         icon="✅"
         subtitle={`${displayPending.length} entries pending your review`}
         actions={
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {selectedIds.length > 0 && (
-              <button className="btn btn-success" onClick={handleBulkApprove}>
-                Approve Selected ({selectedIds.length})
-              </button>
+              <>
+                <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{selectedIds.length} selected</span>
+                <button className="btn btn-success btn-sm" onClick={handleBulkApprove}>
+                  Approve Selected
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={handleBulkReject}>
+                  Reject Selected
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleBulkDelete}>
+                  Delete Selected
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds([])}>Clear</button>
+              </>
             )}
             <div className="btn-secondary btn" style={{ opacity: 0.7, cursor: 'default' }}>
               Pending: {displayPending.length}
@@ -1059,7 +1129,7 @@ export default function ApprovalsPage() {
                               </span>
                             </td>
                             <td>
-                              {isActive && (
+                              {(isActive || isFuture) && (
                                 <button className="btn btn-danger btn-sm" onClick={() => revokeDelegation(d.id)}>
                                   Revoke
                                 </button>

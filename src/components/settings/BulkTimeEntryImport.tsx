@@ -68,15 +68,26 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
             const warnings: string[] = []
 
             const email = (r['Staff Email'] || r['Email'] || r['email'] || '').toLowerCase().trim()
-            const matchedStaff = staff.find(s => s.email?.toLowerCase() === email)
-            if (!email) errors.push('Missing staff email')
-            else if (!matchedStaff) errors.push(`No staff found: ${email}`)
+            const staffName = (r['Staff Name'] || r['staff_name'] || r['Name'] || r['name'] || '').trim()
+            const matchedStaff = email
+              ? staff.find(s => s.email?.toLowerCase() === email)
+              : staff.find(s => s.name?.toLowerCase() === staffName.toLowerCase())
+            if (!email && !staffName) errors.push('Missing staff email or name')
+            else if (!matchedStaff) errors.push(`No staff found: ${email || staffName}`)
 
             const project = (r['Project'] || r['project'] || '').trim()
             if (!project) errors.push('Missing project')
 
             const rawDate = r['Date'] || r['date'] || ''
-            const dateStr = rawDate ? String(rawDate).slice(0, 10) : ''
+            let dateStr = ''
+            if (rawDate instanceof Date) {
+              const d = rawDate
+              dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+            } else if (rawDate) {
+              const s = String(rawDate).trim()
+              // Handle YYYY-MM-DD or similar ISO-like formats
+              dateStr = s.slice(0, 10)
+            }
             if (!dateStr) errors.push('Missing date')
             else if (isNaN(new Date(dateStr).getTime())) errors.push('Invalid date: ' + rawDate)
 
@@ -230,7 +241,7 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>📄 Required columns</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-                    <strong>Required:</strong> Staff Email, Project, Date (YYYY-MM-DD), Hours
+                    <strong>Required:</strong> Staff Email (or Staff Name), Project, Date (YYYY-MM-DD), Hours
                     <br />
                     <strong>Optional:</strong> Lead, Description, Category, Status (draft / submitted / approved / rejected)
                   </div>
@@ -262,7 +273,7 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
               <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent)', borderRadius: 10, padding: 14 }}>
                 <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>💡 Tips</div>
                 <ul style={{ fontSize: 12, color: 'var(--text-2)', paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <li>Staff are matched by their <strong>email address</strong> — ensure emails match exactly</li>
+                  <li>Staff are matched by <strong>email address</strong> (preferred) or <strong>staff name</strong> — use "Staff Email" or "Staff Name" column</li>
                   <li>Dates must be in <strong>YYYY-MM-DD</strong> format (e.g. 2025-01-13)</li>
                   <li>Set Status to <strong>approved</strong> to populate analytics immediately</li>
                   <li>Set Status to <strong>submitted</strong> for entries that still need team lead approval</li>

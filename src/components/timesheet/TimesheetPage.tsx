@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save } from 'lucide-react'
+import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save, CheckSquare, Square } from 'lucide-react'
 import { Entry, Staff } from '../../types'
 import PageHeader from '../common/PageHeader'
 import ConfirmModal from '../common/ConfirmModal'
@@ -484,6 +484,7 @@ export default function TimesheetPage() {
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
 
   useEffect(() => {
     if (prefillTemplate) {
@@ -709,6 +710,22 @@ export default function TimesheetPage() {
       },
       message: 'Delete this entry? Restorable within 30 days.',
       title: 'Delete Entry'
+    })
+  }
+
+  function bulkDeleteEntries() {
+    if (selectedEntryIds.length === 0) return
+    setConfirmAction({
+      isOpen: true,
+      action: () => {
+        const now = new Date().toISOString()
+        saveEntries(entries.map(e => selectedEntryIds.includes(e.id) ? { ...e, deleted: true, deletedAt: now } : e))
+        logAudit('BULK_DELETE_ENTRIES', `${user?.name} bulk deleted ${selectedEntryIds.length} entries`, user?.id || '', user?.name || '')
+        toast.success(`${selectedEntryIds.length} entries deleted`)
+        setSelectedEntryIds([])
+      },
+      message: `Delete ${selectedEntryIds.length} selected entries? Restorable within 30 days.`,
+      title: 'Bulk Delete Entries'
     })
   }
 
@@ -1121,11 +1138,34 @@ export default function TimesheetPage() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {selectedEntryIds.length > 0 && (
+            <div style={{ padding: '10px 16px', background: 'var(--accent-subtle)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedEntryIds.length} selected</span>
+              <button className="btn btn-danger btn-sm" onClick={bulkDeleteEntries}>
+                <Trash2 size={12} /> Delete Selected
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelectedEntryIds([])}>Clear</button>
+            </div>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}></th>
+                  <th style={{ width: 40 }}>
+                    <button
+                      className="btn btn-icon btn-secondary btn-sm"
+                      onClick={() => {
+                        const deletable = weekEntries.filter(e => e.status === 'draft' || isAdmin).map(e => e.id)
+                        if (selectedEntryIds.length === deletable.length) setSelectedEntryIds([])
+                        else setSelectedEntryIds(deletable)
+                      }}
+                      title="Select all deletable entries"
+                    >
+                      {selectedEntryIds.length > 0 && selectedEntryIds.length === weekEntries.filter(e => e.status === 'draft' || isAdmin).length
+                        ? <CheckSquare size={14} />
+                        : <Square size={14} />}
+                    </button>
+                  </th>
                   <th>Dates</th><th>Project</th><th>Lead</th><th>Description</th>
                   <th>Category</th><th>Hours</th><th>Status</th>
                   {isAdmin && <th>Override</th>}
@@ -1142,16 +1182,28 @@ export default function TimesheetPage() {
                     <React.Fragment key={e.id}>
                       <tr style={{ background: e.overriddenBy ? 'rgba(245,158,11,0.04)' : '' }}>
                         <td>
-                          {hasFeedback && (
-                            <button
-                              className="btn btn-icon btn-secondary btn-sm"
-                              onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}
-                              title="View feedback & approval history"
-                              style={{ padding: '2px 6px' }}
-                            >
-                              {isExpanded ? '▼' : '▶'}
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {(e.status === 'draft' || isAdmin) && !isLocked && (
+                              <input
+                                type="checkbox"
+                                checked={selectedEntryIds.includes(e.id)}
+                                onChange={() => {
+                                  if (selectedEntryIds.includes(e.id)) setSelectedEntryIds(selectedEntryIds.filter(id => id !== e.id))
+                                  else setSelectedEntryIds([...selectedEntryIds, e.id])
+                                }}
+                              />
+                            )}
+                            {hasFeedback && (
+                              <button
+                                className="btn btn-icon btn-secondary btn-sm"
+                                onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}
+                                title="View feedback & approval history"
+                                style={{ padding: '2px 6px' }}
+                              >
+                                {isExpanded ? '▼' : '▶'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td style={{ fontFamily: 'var(--mono)', fontSize: 12, whiteSpace: 'nowrap' }}>
                           {fmtDate(e.startDate || e.date)}

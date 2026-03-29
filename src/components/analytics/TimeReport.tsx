@@ -5,6 +5,7 @@ import { exportCSV, exportPDF, fmtDate } from '../../lib/utils'
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import BulkTimeEntryImport from '../settings/BulkTimeEntryImport'
 
 interface TimeReportProps {
   entries: Entry[];
@@ -18,6 +19,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
   const [deptFilter, setDeptFilter] = useState('')
   const [projFilter, setProjFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [showImport, setShowImport] = useState(false)
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort()
   const projectNames = projects.map(p => p.name).sort()
@@ -83,10 +85,12 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
 
   return (
     <div className="flex flex-col gap-4">
+      {showImport && <BulkTimeEntryImport onClose={() => setShowImport(false)} />}
       <div className="card flex flex-col gap-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <h3 className="font-bold text-1">Detailed Time Entries</h3>
           <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" onClick={() => setShowImport(true)}>📥 Bulk Import</button>
             <button className="btn btn-secondary btn-sm" onClick={exportXLSX}>📁 XLSX</button>
             <button className="btn btn-secondary btn-sm" onClick={handleExportCSV}>📄 CSV</button>
             <button className="btn btn-secondary btn-sm" onClick={handleExportPDF}>📕 PDF</button>

@@ -22,7 +22,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
   const [showImport, setShowImport] = useState(false)
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort()
-  const projectNames = projects.map(p => p.name).sort()
+  const projectNames = Array.from(new Set(projects.map(p => p.name))).sort()
 
   const filtered = useMemo(() => {
     return entries.filter(e => {

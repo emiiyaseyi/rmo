@@ -59,7 +59,7 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
           if (!content) return
           const wb = XLSX.read(content, { type: 'binary', cellDates: true })
           const ws = wb.Sheets[wb.SheetNames[0]]
-          const raw = XLSX.utils.sheet_to_json(ws, { raw: false }) as any[]
+          const raw = XLSX.utils.sheet_to_json(ws) as any[]
           if (raw.length === 0) { toast.error('File is empty'); return }
 
           const now = new Date().toISOString()
@@ -108,7 +108,8 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
             )
             if (isDuplicate) warnings.push('Possible duplicate entry')
 
-            const weekKey = dateStr ? getWeekKey(new Date(dateStr)) : ''
+            const parsedDate = dateStr ? new Date(dateStr) : null
+            const weekKey = parsedDate && !isNaN(parsedDate.getTime()) ? getWeekKey(parsedDate) : ''
 
             return {
               _row: i + 2,

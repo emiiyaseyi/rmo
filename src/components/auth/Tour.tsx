@@ -8,7 +8,6 @@ const STEPS = [
   { title: 'Timesheet', desc: 'Log your hours here. Add entries with project, description, hours and category. Once you\'re done for the week, hit "Submit Week" during the Mon–Tue window.', icon: '📋' },
   { title: 'Approvals (Leads/Admins)', desc: 'If you\'re a team lead or admin, this is where you review submissions. You can approve, reject with a reason, request clarification, or correct hours directly.', icon: '✅' },
   { title: 'Leaderboard & Points', desc: 'Earn points for on-time submissions, approved entries, and streaks. Redeem points in the Points Shop. Climb the leaderboard and earn badges!', icon: '🏆' },
-  { title: 'Messages', desc: 'Send direct messages to any team member, or post to the All Staff channel. Check for notifications using the bell icon in the top bar.', icon: '💬' },
   { title: 'You\'re all set! 🚀', desc: 'Head to your Timesheet to log your first entry. If you ever need help, check the Help & FAQ page. Good luck!', icon: '🚀' },
 ]
 

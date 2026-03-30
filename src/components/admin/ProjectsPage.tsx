@@ -13,6 +13,8 @@ export default function ProjectsPage() {
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState({ name: '', active: true, budget: 0 })
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, projectId: string, projectName: string}>({isOpen: false, projectId: '', projectName: ''})
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   const saveAllSettings = (updates: any) => {
     const newData = { ...settings, ...updates }
@@ -61,7 +63,27 @@ export default function ProjectsPage() {
     const project = projects.find((p: any) => p.id === confirmDelete.projectId)
     saveProjects(projects.filter((p: any) => p.id !== confirmDelete.projectId))
     if (project) logAudit('project_delete', confirmDelete.projectId, { name: project.name })
+    setConfirmDelete({ isOpen: false, projectId: '', projectName: '' })
     toast.success('Project removed')
+  }
+
+  const handleBulkDelete = () => {
+    const names = projects.filter((p: any) => selected.has(p.id)).map((p: any) => p.name)
+    saveProjects(projects.filter((p: any) => !selected.has(p.id)))
+    logAudit('project_delete', 'bulk', { count: selected.size, names })
+    toast.success(`${selected.size} project${selected.size > 1 ? 's' : ''} deleted`)
+    setSelected(new Set())
+    setConfirmBulkDelete(false)
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  const allSelected = projectStats.length > 0 && projectStats.every((p: any) => selected.has(p.id))
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(projectStats.map((p: any) => p.id)))
   }
 
   const handleExport = (format: 'csv' | 'pdf') => {
@@ -153,7 +175,12 @@ export default function ProjectsPage() {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>💼 Project Management</h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Manage projects, import/export data and configure categories</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {selected.size > 0 && (
+            <button className="btn btn-danger btn-sm" onClick={() => setConfirmBulkDelete(true)}>
+              <Trash2 size={13} /> Delete {selected.size} selected
+            </button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={handleImport}>
             📁 Import CSV
           </button>
@@ -190,6 +217,9 @@ export default function ProjectsPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 36 }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
                 <th>Project Name</th>
                 <th>Status</th>
                 <th>Budget (h)</th>
@@ -200,7 +230,10 @@ export default function ProjectsPage() {
             </thead>
             <tbody>
               {projectStats.map((p: any) => (
-                <tr key={p.id}>
+                <tr key={p.id} style={{ background: selected.has(p.id) ? 'var(--accent-subtle)' : undefined }}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                  </td>
                   <td style={{ fontWeight: 700 }}>{p.name}</td>
                   <td>
                     <span className={`badge badge-${p.active ? 'green' : 'gray'}`}>
@@ -224,7 +257,7 @@ export default function ProjectsPage() {
               ))}
               {projectStats.length === 0 && (
                 <tr>
-                   <td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No projects found</td>
+                   <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No projects found</td>
                 </tr>
               )}
             </tbody>
@@ -299,6 +332,15 @@ export default function ProjectsPage() {
         confirmStyle="danger"
         onConfirm={confirmDeleteProject}
         onCancel={() => setConfirmDelete({isOpen: false, projectId: '', projectName: ''})}
+      />
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        title={`Delete ${selected.size} Project${selected.size > 1 ? 's' : ''}`}
+        message={`Are you sure you want to delete ${selected.size} selected project${selected.size > 1 ? 's' : ''}?\n\nThis will not delete historical logs but will remove them from the active projects list.`}
+        confirmText={`Delete ${selected.size}`}
+        confirmStyle="danger"
+        onConfirm={handleBulkDelete}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
     </div>
   )

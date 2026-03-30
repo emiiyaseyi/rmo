@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, Area } from 'recharts'
 import { getWeekKey, weekRange, exportCSV, exportPDF, fmtDate } from '../../lib/utils'
-import { Staff, Entry, Reward, Redemption, HofEntry, AppMessage, Leave } from '../../types'
+import { Staff, Entry, Reward, Redemption, HofEntry, Leave } from '../../types'
 import toast from 'react-hot-toast'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
 import TimeReport from './TimeReport'
@@ -14,9 +14,11 @@ const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', bo
 type PeriodType = 'week' | 'month' | 'custom'
 
 export default function AnalyticsPage() {
-  const { staff, entries, settings, projects, projectBudgets } = useApp()
+  const { staff, entries, settings, projects, projectBudgets, user } = useApp()
   const [tab, setTab] = useState('overview')
-  
+
+  const isTeamLead = user?.role === 'team_lead'
+
   // Filter State
   const [periodType, setPeriodType] = useState<PeriodType>('week')
   const [selectedWeek, setSelectedWeek] = useState(getWeekKey())
@@ -26,11 +28,15 @@ export default function AnalyticsPage() {
 
   const [staffFilter, setStaffFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
-  
+
   // Utils
   const weekCap = settings?.weekly_cap || 45
-  const activeStaff = staff.filter(s => !s.suspended)
-  const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean).map(d => d as string))).sort()
+  // Team leads only see staff they manage (plus themselves)
+  const scopedStaff = isTeamLead
+    ? staff.filter(s => s.leadId === user?.id || s.id === user?.id)
+    : staff
+  const activeStaff = scopedStaff.filter(s => !s.suspended)
+  const departments = Array.from(new Set(activeStaff.map(s => s.department).filter(Boolean).map(d => d as string))).sort()
 
   // Date Range Calculation
   const dateRange = useMemo(() => {
@@ -48,14 +54,21 @@ export default function AnalyticsPage() {
     return { start, end }
   }, [periodType, selectedWeek, selectedMonth, customStart, customEnd])
 
+  // Scoped entries: team leads only see entries for their managed staff
+  const scopedStaffIds = useMemo(() => new Set(scopedStaff.map(s => s.id)), [scopedStaff])
+  const scopedEntries = useMemo(() => {
+    if (!isTeamLead) return entries
+    return entries.filter(e => scopedStaffIds.has(e.staffId))
+  }, [entries, isTeamLead, scopedStaffIds])
+
   // Filtered Data
   const filteredEntries = useMemo(() => {
-    return entries.filter(e => {
+    return scopedEntries.filter(e => {
       if (e.deleted || !e.date) return false
       const d = parseISO(e.date)
       return isWithinInterval(d, { start: dateRange.start, end: dateRange.end })
     })
-  }, [entries, dateRange])
+  }, [scopedEntries, dateRange])
 
   const filteredStaff = useMemo(() => {
     return activeStaff.filter(s => {
@@ -97,14 +110,14 @@ export default function AnalyticsPage() {
     
     interval.forEach(w => {
       const wKey = getWeekKey(w)
-      const wEntries = entries.filter(e => e.weekKey === wKey && e.status === 'approved' && !e.deleted)
+      const wEntries = scopedEntries.filter(e => e.weekKey === wKey && e.status === 'approved' && !e.deleted)
       weeks.push({
         week: format(w, 'dd MMM'),
         hours: parseFloat(wEntries.reduce((s, e) => s + (e.hours || 0), 0).toFixed(1))
       })
     })
     return weeks.slice(-5)
-  }, [entries, dateRange])
+  }, [scopedEntries, dateRange])
 
   // Weekly breakdown table
   const weeklyBreakdown = useMemo(() => {
@@ -138,7 +151,7 @@ export default function AnalyticsPage() {
     const prevMonthEnd = endOfMonth(prevMonthStart)
 
     const getMonthStats = (start: Date, end: Date) => {
-      const ents = entries.filter(e => !e.deleted && e.date && isWithinInterval(parseISO(e.date), { start, end }))
+      const ents = scopedEntries.filter(e => !e.deleted && e.date && isWithinInterval(parseISO(e.date), { start, end }))
       const approved = ents.filter(e => e.status === 'approved')
       const hours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
       const submissionCount = new Set(ents.map(e => `${e.staffId}-${e.weekKey}`)).size
@@ -149,7 +162,7 @@ export default function AnalyticsPage() {
     const previous = getMonthStats(prevMonthStart, prevMonthEnd)
 
     return { current, previous }
-  }, [entries, dateRange.start])
+  }, [scopedEntries, dateRange.start])
 
   // Utilisation Data
   const utilisationData = useMemo(() => {
@@ -180,7 +193,7 @@ export default function AnalyticsPage() {
   const staffYTD = useMemo(() => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1)
     const yearEnd = new Date()
-    const ytdEntries = entries.filter(e => !e.deleted && e.date && parseISO(e.date) >= yearStart)
+    const ytdEntries = scopedEntries.filter(e => !e.deleted && e.date && parseISO(e.date) >= yearStart)
     
     return activeStaff.map(s => {
       const sEntries = ytdEntries.filter(e => e.staffId === s.id)
@@ -199,7 +212,7 @@ export default function AnalyticsPage() {
         weeksActive: weeksWithEntries
       }
     }).sort((a, b) => b.ytdHours - a.ytdHours)
-  }, [activeStaff, entries])
+  }, [activeStaff, scopedEntries])
 
   // Tab switching and exports
   const exportNotSubmitted = () => {
@@ -319,7 +332,10 @@ export default function AnalyticsPage() {
 
       {/* Tabs */}
       <div className="tabs">
-        {['overview', 'time_report', 'dept_report', 'projects', 'utilisation', 'hour_thresholds', 'staff_ytd', 'month_compare'].map(t => (
+        {(isTeamLead
+          ? ['time_report', 'overview', 'utilisation', 'hour_thresholds']
+          : ['overview', 'time_report', 'dept_report', 'projects', 'utilisation', 'hour_thresholds', 'staff_ytd', 'month_compare']
+        ).map(t => (
           <div
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
@@ -333,9 +349,9 @@ export default function AnalyticsPage() {
 
       {/* ── TIME REPORT TAB ── */}
       {tab === 'time_report' && (
-        <TimeReport 
-          entries={filteredEntries} 
-          staff={staff} 
+        <TimeReport
+          entries={filteredEntries}
+          staff={activeStaff}
           projects={projects}
           dateRange={dateRange}
         />

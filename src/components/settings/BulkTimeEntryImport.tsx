@@ -44,8 +44,8 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
 
   function downloadTemplate() {
     exportCSV([
-      { 'Staff Email': 'jane.doe@datasciencenigeria.ai', Project: 'Project Alpha', Lead: 'John Manager', Description: 'Client kickoff meeting', Date: '2025-01-13', Hours: 3, Category: 'Client Work', Status: 'approved' },
-      { 'Staff Email': 'bob.smith@datasciencenigeria.ai', Project: 'Internal Ops', Lead: '', Description: 'Weekly team standup', Date: '2025-01-13', Hours: 1, Category: 'Internal', Status: 'submitted' },
+      { 'Staff Name': 'Jane Doe', Email: 'jane.doe@datasciencenigeria.ai', Project: 'Project Alpha', Lead: 'John Manager', Description: 'Client kickoff meeting', 'Start Date': '13-01-25', 'End Date': '13-01-25', Hours: 3, Category: 'Client Work', Status: 'approved' },
+      { 'Staff Name': 'Bob Smith', Email: 'bob.smith@datasciencenigeria.ai', Project: 'Internal Ops', Lead: 'Jane Doe', Description: 'Weekly team standup', 'Start Date': '13-01-25', 'End Date': '13-01-25', Hours: 1, Category: 'Internal', Status: 'submitted' },
     ], 'bulk_time_entry_template.csv')
     toast.success('Template downloaded')
   }
@@ -63,39 +63,62 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
           if (raw.length === 0) { toast.error('File is empty'); return }
 
           const now = new Date().toISOString()
+          // Case-insensitive key lookup helper
+          const getCol = (r: any, ...keys: string[]) => {
+            const rKeys = Object.keys(r)
+            for (const key of keys) {
+              const match = rKeys.find(k => k.toLowerCase().trim() === key.toLowerCase())
+              if (match && r[match] !== undefined && r[match] !== '') return r[match]
+            }
+            return ''
+          }
+
           const enriched: ValidatedRow[] = raw.map((r, i) => {
             const errors: string[] = []
             const warnings: string[] = []
 
-            const email = (r['Staff Email'] || r['Email'] || r['email'] || '').toLowerCase().trim()
-            const staffName = (r['Staff Name'] || r['staff_name'] || r['Name'] || r['name'] || '').trim()
+            const rawEmail = getCol(r, 'Email', 'email', 'Staff Email', 'staff_email')
+            const rawName = getCol(r, 'Staff Name', 'staff_name', 'Name', 'name')
+            const email = String(rawEmail).toLowerCase().trim()
+            const staffName = String(rawName).trim()
+
             const matchedStaff = email
               ? staff.find(s => s.email?.toLowerCase() === email)
-              : staff.find(s => s.name?.toLowerCase() === staffName.toLowerCase())
+              : staffName
+              ? staff.find(s => s.name?.toLowerCase() === staffName.toLowerCase())
+              : null
             if (!email && !staffName) errors.push('Missing staff email or name')
             else if (!matchedStaff) errors.push(`No staff found: ${email || staffName}`)
 
-            const project = (r['Project'] || r['project'] || '').trim()
+            const project = String(getCol(r, 'Project', 'project')).trim()
             if (!project) errors.push('Missing project')
 
-            const rawDate = r['Date'] || r['date'] || ''
+            const rawDate = getCol(r, 'Date', 'date', 'Start Date', 'start date', 'start_date')
             let dateStr = ''
             if (rawDate instanceof Date) {
               const d = rawDate
               dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
             } else if (rawDate) {
               const s = String(rawDate).trim()
-              // Handle YYYY-MM-DD or similar ISO-like formats
-              dateStr = s.slice(0, 10)
+              // Handle DD-MM-YY or DD-MM-YYYY
+              const dmyMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/)
+              if (dmyMatch) {
+                const [, dd, mm, yy] = dmyMatch
+                const yyyy = yy.length === 2 ? `20${yy}` : yy
+                dateStr = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
+              } else {
+                // YYYY-MM-DD or ISO-like
+                dateStr = s.slice(0, 10)
+              }
             }
             if (!dateStr) errors.push('Missing date')
             else if (isNaN(new Date(dateStr).getTime())) errors.push('Invalid date: ' + rawDate)
 
-            const hours = parseFloat(r['Hours'] || r['hours'] || '0')
+            const hours = parseFloat(String(getCol(r, 'Hours', 'hours') || '0'))
             if (!hours || hours <= 0) errors.push('Missing / zero hours')
             if (hours > 24) warnings.push('Hours > 24 — unusual')
 
-            const statusInput = (r['Status'] || r['status'] || 'draft').toLowerCase().trim()
+            const statusInput = (String(getCol(r, 'Status', 'status') || 'draft')).toLowerCase().trim()
             const status = VALID_STATUSES.includes(statusInput as any) ? (statusInput as ValidStatus) : 'draft'
             if (!VALID_STATUSES.includes(statusInput as any)) warnings.push(`Unknown status "${statusInput}" — will use "draft"`)
 
@@ -122,11 +145,11 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
               staffId: matchedStaff?.id || '',
               staffName: matchedStaff?.name || email,
               project,
-              lead: (r['Lead'] || r['lead'] || '').trim(),
-              description: (r['Description'] || r['description'] || '').trim(),
+              lead: String(getCol(r, 'Lead', 'lead') || '').trim(),
+              description: String(getCol(r, 'Description', 'description') || '').trim(),
               date: dateStr,
               hours,
-              category: (r['Category'] || r['category'] || categories[0]).trim(),
+              category: String(getCol(r, 'Category', 'category') || categories[0]).trim(),
               status,
               weekKey,
               createdAt: now,
@@ -242,9 +265,9 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>📄 Required columns</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-                    <strong>Required:</strong> Staff Email (or Staff Name), Project, Date (YYYY-MM-DD), Hours
+                    <strong>Required:</strong> Email, Project, Start Date, Hours
                     <br />
-                    <strong>Optional:</strong> Lead, Description, Category, Status (draft / submitted / approved / rejected)
+                    <strong>Optional:</strong> Staff Name, Lead, End Date, Description, Category, Status (draft / submitted / approved / rejected)
                   </div>
                 </div>
                 <button className="btn btn-secondary btn-sm" onClick={downloadTemplate}>
@@ -274,8 +297,8 @@ export default function BulkTimeEntryImport({ onClose }: { onClose: () => void }
               <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent)', borderRadius: 10, padding: 14 }}>
                 <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>💡 Tips</div>
                 <ul style={{ fontSize: 12, color: 'var(--text-2)', paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <li>Staff are matched by <strong>email address</strong> (preferred) or <strong>staff name</strong> — use "Staff Email" or "Staff Name" column</li>
-                  <li>Dates must be in <strong>YYYY-MM-DD</strong> format (e.g. 2025-01-13)</li>
+                  <li>Staff are matched by <strong>Email</strong> column (preferred), or by <strong>Staff Name</strong> if email is absent</li>
+                  <li>Dates can be <strong>DD-MM-YY</strong> (e.g. 25-02-26) or <strong>YYYY-MM-DD</strong> — both accepted</li>
                   <li>Set Status to <strong>approved</strong> to populate analytics immediately</li>
                   <li>Set Status to <strong>submitted</strong> for entries that still need team lead approval</li>
                   <li>Duplicate entries (same staff + date + project + hours) will be flagged</li>

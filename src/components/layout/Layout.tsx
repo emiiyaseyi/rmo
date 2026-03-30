@@ -6,8 +6,6 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Bell, Menu, Sun, Moon, Wifi, WifiOff, ChevronDown } from 'lucide-react'
 import PasswordChangeModal from '../auth/PasswordChangeModal'
 import IdleWarningOverlay from '../auth/IdleWarningOverlay'
-import FloatingChatWidget from '../messages/FloatingChatWidget'
-
 
 interface NavItem {
   id: string;
@@ -37,7 +35,6 @@ function getNavItems(role: string): NavItem[] {
 
 
     { id: 'connect_header', label: 'CONNECT', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
-    { id: 'messages', label: 'Messages', icon: '💬', roles: ['staff', 'admin', 'team_lead'], badge: 'messages' },
     { id: 'help', label: 'Help & FAQ', icon: '❓', roles: ['staff', 'team_lead', 'admin'] },
   ]
   return all.filter(n => n.roles.includes(role))
@@ -50,7 +47,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, canApproveTimesheets, messages, settings, showPasswordChange, announcements } = useApp()
+  const { user, logout, unreadCount, notifications, markAllRead, markRead, online, darkMode, toggleDark, pendingApprovals, canApproveTimesheets, settings, showPasswordChange, announcements } = useApp()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(local.get('sidebar_collapsed', false))
@@ -118,7 +115,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
     // Feature toggle check
     const toggleKey = item.id === 'leaderboard' ? 'leaderboard' :
-                     item.id === 'messages' ? 'messages' :
                      item.id === 'org_chart' ? 'org_chart' :
                      item.id === 'analytics' ? 'analytics' : null
     if (toggleKey && settings?.featureToggles) {
@@ -144,7 +140,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
   })
 
   const pendingCount = pendingApprovals().length
-  const unreadMsg = (messages || []).filter(m => m.recipientId === user?.id && !(m.read || []).includes(user?.id || '')).length
 
   const branding = settings?.branding
   const logoUrl = branding?.logoBase64 || "/dsn.png"
@@ -371,7 +366,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                 )
               }
               
-              const badge = item.badge === 'approvals' ? pendingCount : item.badge === 'messages' ? unreadMsg : 0
+              const badge = item.badge === 'approvals' ? pendingCount : 0
               const active = page === item.id
               return (
                 <div
@@ -503,7 +498,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                         if (!n.read) markRead(n.id)
                         let targetPage = n.linkedType === 'entry' ? 'approvals' :
                                          n.linkedType === 'leave' ? 'profile' :
-                                         n.linkedType === 'message' ? 'messages' :
                                          n.linkedId ? 'dashboard' : null
                         if (targetPage) setPage(targetPage as any)
                         setNotifOpen(false)
@@ -534,7 +528,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       </div>
       {user && showPasswordChange && <PasswordChangeModal />}
       <IdleWarningOverlay />
-      {user && settings?.featureToggles?.messaging && page !== 'messages' && <FloatingChatWidget />}
     </div>
   )
 }

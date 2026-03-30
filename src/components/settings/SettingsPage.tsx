@@ -15,7 +15,6 @@ export default function SettingsPage() {
     entries,
     leaves,
     nots,
-    messageThreads,
     rewards,
     redeems,
     announcements,
@@ -811,7 +810,6 @@ export default function SettingsPage() {
                       { name: 'leaves', count: leaves?.length || 0, data: leaves },
                       { name: 'notifications', count: nots?.length || 0, data: nots },
                       { name: 'auditLogs', count: auditLogs?.length || 0, data: auditLogs },
-                      { name: 'messageThreads', count: messageThreads?.length || 0, data: messageThreads },
                       { name: 'rewards', count: rewards?.length || 0, data: rewards },
                       { name: 'redeems', count: redeems?.length || 0, data: redeems },
                       { name: 'announcements', count: announcements?.length || 0, data: announcements },
@@ -838,7 +836,6 @@ export default function SettingsPage() {
                           leaves?.length || 0,
                           nots?.length || 0,
                           auditLogs?.length || 0,
-                          messageThreads?.length || 0,
                           rewards?.length || 0,
                           redeems?.length || 0,
                           announcements?.length || 0,
@@ -850,7 +847,7 @@ export default function SettingsPage() {
                       </td>
                       <td className="p-3 text-right font-mono">
                         {(
-                          [staff, entries, leaves, nots, auditLogs, messageThreads, rewards, redeems, announcements, publicHolidays, weekLocks, projects, settings]
+                          [staff, entries, leaves, nots, auditLogs, rewards, redeems, announcements, publicHolidays, weekLocks, projects, settings]
                             .filter(Boolean)
                             .reduce((sum, data) => sum + JSON.stringify(data).length, 0) / 1024
                         ).toFixed(2)} KB

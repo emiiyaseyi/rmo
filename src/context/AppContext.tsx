@@ -565,22 +565,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const targetUser = staff.find(s => s.id === userId)
     const targetEmail = overrideEmail || targetUser?.email
 
-    if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai')) {
-       // Skip email for routine notifications (timesheets, leave approvals, delegations)
-       // These are better handled as in-app notifications for all users
-       const isRoutineNotification = ['approval', 'leave_request', 'delegation_assigned'].includes(type)
-
-       if (isRoutineNotification) {
-         // All users get in-app notification only for routine items
-         console.log(`Skipping email for routine notification: ${title}`)
-       } else {
-         // Send email for critical notifications (password resets, welcome emails, system alerts, etc.)
-         let link = ''
-         if (linkedType === 'entry') link = `/approvals`
-         else if (linkedType === 'leave') link = `/staff`
-         else if (linkedId) link = `/dashboard` // generic fallback
-         sendEmailNotification(targetEmail, title || 'New Notification', message, link)
-       }
+    // Email only for high-signal events — everything else is in-app only
+    const EMAIL_TYPES = [
+      'entry_approved', 'entry_rejected',       // timesheet decisions
+      'leave_approved', 'leave_declined',        // final leave decisions
+      'password_reset', 'password_reset_request',// account security
+      'account_unlock',                          // account security
+    ]
+    if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai') && EMAIL_TYPES.includes(type)) {
+      let link = ''
+      if (linkedType === 'entry') link = `/approvals`
+      else if (linkedType === 'leave') link = `/leave`
+      else if (linkedId) link = `/dashboard`
+      sendEmailNotification(targetEmail, title || 'New Notification', message, link)
     }
 
     return notif

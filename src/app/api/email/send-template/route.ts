@@ -1,4 +1,22 @@
 import { NextResponse } from 'next/server'
+
+// Rate limiting: max 3 emails per recipient per 10 minutes
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_MAX = 3
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000
+
+function isRateLimited(email: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(email)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(email, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return false
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return true
+  entry.count++
+  return false
+}
+
 import {
   sendNotificationEmail,
   sendTimesheetApprovalEmail,
@@ -19,6 +37,12 @@ export async function POST(req: Request) {
         { success: false, message: 'Resend API key missing' },
         { status: 500 }
       )
+    }
+
+    const recipient = Array.isArray(to) ? to[0] : to
+    if (isRateLimited(recipient)) {
+      console.warn(`Rate limit hit for ${recipient} — email suppressed`)
+      return NextResponse.json({ success: false, message: 'Rate limit exceeded' }, { status: 429 })
     }
 
     let result

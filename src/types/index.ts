@@ -478,8 +478,6 @@ export interface AppContextType {
     user: Staff | null;
     staff: Staff[];
     entries: Entry[];
-    messages: AppMessage[];
-    messageThreads: MessageThread[];
     announcements: Announcement[];
     notifications: AppNotification[];
     leaves: Leave[];
@@ -491,15 +489,12 @@ export interface AppContextType {
     darkMode: boolean;
     online: boolean;
     unreadCount: number;
-    unreadMessageCount: number;
     login: (s: Staff) => void;
     logout: () => void;
     updateUser: (updates: Partial<Staff>) => void;
     toggleDark: () => void;
     saveStaff: (data: Staff[]) => void;
     saveEntries: (data: Entry[]) => void;
-    saveMessages: (data: AppMessage[]) => void;
-    saveMessageThreads: (data: MessageThread[]) => void;
     saveAnnouncements: (data: Announcement[]) => void;
     saveNotifications: (data: AppNotification[]) => void;
     saveLeaves: (data: Leave[]) => void;
@@ -518,10 +513,6 @@ export interface AppContextType {
     grantBadge: (staffId: string, badgeId: string) => void;
     pendingApprovals: () => Entry[];
     canApproveTimesheets: () => boolean;
-    sendMessage: (msg: Partial<AppMessage>) => AppMessage;
-    getOrCreateThread: (type: 'direct' | 'group', participants: string[], name?: string, icon?: string) => MessageThread;
-    getThreadMessages: (threadId: string) => AppMessage[];
-    getThreadUnreadCount: (threadId: string) => number;
     loadAll: () => void;
     checkReminders: () => void;
     templates: Template[];

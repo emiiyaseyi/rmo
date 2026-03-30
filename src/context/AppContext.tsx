@@ -5,7 +5,7 @@ import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, remo
 import { db } from '../lib/firebase'
 import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy, writeBatch } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, AppMessage, MessageThread, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -14,8 +14,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Staff | null>(null)
   const [staff, setStaff] = useState<Staff[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
-  const [messages, setMessages] = useState<AppMessage[]>([])
-  const [messageThreads, setMessageThreads] = useState<MessageThread[]>([])
   const [notifications, setNots] = useState<AppNotification[]>([])
   const [darkMode, setDarkMode] = useState<boolean>(false)
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
@@ -122,41 +120,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [idleCountdown])
 
-  // Initialize default group channels
-  useEffect(() => {
-    if (messageThreads.length === 0 || !messageThreads.find(t => t.id === 'all_staff')) {
-      const defaultChannels: MessageThread[] = [
-        {
-          id: 'all_staff',
-          type: 'group',
-          name: 'All Staff',
-          icon: '📢',
-          participants: staff.map(s => s.id),
-          lastMessage: null,
-          lastMessageAt: null,
-          lastMessageBy: null,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 'admin_team',
-          type: 'group',
-          name: 'Admin Team',
-          icon: '🔒',
-          participants: staff.filter(s => ['admin'].includes(s.role)).map(s => s.id),
-          lastMessage: null,
-          lastMessageAt: null,
-          lastMessageBy: null,
-          createdAt: new Date().toISOString()
-        }
-      ]
-
-      const existingIds = messageThreads.map(t => t.id)
-      const newChannels = defaultChannels.filter(ch => !existingIds.includes(ch.id))
-      if (newChannels.length > 0) {
-        saveMessageThreads([...messageThreads, ...newChannels])
-      }
-    }
-  }, [staff.length, messageThreads.length])
 
   function resetIdle() {
     // Clear any existing countdown interval
@@ -249,12 +212,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }))
 
-    // 5. Message Threads
-    unsubs.push(onSnapshot(query(collection(db, 'messageThreads'), where('participants', 'array-contains', user.id)), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageThread))
-      setMessageThreads(data)
-    }))
-
     // 6. Leaves
     const leavesRef = user.role === 'admin' ? collection(db, 'leaves') : query(collection(db, 'leaves'), where('staffId', '==', user.id))
     unsubs.push(onSnapshot(leavesRef, (snap) => {
@@ -344,99 +301,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 
 
-  // Firestore real-time listeners for messaging
-  useEffect(() => {
-    if (!user) return
-
-    const unsubscribers: Array<() => void> = []
-
-    // Listen to message threads
-    const threadsQuery = query(
-      collection(db, 'messageThreads'),
-      where('participants', 'array-contains', user.id)
-    )
-    const unsubThreads = onSnapshot(threadsQuery, (snapshot) => {
-      const threads: MessageThread[] = []
-      snapshot.forEach((doc) => {
-        threads.push({ id: doc.id, ...doc.data() } as MessageThread)
-      })
-      // Merge with local threads, preferring remote data
-      setMessageThreads(prevThreads => {
-        const merged = [...threads]
-        prevThreads.forEach(local => {
-          if (!merged.find(t => t.id === local.id)) {
-            merged.push(local)
-          }
-        })
-        local.set('message_threads', merged)
-        return merged
-      })
-    }, (error) => {
-      console.error('Thread listener error:', error)
-    })
-    unsubscribers.push(unsubThreads)
-
-    // Listen to messages in user's threads
-    // Note: This is a simplified approach. In production, you might want to
-    // subscribe to each thread's messages subcollection separately
-    const loadMessages = async () => {
-      try {
-        const userThreadIds = messageThreads
-          .filter(t => t.participants.includes(user.id))
-          .map(t => t.id)
-
-        for (const threadId of userThreadIds) {
-          const messagesQuery = query(
-            collection(db, 'messages', threadId, 'messages')
-          )
-          const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
-            const newMessages: AppMessage[] = []
-            snapshot.forEach((doc) => {
-              const data = doc.data()
-              newMessages.push({
-                id: doc.id,
-                senderId: data.senderId,
-                senderName: data.senderName,
-                recipientId: data.recipientId,
-                channelId: data.channelId,
-                threadId,
-                text: data.content || data.text,
-                type: data.type,
-                read: data.readBy || data.read || [],
-                createdAt: data.sentAt || data.createdAt
-              })
-            })
-
-            // Merge with existing messages
-            setMessages(prev => {
-              const merged = [...prev]
-              newMessages.forEach(newMsg => {
-                const existingIdx = merged.findIndex(m => m.id === newMsg.id)
-                if (existingIdx >= 0) {
-                  merged[existingIdx] = newMsg
-                } else {
-                  merged.push(newMsg)
-                }
-              })
-              local.set('messages', merged)
-              return merged
-            })
-          }, (error) => {
-            console.error(`Messages listener error for thread ${threadId}:`, error)
-          })
-          unsubscribers.push(unsubMessages)
-        }
-      } catch (error) {
-        console.error('Error setting up message listeners:', error)
-      }
-    }
-
-    loadMessages()
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub())
-    }
-  }, [user?.id, messageThreads.length])
 
   // Session Heartbeat & Security Listener
   useEffect(() => {
@@ -494,33 +358,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    // Auto-add new staff to "All Staff" channel
-    const newStaffMembers = data.filter(s => !previousStaff.find(p => p.id === s.id))
-    if (newStaffMembers.length > 0) {
-      const allStaffThread = messageThreads.find(t => t.id === 'all_staff')
-      if (allStaffThread) {
-        const updatedThread = {
-          ...allStaffThread,
-          participants: Array.from(new Set([...allStaffThread.participants, ...newStaffMembers.map(s => s.id)]))
-        }
-        const updatedThreads = messageThreads.map(t => t.id === 'all_staff' ? updatedThread : t)
-        saveMessageThreads(updatedThreads)
-      }
-
-      // Auto-add new admins to "Admin Team" channel
-      const newAdmins = newStaffMembers.filter(s => ['admin'].includes(s.role))
-      if (newAdmins.length > 0) {
-        const adminTeamThread = messageThreads.find(t => t.id === 'admin_team')
-        if (adminTeamThread) {
-          const updatedThread = {
-            ...adminTeamThread,
-            participants: Array.from(new Set([...adminTeamThread.participants, ...newAdmins.map(s => s.id)]))
-          }
-          const updatedThreads = messageThreads.map(t => t.id === 'admin_team' ? updatedThread : t)
-          saveMessageThreads(updatedThreads)
-        }
-      }
-    }
   }
   function saveEntries(data: Entry[]) { 
     setEntries(data); 
@@ -528,27 +365,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Sync to Firestore
     data.forEach(e => {
       setDoc(doc(db, 'timesheetEntries', e.id), e, { merge: true }).catch(() => {})
-    })
-  }
-  function saveMessages(data: AppMessage[]) {
-    setMessages(data);
-    // Sync to Firestore - organized by thread
-    data.forEach(msg => {
-      const threadId = msg.threadId || msg.channelId || (msg.recipientId ? `dm_${msg.senderId}_${msg.recipientId}` : '')
-      if (threadId) {
-        // Remove undefined fields for Firebase compatibility
-        const cleanMsg = Object.fromEntries(Object.entries(msg).filter(([_, v]) => v !== undefined))
-        setDoc(doc(db, 'messages', threadId, 'messages', msg.id), cleanMsg, { merge: true }).catch(err => {
-          if (!err.message?.includes('id-token-expired')) console.error('Failed to sync message:', err)
-        })
-      }
-    })
-  }
-  function saveMessageThreads(data: MessageThread[]) {
-    setMessageThreads(data);
-    // Sync to Firestore
-    data.forEach(thread => {
-      setDoc(doc(db, 'messageThreads', thread.id), thread, { merge: true }).catch(() => {})
     })
   }
   function saveNots(data: AppNotification[]) { 
@@ -622,6 +438,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data.forEach(lock => { setDoc(doc(db, 'weekLocks', lock.id), fbSafe(lock), { merge: true }).catch(() => {}) })
   }
   function saveProjects(data: any[]) {
+    const newIds = new Set(data.map(p => p.id))
+    projects.forEach(p => { if (!newIds.has(p.id)) deleteDoc(doc(db, 'projects', p.id)).catch(() => {}) })
+    setProjects(data)
     data.forEach(p => { setDoc(doc(db, 'projects', p.id), fbSafe(p), { merge: true }).catch(() => {}) })
   }
   function saveBudgets(data: any[]) {
@@ -746,23 +565,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const targetUser = staff.find(s => s.id === userId)
     const targetEmail = overrideEmail || targetUser?.email
 
-    if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai')) {
-       // Skip email for routine notifications (timesheets, leave approvals, delegations)
-       // These are better handled as in-app notifications for all users
-       const isRoutineNotification = ['approval', 'leave_request', 'delegation_assigned'].includes(type)
-
-       if (isRoutineNotification) {
-         // All users get in-app notification only for routine items
-         console.log(`Skipping email for routine notification: ${title}`)
-       } else {
-         // Send email for critical notifications (password resets, welcome emails, system alerts, etc.)
-         let link = ''
-         if (linkedType === 'entry') link = `/approvals`
-         else if (linkedType === 'leave') link = `/staff`
-         else if (linkedType === 'message') link = `/messages`
-         else if (linkedId) link = `/dashboard` // generic fallback
-         sendEmailNotification(targetEmail, title || 'New Notification', message, link)
-       }
+    // Email only for high-signal events — everything else is in-app only
+    const EMAIL_TYPES = [
+      'entry_approved', 'entry_rejected',       // timesheet decisions
+      'leave_approved', 'leave_declined',        // final leave decisions
+      'password_reset', 'password_reset_request',// account security
+      'account_unlock',                          // account security
+    ]
+    if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai') && EMAIL_TYPES.includes(type)) {
+      let link = ''
+      if (linkedType === 'entry') link = `/approvals`
+      else if (linkedType === 'leave') link = `/leave`
+      else if (linkedId) link = `/dashboard`
+      sendEmailNotification(targetEmail, title || 'New Notification', message, link)
     }
 
     return notif
@@ -891,107 +706,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
   }
 
-  // Thread Management Functions
-  function getOrCreateThread(type: 'direct' | 'group', participants: string[], name?: string, icon?: string): MessageThread {
-    if (!user) throw new Error('User not logged in')
-
-    // For direct messages, normalize participant order for consistent thread ID
-    let threadId = ''
-    if (type === 'direct') {
-      const sorted = [...participants].sort()
-      threadId = `dm_${sorted.join('_')}`
-    } else {
-      // For group channels, use a consistent ID
-      threadId = name?.toLowerCase().replace(/\s+/g, '_') || genId()
-    }
-
-    // Check if thread already exists
-    let thread = messageThreads.find(t => t.id === threadId)
-
-    if (!thread) {
-      thread = {
-        id: threadId,
-        type,
-        name: name || null,
-        icon: icon || null,
-        participants,
-        lastMessage: null,
-        lastMessageAt: null,
-        lastMessageBy: null,
-        createdAt: new Date().toISOString()
-      }
-      const updatedThreads = [...messageThreads, thread]
-      saveMessageThreads(updatedThreads)
-    }
-
-    return thread
-  }
-
-  function getThreadMessages(threadId: string): AppMessage[] {
-    return messages
-      .filter(m => {
-        // Match by threadId or legacy channelId/DM logic
-        if (m.threadId === threadId) return true
-        if (m.channelId === threadId) return true
-
-        // Handle legacy DM format
-        if (threadId.startsWith('dm_')) {
-          const parts = threadId.replace('dm_', '').split('_')
-          if (m.type === 'dm' && parts.length === 2) {
-            return (m.senderId === parts[0] && m.recipientId === parts[1]) ||
-                   (m.senderId === parts[1] && m.recipientId === parts[0])
-          }
-        }
-        return false
-      })
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-  }
-
-  function getThreadUnreadCount(threadId: string): number {
-    if (!user) return 0
-
-    const threadMessages = getThreadMessages(threadId)
-    return threadMessages.filter(m => m.senderId !== user.id && !m.read.includes(user.id)).length
-  }
-
-  function sendMessage(msg: Partial<AppMessage>) {
-    const threadId = msg.threadId || msg.channelId || (msg.recipientId ? `dm_${[user?.id, msg.recipientId].sort().join('_')}` : '')
-
-    const newMsg: AppMessage = {
-      id: genId(),
-      senderId: msg.senderId || user?.id || '',
-      senderName: msg.senderName || user?.name || '',
-      text: msg.text || '',
-      type: msg.type || 'channel',
-      channelId: msg.channelId,
-      recipientId: msg.recipientId,
-      threadId,
-      createdAt: new Date().toISOString(),
-      read: [msg.senderId || user?.id || '']
-    }
-    const updated = [newMsg, ...messages]
-    saveMessages(updated)
-
-    // Update thread's last message
-    const thread = messageThreads.find(t => t.id === threadId)
-    if (thread) {
-      const updatedThread = {
-        ...thread,
-        lastMessage: newMsg.text,
-        lastMessageAt: newMsg.createdAt,
-        lastMessageBy: newMsg.senderId
-      }
-      const updatedThreads = messageThreads.map(t => t.id === threadId ? updatedThread : t)
-      saveMessageThreads(updatedThreads)
-    }
-
-    // Notify recipient of DM
-    if (newMsg.recipientId) {
-      notify(newMsg.recipientId, `You have a new message from ${newMsg.senderName}`, 'message_received', 'New Message', newMsg.id, 'message')
-    }
-
-    return newMsg
-  }
 
   // Check submission reminders — call on login
   function checkReminders() {
@@ -1226,22 +940,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) { console.error('Week submission failed', e) }
   }
 
-  const unreadMessageCount = messages.filter(m => m.recipientId === user?.id && !m.read.includes(user?.id || '')).length
-
   const value = {
-    user, staff, entries, messages, messageThreads, notifications: myNotifications,
-    unreadCount, unreadMessageCount, settings, darkMode, online, features, redeems,
+    user, staff, entries, notifications: myNotifications,
+    unreadCount, settings, darkMode, online, features, redeems,
     rewards, hof, projects, leaves, delegations, approvalDelegations, lockedWeeks, budgets, templates,
     projectBudgets, bulkImportLogs, bulkStaffImportLogs, streakRecoveries, pointsHistory,
     login, logout, updateUser, toggleDark,
-    saveStaff, saveEntries, saveMessages, saveMessageThreads, saveNotifications: saveNots,
+    saveStaff, saveEntries, saveNotifications: saveNots,
     saveRedeems, saveRewards, saveHof, saveLeaves,
     saveDelegations, saveApprovalDelegations, saveLockedWeeks, saveFeatures, saveSettings, saveProjects,
     saveBudgets, saveTemplates, saveProjectBudgets, saveBulkImportLogs, saveBulkStaffImportLogs,
     saveStreakRecoveries, savePointsHistory,
     notify, markRead, markAllRead,
     awardPoints, grantBadge,
-    pendingApprovals, canApproveTimesheets, sendMessage, getOrCreateThread, getThreadMessages, getThreadUnreadCount,
+    pendingApprovals, canApproveTimesheets,
     loadAll, checkReminders,
     idleCountdown, resetIdle, showPasswordChange, setShowPasswordChange,
     calculateWeekCap, updateEntry, submitWeekEntries,
@@ -1258,7 +970,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 }
 
 const DEFAULT_FEATURES = {
-  leaderboard: true, gamification: true, messages: true,
+  leaderboard: true, gamification: true,
   analytics: true, leave_requests: true, bulk_import: true,
   dark_mode: true, pdf_export: true, org_chart: true, delegation: true,
 }

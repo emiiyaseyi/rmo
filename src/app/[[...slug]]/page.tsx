@@ -11,7 +11,6 @@ import TimesheetPage from '@/components/timesheet/TimesheetPage'
 import ApprovalsPage from '@/components/approvals/ApprovalsPage'
 import DelegationPage from '@/components/approvals/DelegationPage'
 import LeaderboardPage from '@/components/leaderboard/LeaderboardPage'
-import MessagesPage from '@/components/messages/MessagesPage'
 import AnalyticsPage from '@/components/analytics/AnalyticsPage'
 import StaffPage from '@/components/staff/StaffPage'
 import SettingsPage from '@/components/settings/SettingsPage'
@@ -28,7 +27,6 @@ const PAGE_ROLES: Record<string, string[]> = {
   approvals: ['staff', 'team_lead', 'admin'],
   delegation: ['team_lead', 'admin'],
   leaderboard: ['staff', 'team_lead', 'admin'],
-  messages: ['staff', 'team_lead', 'admin'],
   projects: ['admin'],
   analytics: ['team_lead', 'admin'],
   staff: ['admin'],
@@ -77,7 +75,6 @@ export default function Home() {
 
   function navigate(target: string) {
     if (target === 'leaderboard' && features && !features.leaderboard) return
-    if (target === 'messages' && features && !features.messages) return
     if (target === 'analytics' && features && !features.analytics) return
     if (target === 'org_chart' && features && !features.org_chart) return
     if (target === 'delegation' && features && !features.delegation) return
@@ -189,7 +186,6 @@ export default function Home() {
       case 'leave': return <LeaveRequestPage />
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
-      case 'messages': return <MessagesPage />
       case 'projects': return <ProjectsPage />
       case 'analytics': return <AnalyticsPage />
       case 'staff': return <StaffPage />

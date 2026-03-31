@@ -829,7 +829,7 @@ export default function ApprovalsPage() {
                       <th>Dept</th>
                       <th>Project</th>
                       <th>Lead</th>
-                      <th>Date</th>
+                      <th>Submitted</th>
                       <th>Hours</th>
                       <th>Category</th>
                       <th>Week</th>
@@ -861,7 +861,7 @@ export default function ApprovalsPage() {
                           <td style={{ color: 'var(--text-3)' }}>{s?.department || '—'}</td>
                           <td>{e.project}</td>
                           <td style={{ color: 'var(--text-3)', fontSize: 13 }}>{e.lead || '—'}</td>
-                          <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{fmtDate(e.date)}</td>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{e.submittedAt ? new Date(e.submittedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                           <td style={{ fontWeight: 700 }}>
                             {e.hours}h
                             {needsSecondLevel && !isAdmin && <span title={`Will trigger 2nd-level approval (threshold: ${secondLevelThreshold}h)`} style={{ marginLeft: 4, fontSize: 14 }}>⚠️</span>}

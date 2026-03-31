@@ -37,6 +37,7 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
   function validate() {
     const e: any = {}
     if (!form.project) e.project = 'Required'
+    if (!form.lead) e.lead = 'Required'
     if (!form.description) e.description = 'Required'
     if (!form.startDate) e.startDate = 'Required'
     if (!form.endDate) e.endDate = 'Required'
@@ -100,9 +101,10 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
               {errors.project && <span className="form-error">{errors.project}</span>}
             </div>
             <div className="form-group">
-              <label className="form-label">Lead / Supervisor</label>
+              <label className="form-label">Lead / Supervisor *</label>
               <input className="form-input" list="lead-list" placeholder="Select lead…" value={form.lead} onChange={e => F('lead', e.target.value)} />
               <datalist id="lead-list">{leads.map(l => <option key={l.id} value={l.name} />)}</datalist>
+              {errors.lead && <span className="form-error">{errors.lead}</span>}
             </div>
           </div>
 

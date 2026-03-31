@@ -34,7 +34,9 @@ export async function GET(req: Request) {
       isAdmin
         ? query('SELECT * FROM timesheet_entries WHERE deleted = false ORDER BY created_at DESC')
         : query('SELECT * FROM timesheet_entries WHERE staff_id = $1 AND deleted = false ORDER BY created_at DESC', [userId]),
-      query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200', [userId]),
+      isAdmin
+        ? query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 1000')
+        : query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200', [userId]),
       query('SELECT * FROM approval_delegations WHERE task_owner_id = $1 OR delegate_id = $1', [userId]),
       queryOne('SELECT value FROM settings WHERE key = $1', ['global']),
       isAdmin

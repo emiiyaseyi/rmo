@@ -488,7 +488,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       linkedId: linkedId || '',
       linkedType: linkedType || ''
     }
-    const updated = [notif, ...local.get<AppNotification[]>('notifications', [])]
+    const updated = [notif, ...notifications]
     saveNots(updated)
 
     const targetUser = staff.find(s => s.id === userId)
@@ -510,12 +510,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function markRead(notifId: string) {
-    const updated = local.get<AppNotification[]>('notifications', []).map(n => n.id === notifId ? { ...n, read: true } : n)
+    const updated = notifications.map(n => n.id === notifId ? { ...n, read: true } : n)
     saveNots(updated)
   }
 
   function markAllRead() {
-    const updated = local.get<AppNotification[]>('notifications', []).map(n => n.userId === user?.id ? { ...n, read: true } : n)
+    const updated = notifications.map(n => n.userId === user?.id ? { ...n, read: true } : n)
     saveNots(updated)
     fetch('/api/notifications/mark-all-read', {
       method: 'POST',
@@ -623,7 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activeStaff.forEach(s => {
       const hasSubmitted = entries.some(e => e.staffId === s.id && e.weekKey === currentWeek && ['submitted', 'approved', 'resubmitted'].includes(e.status))
       if (!hasSubmitted) {
-        const already = local.get<AppNotification[]>('notifications', []).find(n =>
+        const already = notifications.find(n =>
           n.userId === s.id && n.type === 'reminder' && n.createdAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)
         )
         if (!already) notify(s.id, '⏰ Reminder: Please submit your timesheet before Tuesday 4pm WAT', 'reminder')

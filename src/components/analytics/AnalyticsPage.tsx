@@ -92,8 +92,8 @@ export default function AnalyticsPage() {
     const pending = filteredEntries.filter(e => ['submitted', 'resubmitted', 'pending_2nd_approval'].includes(e.status))
     
     const totalHours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
-    const decided = filteredEntries.filter(e => ['approved', 'rejected'].includes(e.status))
-    const approvalRate = decided.length > 0 ? Math.round((approved.length / decided.length) * 100) : 0
+    // Rate = approved out of all submitted (including still-pending), so 46 pending pulls it down correctly
+    const approvalRate = submitted.length > 0 ? Math.round((approved.length / submitted.length) * 100) : 0
     
     const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
     const activeStaffCount = staffWithEntries.length

@@ -177,12 +177,6 @@ export interface FAQ {
 }
 
 export interface AppSettings {
-    firebase?: {
-        url: string;
-        anonKey: string;
-        isConnected: boolean;
-        lastTestedAt?: string;
-    };
     branding?: {
         appName: string;
         welcomeMessage: string;

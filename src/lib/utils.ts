@@ -1,6 +1,3 @@
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from './firebase'
-
 const PREFIX = 'dsn_'
 
 export const local = {
@@ -43,8 +40,6 @@ export function logAudit(action: string, detail: string, userId: string, userNam
   const logs = local.get<any[]>('audit_logs', []) || []
   logs.unshift(entry)
   local.set('audit_logs', logs.slice(0, 5000))
-  // Mirror to Firebase for platform-wide filtering and persistence
-  setDoc(doc(db, 'auditLogs', id), entry, { merge: true }).catch(() => {})
 }
 
 export const genId = (): string => Date.now().toString(36) + Math.random().toString(36).slice(2)

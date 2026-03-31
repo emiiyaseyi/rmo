@@ -105,8 +105,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     linked_type TEXT DEFAULT '',
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_notifs_user_id ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifs_read    ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_notifs_user_id    ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifs_read       ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_notifs_created_at ON notifications(created_at DESC);
 
 -- 4. approval_delegations
 CREATE TABLE IF NOT EXISTS approval_delegations (
@@ -276,6 +277,7 @@ CREATE TABLE IF NOT EXISTS active_sessions (
     last_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     login_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON active_sessions(last_seen DESC);
 
 -- 16. week_locks
 CREATE TABLE IF NOT EXISTS week_locks (

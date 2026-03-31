@@ -98,8 +98,10 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Project *</label>
-              <input className="form-input" list="proj-list" placeholder="Select or type…" value={form.project} onChange={e => F('project', e.target.value)} />
-              <datalist id="proj-list">{projects.filter(p => p.active).map(p => <option key={p.id} value={p.name} />)}</datalist>
+              <select className="form-input" value={form.project} onChange={e => F('project', e.target.value)}>
+                <option value="">— Select project —</option>
+                {projects.filter(p => p.active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
               {errors.project && <span className="form-error">{errors.project}</span>}
             </div>
             <div className="form-group">
@@ -229,8 +231,10 @@ function AdminOverrideModal({ entry, projects, leads, categories, onSave, onClos
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Project</label>
-              <input className="form-input" list="admin-proj" value={form.project} onChange={e => F('project', e.target.value)} />
-              <datalist id="admin-proj">{projects.filter(p => p.active).map(p => <option key={p.id} value={p.name} />)}</datalist>
+              <select className="form-input" value={form.project} onChange={e => F('project', e.target.value)}>
+                <option value="">— Select project —</option>
+                {projects.filter(p => p.active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Lead</label>

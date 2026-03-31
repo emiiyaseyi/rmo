@@ -143,6 +143,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }))
         }
 
+        // Review window check (admin-only, triggers email + penalty logic server-side)
+        if (user.role === 'admin' && data.settings) {
+          fetch('/api/review-window/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings: data.settings }),
+          }).catch(() => {})
+        }
+
         // Force-logout check (replaces security onSnapshot listener)
         if (data.forceLogout) {
           await fetch(`/api/staff/${user.id}`, {

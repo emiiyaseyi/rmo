@@ -311,12 +311,14 @@ export default function ApprovalsPage() {
   const weeks = Array.from(new Set(relevantEntries.map(e => e.weekKey))).sort().reverse()
 
   function getFilteredPending(): Entry[] {
-    return pending.filter(e => {
-      const s = staff.find(m => m.id === e.staffId)
-      if (filterDept && s?.department !== filterDept) return false
-      if (filterWeek && e.weekKey !== filterWeek) return false
-      return true
-    })
+    return pending
+      .filter(e => {
+        const s = staff.find(m => m.id === e.staffId)
+        if (filterDept && s?.department !== filterDept) return false
+        if (filterWeek && e.weekKey !== filterWeek) return false
+        return true
+      })
+      .sort((a, b) => new Date(b.submittedAt || b.createdAt || '').getTime() - new Date(a.submittedAt || a.createdAt || '').getTime())
   }
 
   function handleAction(entryId: string, action: string, note: string, correctedHours: number) {

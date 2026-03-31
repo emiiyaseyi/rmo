@@ -1,7 +1,7 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { fmtDate, weekRange, genId, logAudit, getWeekKey } from '../../lib/utils'
+import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus } from '../../lib/utils'
 import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
@@ -237,6 +237,28 @@ export default function ApprovalsPage() {
   const [filterWeek, setFilterWeek] = useState<string>('')
   const [showDelegationModal, setShowDelegationModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
+  const [reviewTimeLeft, setReviewTimeLeft] = useState('')
+
+  // Compute review window directly from settings — no DB needed
+  const reviewWindowInfo = useMemo(() => {
+    if (settings?.reviewWindow?.enabled === false) return null
+    const ws = getSubmissionWindowStatus(settings?.submissionWindow)
+    if (!ws.deadline) return null
+    const hours = settings?.reviewWindow?.hoursAfterClose ?? 24
+    const reviewDeadline = new Date(ws.deadline.getTime() + hours * 60 * 60 * 1000)
+    const now = new Date()
+    // Show banner only when submission window is past (review window is active or just expired)
+    if (!ws.isPastDeadline) return null
+    return { reviewDeadline, isOverdue: now > reviewDeadline }
+  }, [settings?.submissionWindow])
+
+  useEffect(() => {
+    if (!reviewWindowInfo?.reviewDeadline) return
+    const tick = () => setReviewTimeLeft(formatTimeUntilDeadline(reviewWindowInfo.reviewDeadline))
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [reviewWindowInfo?.reviewDeadline])
 
   const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 20
   const isAdmin = user?.role === 'admin'
@@ -311,12 +333,14 @@ export default function ApprovalsPage() {
   const weeks = Array.from(new Set(relevantEntries.map(e => e.weekKey))).sort().reverse()
 
   function getFilteredPending(): Entry[] {
-    return pending.filter(e => {
-      const s = staff.find(m => m.id === e.staffId)
-      if (filterDept && s?.department !== filterDept) return false
-      if (filterWeek && e.weekKey !== filterWeek) return false
-      return true
-    })
+    return pending
+      .filter(e => {
+        const s = staff.find(m => m.id === e.staffId)
+        if (filterDept && s?.department !== filterDept) return false
+        if (filterWeek && e.weekKey !== filterWeek) return false
+        return true
+      })
+      .sort((a, b) => new Date(b.submittedAt || b.createdAt || '').getTime() - new Date(a.submittedAt || a.createdAt || '').getTime())
   }
 
   function handleAction(entryId: string, action: string, note: string, correctedHours: number) {
@@ -699,6 +723,28 @@ export default function ApprovalsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {reviewWindowInfo && (
+        <div style={{
+          background: reviewWindowInfo.isOverdue ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
+          border: `1px solid ${reviewWindowInfo.isOverdue ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
+          borderRadius: 12, padding: '14px 18px',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ fontSize: 22 }}>{reviewWindowInfo.isOverdue ? '🔴' : '⏰'}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: reviewWindowInfo.isOverdue ? 'var(--danger)' : 'var(--warning)' }}>
+              {reviewWindowInfo.isOverdue ? 'Review window has closed — penalties being applied' : 'Review window is open'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+              {reviewWindowInfo.isOverdue
+                ? `Deadline was ${reviewWindowInfo.reviewDeadline.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. Unreviewed entries will incur a 5-point deduction each.`
+                : `You have ${reviewTimeLeft} to review all submitted timesheets before the 5-point-per-entry late penalty applies.`
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader
         title="Approvals"
         icon="✅"

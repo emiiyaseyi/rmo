@@ -411,3 +411,12 @@ CREATE TABLE IF NOT EXISTS week_submissions (
 );
 CREATE INDEX IF NOT EXISTS idx_week_sub_staff ON week_submissions(staff_id);
 CREATE INDEX IF NOT EXISTS idx_week_sub_week  ON week_submissions(week_key);
+
+-- 27. review_window_log (tracks per-cycle: email sent, 24h deadline, penalty applied)
+CREATE TABLE IF NOT EXISTS review_window_log (
+    week_key         TEXT PRIMARY KEY,
+    notified_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    review_deadline  TIMESTAMPTZ NOT NULL,
+    penalty_applied  BOOLEAN DEFAULT FALSE,
+    penalty_applied_at TIMESTAMPTZ
+);

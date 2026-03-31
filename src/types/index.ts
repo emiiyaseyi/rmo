@@ -227,6 +227,11 @@ export interface AppSettings {
     idleTimeout: {
         minutes: number;
     };
+    reviewWindow?: {
+        enabled: boolean;
+        hoursAfterClose: number; // hours after submission window close, default 24
+        penaltyPerEntry: number; // points deducted per unreviewed entry, e.g. -5
+    };
     submissionWindow: {
         enabled: boolean;
         schedule: {

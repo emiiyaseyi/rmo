@@ -34,6 +34,11 @@ export default function SettingsPage() {
     latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
     timezone: 'Africa/Windhoek'
   })
+  const [reviewWindowForm, setReviewWindowForm] = useState(settings?.reviewWindow || {
+    enabled: true,
+    hoursAfterClose: 24,
+    penaltyPerEntry: -5,
+  })
   const [auditSearch, setAuditSearch] = useState('')
   const [auditAction, setAuditAction] = useState('')
   const [auditFrom, setAuditFrom] = useState('')
@@ -44,6 +49,7 @@ export default function SettingsPage() {
     { id: 'points', label: 'Points' },
     { id: 'caps', label: 'Caps' },
     { id: 'submission', label: 'Submission Window' },
+    { id: 'review', label: 'Review Window' },
     { id: 'weeks', label: 'Weeks' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'security', label: 'Security' },
@@ -68,10 +74,12 @@ export default function SettingsPage() {
   }, [auditLogs, auditSearch, auditAction, auditFrom, auditTo])
 
   useEffect(() => {
-    if (settings?.submissionWindow) {
-      setSubmissionWindowForm(settings.submissionWindow)
-    }
+    if (settings?.submissionWindow) setSubmissionWindowForm(settings.submissionWindow)
   }, [settings?.submissionWindow])
+
+  useEffect(() => {
+    if (settings?.reviewWindow) setReviewWindowForm(settings.reviewWindow)
+  }, [settings?.reviewWindow])
 
   const saveAllSettings = (updates: Partial<AppSettings>) => {
     const newData = { ...settings, ...updates } as AppSettings
@@ -528,6 +536,101 @@ export default function SettingsPage() {
             <button
               className="btn btn-primary btn-lg w-full sm:w-auto"
               onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}
+            >
+              Save Changes
+            </button>
+          </div>
+        )}
+
+        {/* REVIEW WINDOW */}
+        {tab === 'review' && (
+          <div className="flex flex-col gap-6">
+            {/* Header Card */}
+            <div className="card">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-1">📋 Review Window</h3>
+                  <p className="text-sm text-3">Configure how long team leads have to review submitted timesheets after the submission window closes. Late reviews incur point deductions.</p>
+                </div>
+                <button
+                  onClick={() => setReviewWindowForm({ ...reviewWindowForm, enabled: !reviewWindowForm.enabled })}
+                  className={`w-14 h-8 rounded-full relative transition-all flex-shrink-0 ${reviewWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${reviewWindowForm.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                </button>
+              </div>
+            </div>
+
+            {reviewWindowForm.enabled && (
+              <>
+                {/* Visual display */}
+                <div className="rounded-[32px] border-2 border-emerald-400/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl">
+                  <div className="text-center mb-8">
+                    <div className="text-sm font-bold mb-4 text-slate-200">Review Deadline:</div>
+                    <div className="text-5xl font-black tracking-tight leading-tight mb-4">
+                      Submission close + <span className="text-emerald-400">{reviewWindowForm.hoursAfterClose}h</span>
+                    </div>
+                    <p className="text-slate-400 text-sm">Team leads receive an email when the submission window closes and must complete all reviews within this window.</p>
+                  </div>
+
+                  <div className="rounded-[20px] border-2 border-slate-600/70 bg-slate-800/40 p-6">
+                    <label className="text-center text-2xl font-black mb-6 text-white block">Hours to Review</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/30 transition-all"
+                      value={reviewWindowForm.hoursAfterClose}
+                      onChange={e => setReviewWindowForm({ ...reviewWindowForm, hoursAfterClose: Number(e.target.value) })}
+                    />
+                    <p className="text-slate-400 text-sm text-center mt-3">Maximum 168h (1 week)</p>
+                  </div>
+                </div>
+
+                {/* Late review penalty */}
+                <div className="card">
+                  <div className="mb-4">
+                    <h4 className="text-sm font-bold mb-1">⚠️ Late Review Penalty</h4>
+                    <p className="text-xs text-3">Points deducted per unreviewed entry after the review deadline passes. Applied once automatically.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-3 mb-2 block">Points per Unreviewed Entry</label>
+                      <input
+                        type="number"
+                        className="form-input text-center text-xl font-bold w-full"
+                        value={reviewWindowForm.penaltyPerEntry}
+                        onChange={e => setReviewWindowForm({ ...reviewWindowForm, penaltyPerEntry: Number(e.target.value) })}
+                        placeholder="-5"
+                      />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 w-full">
+                        <div className="text-xs text-amber-900">
+                          <span className="font-semibold">Example:</span> A lead with 10 unreviewed entries would lose <span className="font-bold">{Math.abs(reviewWindowForm.penaltyPerEntry) * 10} points</span> ({reviewWindowForm.penaltyPerEntry} × 10 entries)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* How it works */}
+                <div className="card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                  <h4 className="text-sm font-bold mb-3">How it works</h4>
+                  <ol className="text-xs text-3 flex flex-col gap-2" style={{ paddingLeft: 16 }}>
+                    <li>1. Submission window closes (e.g. Tuesday 12:57 PM)</li>
+                    <li>2. All team leads immediately receive an email listing their pending entries and the review deadline</li>
+                    <li>3. Leads have <strong>{reviewWindowForm.hoursAfterClose} hours</strong> to approve or reject all submitted entries</li>
+                    <li>4. After the deadline, <strong>{reviewWindowForm.penaltyPerEntry} points</strong> is deducted per unreviewed entry from each responsible lead</li>
+                    <li>5. A live countdown banner appears on the Approvals page for all leads and admins</li>
+                  </ol>
+                </div>
+              </>
+            )}
+
+            <button
+              className="btn btn-primary btn-lg w-full sm:w-auto"
+              onClick={() => saveAllSettings({ reviewWindow: reviewWindowForm })}
             >
               Save Changes
             </button>

@@ -17,16 +17,18 @@ interface EntryFormProps {
   categories: string[];
   templates: any[];
   onSaveTemplate: (tpl: any) => void;
+  windowOpen: boolean;
 }
 
 /* ────────────────────────────────────────────────────────────── */
 /*  Entry Form                                                    */
 /* ────────────────────────────────────────────────────────────── */
-function EntryForm({ entry, onSave, onClose, projects, leads, categories, templates, onSaveTemplate }: EntryFormProps) {
+function EntryForm({ entry, onSave, onClose, projects, leads, categories, templates, onSaveTemplate, windowOpen }: EntryFormProps) {
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState<any>({
     project: '', lead: '', description: '', startDate: today, endDate: today,
     hours: '', category: categories[0] || 'Client Work',
+    isNewTask: false,
     ...(entry || {})
   })
   const [errors, setErrors] = useState<any>({})
@@ -107,6 +109,41 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
               {errors.lead && <span className="form-error">{errors.lead}</span>}
             </div>
           </div>
+
+          {!windowOpen && (
+            <div style={{
+              background: form.isNewTask ? 'rgba(16,185,129,0.07)' : 'rgba(245,158,11,0.07)',
+              border: `1px solid ${form.isNewTask ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+              borderRadius: 10, padding: '12px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: form.isNewTask ? 'var(--success)' : 'var(--warning)' }}>
+                  {form.isNewTask ? '🆕 New Task — Admin Review Required' : '⏰ Late Submission — Penalty Applies. Use this toggle for New Tasks'}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                  {form.isNewTask
+                    ? 'This entry will go to 2nd-level admin review and will not carry a late penalty.'
+                    : 'Submission window is closed. This will be treated as a late entry and may incur a point deduction.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => F('isNewTask', !form.isNewTask)}
+                style={{
+                  flexShrink: 0, width: 48, height: 26, borderRadius: 13,
+                  background: form.isNewTask ? 'var(--success)' : 'var(--bg-3)',
+                  border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 3, left: form.isNewTask ? 25 : 3,
+                  width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Description *</label>
@@ -483,7 +520,7 @@ export default function TimesheetPage() {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showNoWorkModal, setShowNoWorkModal] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
+  const [confirmAction, setConfirmAction] = useState<{ isOpen: boolean, action: () => void, message: string, title?: string }>({ isOpen: false, action: () => { }, message: '' })
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
@@ -508,7 +545,7 @@ export default function TimesheetPage() {
 
   const leads = staff.filter(s => s.role === 'team_lead' || s.role === 'admin')
   const categories = settings?.categories || ['Client Work', 'Internal', 'Training', 'Admin']
-  
+
   const { cap: weekCap, isHoliday, isCDS } = calculateWeekCap(targetUser, selectedWeek)
 
   const isLocked = (weekLocks || []).some(l => l.weekId === selectedWeek && l.isLocked)
@@ -800,11 +837,11 @@ export default function TimesheetPage() {
   function handleClarify(note: string) {
     if (!clarifyEntry) return
     const now = new Date().toISOString()
-    const updated = entries.map(e => e.id === clarifyEntry.id ? { 
-      ...e, 
-      status: 'resubmitted' as const, 
+    const updated = entries.map(e => e.id === clarifyEntry.id ? {
+      ...e,
+      status: 'resubmitted' as const,
       resubmitNote: note,
-      updatedAt: now 
+      updatedAt: now
     } : e)
     saveEntries(updated)
     toast.success('Explanation sent')
@@ -1357,6 +1394,7 @@ export default function TimesheetPage() {
           categories={categories}
           templates={myTemplates}
           onSaveTemplate={handleSaveTemplate}
+          windowOpen={isWindowOpen}
         />
       )}
       {overrideEntry && (
@@ -1397,7 +1435,7 @@ export default function TimesheetPage() {
         title={confirmAction.title}
         message={confirmAction.message}
         onConfirm={confirmAction.action}
-        onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
+        onCancel={() => setConfirmAction({ isOpen: false, action: () => { }, message: '' })}
       />
     </div>
   )

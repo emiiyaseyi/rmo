@@ -73,6 +73,7 @@ export interface Entry {
     hours: number;
     status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'resubmitted' | 'clarification_needed' | 'pending_clarification' | 'pending_2nd_approval';
     deleted?: boolean;
+    isNewTask?: boolean;
     createdAt: string;
     updatedAt?: string;
     approvedBy?: string;

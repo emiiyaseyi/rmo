@@ -2,13 +2,38 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import toast from 'react-hot-toast'
 import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
-import { db } from '../lib/firebase'
-import { doc, onSnapshot, updateDoc, increment, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy, writeBatch } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
 import { Staff, Entry, AppSettings, AppContextType, AppNotification, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
+
+// ---------------------------------------------------------------------------
+// Generic upsert helper — calls PUT /api/<endpoint> for each item
+// ---------------------------------------------------------------------------
+async function apiUpsert(endpoint: string, items: any | any[]) {
+  const list: any[] = Array.isArray(items) ? items : [items]
+  for (const item of list) {
+    fetch(`/api/${endpoint}/${item.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    }).catch(e => console.error(`apiUpsert ${endpoint} failed`, e))
+  }
+}
+
+async function apiPost(endpoint: string, body: any) {
+  return fetch(`/api/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(e => console.error(`apiPost ${endpoint} failed`, e))
+}
+
+async function apiDelete(endpoint: string, id: string) {
+  return fetch(`/api/${endpoint}/${id}`, { method: 'DELETE' })
+    .catch(e => console.error(`apiDelete ${endpoint}/${id} failed`, e))
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Staff | null>(null)
@@ -30,7 +55,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [delegations, setDelegations] = useState<any[]>([])
   const [approvalDelegations, setApprovalDelegations] = useState<ApprovalDelegation[]>([])
-  const [lockedWeeks, setLockedWeeks] = useState<any[]>([]) // Legacy, to be replaced by weekLocks
+  const [lockedWeeks, setLockedWeeks] = useState<any[]>([])
   const [budgets, setBudgets] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
   const [projectBudgets, setProjectBudgets] = useState<ProjectBudget[]>([])
@@ -46,70 +71,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const userRef = useRef<Staff | null>(null)
 
+  // ---------------------------------------------------------------------------
+  // Initialisation (session restore, dark mode, idle listeners)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    // ONE-TIME CLEANUP (MIGRATION TO SESSION STORAGE)
     if (typeof window !== 'undefined') {
-       const migrated = sessionStorage.getItem('dsn_migrated_v3')
-       if (!migrated) {
-          localStorage.clear()
-          sessionStorage.setItem('dsn_migrated_v3', 'true')
-       }
+      const migrated = sessionStorage.getItem('dsn_migrated_v3')
+      if (!migrated) {
+        localStorage.clear()
+        sessionStorage.setItem('dsn_migrated_v3', 'true')
+      }
     }
 
-    // Session is now strictly in sessionStorage (via local helper as updated in Step 1)
     const savedUser = local.get<Staff | null>('session_user', null)
     if (savedUser) { setUser(savedUser); userRef.current = savedUser }
-    
-    // Initial fetch of settings and Bootstrapping
-    const init = async () => {
-      // Load Settings
-      const settSnap = await getDoc(doc(db, 'settings', 'global'))
-      if (settSnap.exists()) {
-        const s = settSnap.data() as AppSettings
-        setSettings({ ...DEFAULT_SETTINGS, ...s, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...s.featureToggles } })
-      }
 
-      // Bootstrap Default Admin
-      const adminEmail = 'adeniran@datasciencenigeria.ai'
-      const staffRef = collection(db, 'staff')
-      const q = query(staffRef, where('email', '==', adminEmail))
-      const snap = await getDocs(q)
-      
-      if (snap.empty) {
-        console.log('Bootstrapping default admin...')
-        const adminId = 'admin-seed-001'
-        const adminUser: Staff = {
-          id: adminId,
-          name: 'Adeniran',
-          email: adminEmail,
-          department: 'Administration',
-          role: 'admin',
-          password: 'admin',
-          status: 'active',
-          first_login: true,
-          mustChangePassword: true,
-          points: 0,
-          badges: [],
-          streak: 0,
-          createdAt: new Date().toISOString()
+    // Load settings from DB on first render
+    fetch('/api/settings?key=global')
+      .then(r => r.json())
+      .then(s => {
+        if (s && Object.keys(s).length) {
+          setSettings({ ...DEFAULT_SETTINGS, ...s, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...s.featureToggles } })
         }
-        await setDoc(doc(db, 'staff', adminId), adminUser)
-      }
-    }
-    init()
+      })
+      .catch(() => {})
 
     const dm = local.get<boolean>('dark_mode', false)
     setDarkMode(dm)
     document.body.classList.toggle('dark', dm)
 
     const acts = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart']
-    const handler = () => {
-      // Only reset idle timer if countdown is NOT active
-      // Once countdown starts, only explicit button clicks can dismiss it
-      if (idleCountdown === null) {
-        resetIdle()
-      }
-    }
+    const handler = () => { if (idleCountdown === null) resetIdle() }
     acts.forEach(e => window.addEventListener(e, handler, { passive: true }))
     window.addEventListener('online', () => setOnline(true))
     window.addEventListener('offline', () => setOnline(false))
@@ -120,25 +112,114 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [idleCountdown])
 
+  // ---------------------------------------------------------------------------
+  // 30-second polling — replaces all 15 onSnapshot listeners
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!user) return
 
+    const fetchAll = async () => {
+      try {
+        const res = await fetch(`/api/poll?userId=${user.id}&role=${user.role}`)
+        if (!res.ok) return
+        const data = await res.json()
+
+        setStaff(data.staff ?? [])
+        setEntries(data.entries ?? [])
+        setNots(data.notifications ?? [])
+        setApprovalDelegations(data.approvalDelegations ?? [])
+        setLeaves(data.leaves ?? [])
+        setRewards(data.rewards ?? [])
+        setRedeems(data.redeems ?? [])
+        setAnnouncements(data.announcements ?? [])
+        setPublicHolidays(data.publicHolidays ?? [])
+        setAuditLogs((data.auditLogs ?? []).slice(0, 2000))
+        setProjects(data.projects ?? [])
+
+        if (data.settings && Object.keys(data.settings).length) {
+          setSettings(s => ({
+            ...DEFAULT_SETTINGS, ...data.settings,
+            featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...data.settings.featureToggles }
+          }))
+        }
+
+        // Force-logout check (replaces security onSnapshot listener)
+        if (data.forceLogout) {
+          await fetch(`/api/staff/${user.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force_logout: false }),
+          })
+          logout()
+          toast('Your session has been terminated by an administrator.', { icon: '🚫' })
+        }
+      } catch (err) {
+        console.error('Poll failed:', err)
+      }
+    }
+
+    fetchAll()
+    const interval = setInterval(fetchAll, 30_000)
+    return () => clearInterval(interval)
+  }, [user?.id, user?.role])
+
+  // ---------------------------------------------------------------------------
+  // Session heartbeat (30s) + cleanup on logout
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!user) return
+
+    const pulse = () => fetch('/api/auth/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id, userName: user.name, email: user.email,
+        role: user.role, department: user.department || '',
+        lastSeen: new Date().toISOString(),
+        loginAt: user.last_login || new Date().toISOString(),
+      }),
+    }).catch(e => console.error('Heartbeat failed', e))
+
+    pulse()
+    const heartbeat = setInterval(pulse, 30_000)
+    return () => {
+      clearInterval(heartbeat)
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      }).catch(() => {})
+    }
+  }, [user?.id])
+
+  // ---------------------------------------------------------------------------
+  // Audit log cleanup — runs once daily for admins
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return
+    const cleanup = () => fetch('/api/audit-logs/cleanup', { method: 'DELETE' }).catch(() => {})
+    cleanup()
+    const interval = setInterval(cleanup, 24 * 60 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [user?.id, user?.role])
+
+  // ---------------------------------------------------------------------------
+  // Idle timer
+  // ---------------------------------------------------------------------------
   function resetIdle() {
-    // Clear any existing countdown interval
     if ((idleTimerRef as any).currentCountdownInterval) {
       clearInterval((idleTimerRef as any).currentCountdownInterval)
       ;(idleTimerRef as any).currentCountdownInterval = null
     }
-
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    setIdleCountdown(null) // Clear countdown state
+    setIdleCountdown(null)
     const totalMins = settings?.idle_minutes || 2
-    const warnAt = (totalMins * 60) - 30 // Start warning 30s before
+    const warnAt = (totalMins * 60) - 30
 
     idleTimerRef.current = setTimeout(() => {
-      // Start 30s countdown
       let remaining = 30
       setIdleCountdown(remaining)
       const interval = setInterval(() => {
-
         remaining -= 1
         setIdleCountdown(remaining)
         if (remaining <= 0) {
@@ -146,260 +227,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (userRef.current) logoutFn(userRef.current)
         }
       }, 1000)
-
-      // Store interval to clear it later
       ;(idleTimerRef as any).currentCountdownInterval = interval
-
     }, warnAt * 1000)
   }
 
-  // Idle countdown behavior:
-  // - Before countdown: any activity resets the timer
-  // - During countdown: only explicit button clicks (Stay Logged In) can dismiss it
-  // - Mouse movement/hover does NOT dismiss the countdown modal
+  function loadAll() { /* no-op: data loaded via polling */ }
 
-  // REAL-TIME SYNC FOR ALL COLLECTIONS
-  useEffect(() => {
-    if (!user) return
-    const unsubs: Array<() => void> = []
-
-    // 1. Staff
-    unsubs.push(onSnapshot(collection(db, 'staff'), (snap) => {
-      const data: Staff[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Staff))
-      setStaff(data)
-    }))
-
-    // 2. Entries (User context specific or all if admin)
-    const entriesRef = user.role === 'admin' ? collection(db, 'timesheetEntries') : query(collection(db, 'timesheetEntries'), where('staffId', '==', user.id))
-    unsubs.push(onSnapshot(entriesRef, (snap) => {
-      const data: Entry[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Entry))
-      setEntries(data)
-    }))
-
-    // 3. Notifications
-    unsubs.push(onSnapshot(query(collection(db, 'notifications'), where('userId', '==', user.id)), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification))
-      setNots(data)
-    }))
-
-    // 4. Approval Delegations (own + delegated to me)
-    unsubs.push(onSnapshot(query(collection(db, 'approvalDelegations'), where('taskOwnerId', '==', user.id)), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalDelegation))
-      setApprovalDelegations(prev => {
-        const delegatedToMe = prev.filter(p => p.delegateId === user.id)
-        const merged = [...delegatedToMe, ...data]
-        const unique = new Map<string, ApprovalDelegation>()
-        merged.forEach(d => unique.set(d.id, d))
-        return Array.from(unique.values())
-      })
-    }))
-    unsubs.push(onSnapshot(query(collection(db, 'approvalDelegations'), where('delegateId', '==', user.id)), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalDelegation))
-      setApprovalDelegations(prev => {
-        const ownedByMe = prev.filter(p => p.taskOwnerId === user.id)
-        const merged = [...ownedByMe, ...data]
-        const unique = new Map<string, ApprovalDelegation>()
-        merged.forEach(d => unique.set(d.id, d))
-        return Array.from(unique.values())
-      })
-    }))
-
-    // 4. Settings
-    unsubs.push(onSnapshot(doc(db, 'settings', 'global'), (snap) => {
-      if (snap.exists()) {
-        const s = snap.data() as AppSettings
-        setSettings({ ...DEFAULT_SETTINGS, ...s, featureToggles: { ...DEFAULT_SETTINGS.featureToggles, ...s.featureToggles } })
-      }
-    }))
-
-    // 6. Leaves
-    const leavesRef = user.role === 'admin' ? collection(db, 'leaves') : query(collection(db, 'leaves'), where('staffId', '==', user.id))
-    unsubs.push(onSnapshot(leavesRef, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Leave))
-      setLeaves(data)
-    }))
-
-    // 7. Rewards/Redeems
-    unsubs.push(onSnapshot(collection(db, 'rewards'), (snap) => {
-      setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() } as Reward)))
-    }))
-    unsubs.push(onSnapshot(collection(db, 'redeems'), (snap) => {
-      setRedeems(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)))
-    }))
-
-    // 8. Announcements
-    unsubs.push(onSnapshot(collection(db, 'announcements'), (snap) => {
-      setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() } as Announcement)))
-    }))
-
-    // 9. Public Holidays
-    unsubs.push(onSnapshot(collection(db, 'publicHolidays'), (snap) => {
-      setPublicHolidays(snap.docs.map(d => ({ id: d.id, ...d.data() } as PublicHoliday)))
-    }))
-    // 10. Audit Logs
-    unsubs.push(onSnapshot(query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc')), (snap) => {
-      setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog))
-        .slice(0, 2000))
-    }))
-    // 11. Projects
-    unsubs.push(onSnapshot(collection(db, 'projects'), (snap) => {
-      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    }))
-
-    return () => unsubs.forEach(u => u())
-  }, [user?.id])
-
-  // Clean up audit logs older than 3 months (90 days)
-  useEffect(() => {
-    if (!user || user.role !== 'admin') return // Only admins trigger cleanup
-
-    const cleanupAuditLogs = async () => {
-      try {
-        const threeMonthsAgo = new Date()
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-        const cutoffDate = threeMonthsAgo.toISOString()
-
-        const oldLogsQuery = query(
-          collection(db, 'auditLogs'),
-          where('timestamp', '<', cutoffDate)
-        )
-
-        const snapshot = await getDocs(oldLogsQuery)
-        if (snapshot.empty) return
-
-        console.log(`Cleaning up ${snapshot.size} audit logs older than 3 months...`)
-
-        // Delete in batches to avoid exceeding Firestore limits
-        const batch = writeBatch(db)
-        snapshot.docs.forEach(doc => batch.delete(doc.ref))
-        await batch.commit()
-
-        console.log(`Successfully deleted ${snapshot.size} old audit logs`)
-      } catch (error) {
-        console.error('Failed to clean up old audit logs:', error)
-      }
-    }
-
-    // Run cleanup on mount and then daily
-    cleanupAuditLogs()
-    const interval = setInterval(cleanupAuditLogs, 24 * 60 * 60 * 1000) // Run daily
-
-    return () => clearInterval(interval)
-  }, [user?.id, user?.role])
-
-  // Helper to strip undefined values for Firebase
-  const fbSafe = (obj: any) => {
-    if (!obj || typeof obj !== 'object') return obj
-    // Recursively clean arrays and nested objects if needed, but for now top-level is enough
-    return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined))
-  }
-
-  function loadAll() {
-    // loadAll is now mostly obsolete as real-time snapshots handle data loading 
-    // but we can keep it for any static non-firestore data if needed.
-  }
-
-
-
-
-  // Session Heartbeat & Security Listener
-  useEffect(() => {
-    if (!user) return
-
-    // Centralized Session Tracking (Firebase)
-    const sessionRef = doc(db, 'active_sessions', user.id)
-    const pulse = async () => {
-      try {
-        await setDoc(sessionRef, {
-          userId: user.id,
-          userName: user.name,
-          email: user.email,
-          role: user.role,
-          department: user.department || '',
-          lastSeen: new Date().toISOString(),
-          loginAt: user.last_login || new Date().toISOString()
-        }, { merge: true })
-      } catch (e) { console.error('Heartbeat failed', e) }
-    }
-    
-    pulse()
-    const heartbeat = setInterval(pulse, 30000)
-
-    // Security Listener (Force Logout / Lockout)
-    const userRef = doc(db, 'staff', user.id)
-    const unsub = onSnapshot(userRef, (snap) => {
-      if (!snap.exists()) return
-      const data = snap.data()
-      if (data.force_logout) {
-        // Reset flag and logout
-        updateDoc(userRef, { force_logout: false })
-        logout()
-        toast('Your session has been terminated by an administrator.', { icon: '🚫' })
-      }
-    })
-
-    return () => {
-      clearInterval(heartbeat)
-      unsub()
-      deleteDoc(sessionRef).catch(() => {}) // Cleanup on unmount (session end)
-    }
-  }, [user])
-
-  // Persist helpers with optional Supabase sync
+  // ---------------------------------------------------------------------------
+  // Save functions — optimistic local state update + async API persist
+  // ---------------------------------------------------------------------------
   function saveStaff(data: Staff[]) {
-    const previousStaff = staff
-    setStaff(data);
- 
-    // Efficient Sync to Firestore: only update changed members
+    const prev = staff
+    setStaff(data)
     data.forEach(s => {
-      const prev = previousStaff.find(p => p.id === s.id)
-      if (!prev || JSON.stringify(prev) !== JSON.stringify(s)) {
-        setDoc(doc(db, 'staff', s.id), s, { merge: true }).catch(() => {})
+      const old = prev.find(p => p.id === s.id)
+      if (!old || JSON.stringify(old) !== JSON.stringify(s)) {
+        apiUpsert('staff', s)
       }
     })
-
   }
-  function saveEntries(data: Entry[]) { 
-    setEntries(data); 
 
-    // Sync to Firestore
-    data.forEach(e => {
-      setDoc(doc(db, 'timesheetEntries', e.id), e, { merge: true }).catch(() => {})
-    })
+  function saveEntries(data: Entry[]) {
+    setEntries(data)
+    data.forEach(e => apiUpsert('entries', e))
   }
-  function saveNots(data: AppNotification[]) { 
-    setNots(data); 
-    data.forEach(n => { 
+
+  function saveNots(data: AppNotification[]) {
+    setNots(data)
+    data.forEach(n => {
       const prev = notifications.find(p => p.id === n.id)
-      if (!prev || prev.read !== n.read) {
-        setDoc(doc(db, 'notifications', n.id), fbSafe(n), { merge: true }).catch(() => {}) 
-      }
-    }) 
+      if (!prev || prev.read !== n.read) apiUpsert('notifications', n)
+    })
   }
+
   function saveRedeems(data: Redemption[]) {
-    data.forEach(r => { setDoc(doc(db, 'redeems', r.id), r, { merge: true }).catch(() => {}) })
+    setRedeems(data)
+    data.forEach(r => apiUpsert('redeems', r))
   }
+
   function saveRewards(data: Reward[]) {
-    data.forEach(r => { setDoc(doc(db, 'rewards', r.id), r, { merge: true }).catch(() => {}) })
+    setRewards(data)
+    data.forEach(r => apiUpsert('rewards', r))
   }
+
   function saveHof(data: HofEntry[]) {
-    data.forEach(h => { setDoc(doc(db, 'hof', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
+    setHof(data)
+    apiPost('hof', data)
   }
+
   function saveLeaves(data: Leave[]) {
-    setLeaves(data);
-    data.forEach(l => { setDoc(doc(db, 'leaves', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
+    setLeaves(data)
+    data.forEach(l => apiUpsert('leaves', l))
   }
+
   function saveSettings(data: AppSettings) {
-    setSettings(data);
-    setDoc(doc(db, 'settings', 'global'), fbSafe(data), { merge: true }).catch(() => {})
+    setSettings(data)
+    fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'global', value: data }),
+    }).catch(e => console.error('saveSettings failed', e))
   }
+
   function saveAnnouncements(data: Announcement[]) {
-    setAnnouncements(data);
-    data.forEach(a => { setDoc(doc(db, 'announcements', a.id), fbSafe(a), { merge: true }).catch(() => {}) })
+    setAnnouncements(data)
+    data.forEach(a => apiUpsert('announcements', a))
   }
+
   function savePublicHolidays(data: PublicHoliday[]) {
-    setPublicHolidays(data);
-    data.forEach(h => { setDoc(doc(db, 'publicHolidays', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
+    setPublicHolidays(data)
+    data.forEach(h => apiUpsert('public-holidays', h))
   }
 
   function logAudit(action: string, targetId: string, metadata: any = {}) {
@@ -416,58 +313,91 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = [entry, ...auditLogs].slice(0, 1000)
     saveAuditLogs(updated)
   }
+
   function saveAuditLogs(data: AuditLog[]) {
     setAuditLogs(data)
-    data.forEach(log => { setDoc(doc(db, 'auditLogs', log.id), log, { merge: true }).catch(() => {}) })
+    // Only persist new entries (avoid re-sending the entire array on every call)
+    const existing = new Set(auditLogs.map(l => l.id))
+    data.filter(l => !existing.has(l.id)).forEach(l => apiPost('audit-logs', l))
   }
+
   function saveDelegations(data: Delegation[]) {
-    data.forEach(d => { setDoc(doc(db, 'delegations', d.id), d, { merge: true }).catch(() => {}) })
+    setDelegations(data)
+    data.forEach(d => apiUpsert('delegations', d))
   }
+
   function saveApprovalDelegations(data: ApprovalDelegation[]) {
     setApprovalDelegations(data)
-    localStorage.setItem('approvalDelegations', JSON.stringify(data))
-    data.forEach(d => { setDoc(doc(db, 'approvalDelegations', d.id), d, { merge: true }).catch(() => {}) })
+    data.forEach(d => apiUpsert('approval-delegations', d))
   }
+
   function saveLockedWeeks(data: string[]) {
-     setDoc(doc(db, 'settings', 'lockedWeeks'), { lockedWeeks: data }, { merge: true }).catch(() => {})
+    fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'lockedWeeks', value: { lockedWeeks: data } }),
+    }).catch(() => {})
   }
+
   function saveFeatures(data: any) {
-     setDoc(doc(db, 'settings', 'features'), fbSafe(data), { merge: true }).catch(() => {})
+    fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'features', value: data }),
+    }).catch(() => {})
   }
+
   function saveWeekLocks(data: WeekLock[]) {
-    data.forEach(lock => { setDoc(doc(db, 'weekLocks', lock.id), fbSafe(lock), { merge: true }).catch(() => {}) })
+    setWeekLocks(data)
+    apiPost('week-locks', data)
   }
+
   function saveProjects(data: any[]) {
     const newIds = new Set(data.map(p => p.id))
-    projects.forEach(p => { if (!newIds.has(p.id)) deleteDoc(doc(db, 'projects', p.id)).catch(() => {}) })
+    projects.forEach(p => { if (!newIds.has(p.id)) apiDelete('projects', p.id) })
     setProjects(data)
-    data.forEach(p => { setDoc(doc(db, 'projects', p.id), fbSafe(p), { merge: true }).catch(() => {}) })
+    data.forEach(p => apiUpsert('projects', p))
   }
+
   function saveBudgets(data: any[]) {
-    data.forEach(b => { setDoc(doc(db, 'budgets', b.id), fbSafe(b), { merge: true }).catch(() => {}) })
+    setBudgets(data)
+    apiPost('budgets', data)
   }
+
   function saveTemplates(data: any[]) {
-    data.forEach(t => { setDoc(doc(db, 'templates', t.id), fbSafe(t), { merge: true }).catch(() => {}) })
+    setTemplates(data)
+    apiPost('templates', data)
   }
+
   function saveProjectBudgets(data: ProjectBudget[]) {
-    data.forEach(b => { setDoc(doc(db, 'projectBudgets', b.id), fbSafe(b), { merge: true }).catch(() => {}) })
+    setProjectBudgets(data)
+    apiPost('project-budgets', data)
   }
+
   function saveBulkImportLogs(data: BulkImportLog[]) {
-    data.forEach(l => { setDoc(doc(db, 'bulkImportLogs', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
+    setBulkImportLogs(data)
+    data.forEach(l => apiPost('bulk-import-logs', l))
   }
+
   function saveBulkStaffImportLogs(data: BulkStaffImportLog[]) {
-    data.forEach(l => { setDoc(doc(db, 'bulkStaffImportLogs', l.id), fbSafe(l), { merge: true }).catch(() => {}) })
+    setBulkStaffImportLogs(data)
+    data.forEach(l => apiPost('bulk-staff-import-logs', l))
   }
-  function saveStreakRecoveries(data: StreakRecoveryRequest[]) { 
-    data.forEach(r => { setDoc(doc(db, 'streakRecoveries', r.id), fbSafe(r), { merge: true }).catch(() => {}) })
+
+  function saveStreakRecoveries(data: StreakRecoveryRequest[]) {
+    setStreakRecoveries(data)
+    data.forEach(r => apiUpsert('streak-recoveries', r))
   }
-  function savePointsHistory(data: PointsHistoryEntry[]) { 
-    data.forEach(h => { setDoc(doc(db, 'pointsHistory', h.id), fbSafe(h), { merge: true }).catch(() => {}) })
+
+  function savePointsHistory(data: PointsHistoryEntry[]) {
+    setPointsHistory(data)
+    apiPost('points-history', data)
   }
+
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
-    data.forEach(r => { 
-      setDoc(doc(db, 'passwordResetRequests', r.id), fbSafe(r), { merge: true }).catch(() => {})
-      // Notify Admin when a new request is made
+    setPasswordResetRequests(data)
+    data.forEach(r => {
+      apiUpsert('password-reset-requests', r)
       if (r.status === 'pending') {
         const admins = staff.filter(s => s.role === 'admin')
         const requester = staff.find(s => s.id === r.staffId)
@@ -475,21 +405,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           notify(admin.id, `Password reset requested by ${requester?.name || 'Staff'}`, 'password_reset_request', 'Reset Request', r.id, 'request')
         })
       }
-    }) 
+    })
   }
 
+  // ---------------------------------------------------------------------------
+  // Auth
+  // ---------------------------------------------------------------------------
   async function login(staffMember: Staff) {
-    // Enforce domain
     if (!staffMember.email.endsWith('@datasciencenigeria.ai')) {
       throw new Error('Unauthorized domain. Please use your @datasciencenigeria.ai email.')
     }
-
-    // Check status
     if (staffMember.status === 'suspended' || staffMember.suspended) {
       throw new Error('Your account has been suspended. Please contact administrator.')
     }
-
-    // Check lockout
     if (staffMember.lockout_until && new Date(staffMember.lockout_until) > new Date()) {
       const remaining = Math.ceil((new Date(staffMember.lockout_until).getTime() - Date.now()) / 60000)
       throw new Error(`Account locked. Please try again in ${remaining} minutes.`)
@@ -503,10 +431,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     logAudit('login', staffMember.id, { name: staffMember.name })
     resetIdle()
 
-    // Clear failed attempts on success
-    try {
-      await setDoc(doc(db, 'staff', staffMember.id), { failed_attempts: 0, lockout_until: null, force_logout: false }, { merge: true })
-    } catch (e) { console.error('Failed to clear login security state:', e) }
+    // Clear failed attempts
+    fetch(`/api/staff/${staffMember.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ failed_attempts: 0, lockout_until: null, force_logout: false }),
+    }).catch(() => {})
 
     if (staffMember.first_login || staffMember.password === 'dsn-staff' || staffMember.password === '1234') {
       setShowPasswordChange(true)
@@ -533,8 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(updated)
     userRef.current = updated
     local.set('session_user', updated)
-    const updatedStaff = staff.map(s => s.id === user.id ? { ...s, ...updates } : s)
-    saveStaff(updatedStaff)
+    saveStaff(staff.map(s => s.id === user.id ? { ...s, ...updates } : s))
   }
 
   function toggleDark() {
@@ -544,8 +473,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('dark', next)
   }
 
+  // ---------------------------------------------------------------------------
+  // Notifications
+  // ---------------------------------------------------------------------------
   function notify(userId: string, message: string, type = 'info', title = 'New Notification', linkedId?: string, linkedType?: string, overrideEmail?: string, sendEmail = true) {
-    // Provide defaults for optional fields to avoid undefined
     const notif: AppNotification = {
       id: genId(),
       userId,
@@ -560,17 +491,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updated = [notif, ...local.get<AppNotification[]>('notifications', [])]
     saveNots(updated)
 
-    // Only send email if sendEmail flag is true
-    // For routine notifications (timesheets, leave approvals), only send in-app notifications
     const targetUser = staff.find(s => s.id === userId)
     const targetEmail = overrideEmail || targetUser?.email
-
-    // Email only for high-signal events — everything else is in-app only
     const EMAIL_TYPES = [
-      'entry_approved', 'entry_rejected',       // timesheet decisions
-      'leave_approved', 'leave_declined',        // final leave decisions
-      'password_reset', 'password_reset_request',// account security
-      'account_unlock',                          // account security
+      'entry_approved', 'entry_rejected',
+      'leave_approved', 'leave_declined',
+      'password_reset', 'password_reset_request',
+      'account_unlock',
     ]
     if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai') && EMAIL_TYPES.includes(type)) {
       let link = ''
@@ -579,7 +506,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       else if (linkedId) link = `/dashboard`
       sendEmailNotification(targetEmail, title || 'New Notification', message, link)
     }
-
     return notif
   }
 
@@ -591,27 +517,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function markAllRead() {
     const updated = local.get<AppNotification[]>('notifications', []).map(n => n.userId === user?.id ? { ...n, read: true } : n)
     saveNots(updated)
+    fetch('/api/notifications/mark-all-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user?.id }),
+    }).catch(() => {})
   }
 
   const myNotifications = notifications.filter(n => n.userId === user?.id)
   const unreadCount = myNotifications.filter(n => !n.read).length
 
+  // ---------------------------------------------------------------------------
+  // Gamification
+  // ---------------------------------------------------------------------------
   function awardPoints(staffId: string, points: number, action: string, weekId: string = getWeekKey()) {
     const idx = staff.findIndex(s => s.id === staffId)
     if (idx === -1) return
     const updated = [...staff]
     const s = updated[idx]
-    
     const newTotal = (s.points || 0) + points
     const newWeekPoints = (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0)
-    
-    updated[idx] = { 
-      ...s, 
-      points: newTotal, 
-      currentWeekPoints: newWeekPoints,
-      lastSubmittedWeek: weekId
-    }
-    
+    updated[idx] = { ...s, points: newTotal, currentWeekPoints: newWeekPoints, lastSubmittedWeek: weekId }
+
     const historyEntry: PointsHistoryEntry = {
       id: genId(),
       weekId,
@@ -619,13 +546,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       points,
       timestamp: new Date().toISOString()
     }
-    
     saveStaff(updated)
     savePointsHistory([historyEntry, ...pointsHistory])
-    
     if (staffId === user?.id) updateUser({ points: newTotal, currentWeekPoints: newWeekPoints })
-    
-    // Badge checks could be here or triggered elsewhere
     if (newTotal >= 100 && !s.badges?.includes('century_club')) grantBadge(staffId, 'century_club')
   }
 
@@ -641,136 +564,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(staffId, `🏆 You earned the "${badge?.name}" badge!`, 'badge')
   }
 
+  // ---------------------------------------------------------------------------
+  // Approval helpers
+  // ---------------------------------------------------------------------------
   function pendingApprovals() {
     if (!user) return []
     const normalizedUserName = (user.name || '').trim().toLowerCase()
-
-    // Check active approval delegations
     const now = new Date()
     const activeDelegations = approvalDelegations.filter(d =>
-      d.isActive &&
-      d.delegateId === user.id &&
-      new Date(d.startDate) <= now &&
-      new Date(d.endDate) >= now
+      d.isActive && d.delegateId === user.id &&
+      new Date(d.startDate) <= now && new Date(d.endDate) >= now
     )
-
-    // Get staff IDs from delegated task owners
     const delegatedTaskOwnerIds = activeDelegations.map(d => d.taskOwnerId)
     const delegatedStaffIds = staff
       .filter(s => delegatedTaskOwnerIds.includes(s.leadId || ''))
       .map(s => s.id)
-
-    // Staff can be project/task owners even without team_lead role
-    const projectOwnerStaffIds = Array.from(
-      new Set(
-        entries
-          .filter(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
-          .map(e => e.staffId)
-      )
-    )
-
-    // Admin sees all pending and 2nd-level approvals
+    const projectOwnerStaffIds = Array.from(new Set(
+      entries
+        .filter(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
+        .map(e => e.staffId)
+    ))
     if (user.role === 'admin') {
       return entries.filter(e =>
         ['submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status) && !e.deleted
       )
     }
-
-    // Team leads, delegates and project/task owners can approve eligible entries
     const myStaffIds = staff.filter(s => s.leadId === user.id).map(s => s.id)
     const allIds = Array.from(new Set([...myStaffIds, ...delegatedStaffIds, ...projectOwnerStaffIds]))
-
     return entries.filter(e =>
       ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status) &&
-      allIds.includes(e.staffId) &&
-      !e.deleted
+      allIds.includes(e.staffId) && !e.deleted
     )
   }
 
   function canApproveTimesheets() {
     if (!user) return false
     if (['admin', 'team_lead'].includes(user.role)) return true
-
-    // Check if user has active delegations (delegated TO them)
     const now = new Date()
     const hasActiveDelegation = approvalDelegations.some(d =>
-      d.delegateId === user.id &&
-      d.isActive &&
-      new Date(d.startDate) <= now &&
-      new Date(d.endDate) >= now
+      d.delegateId === user.id && d.isActive &&
+      new Date(d.startDate) <= now && new Date(d.endDate) >= now
     )
     if (hasActiveDelegation) return true
-
     if (pendingApprovals().length > 0) return true
     const normalizedUserName = (user.name || '').trim().toLowerCase()
     return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
   }
 
-
-  // Check submission reminders — call on login
   function checkReminders() {
     if (!user || user.role !== 'admin') return
     const now = new Date()
     const wat = new Date(now.getTime() + 3600000)
-    if (wat.getUTCDay() !== 1) return // Only Monday
-    const reminderHour = 10 // Hardcoded default or move to settings if needed
+    if (wat.getUTCDay() !== 1) return
+    const reminderHour = 10
     if (wat.getUTCHours() < reminderHour) return
-
     const currentWeek = getWeekKey()
     const activeStaff = staff.filter(s => s.status === 'active' && !s.exemptFromTimesheet)
     activeStaff.forEach(s => {
       const hasSubmitted = entries.some(e => e.staffId === s.id && e.weekKey === currentWeek && ['submitted', 'approved', 'resubmitted'].includes(e.status))
       if (!hasSubmitted) {
-        const already = local.get<AppNotification[]>('notifications', []).find(n => n.userId === s.id && n.type === 'reminder' && n.createdAt?.slice(0, 10) === new Date().toISOString().slice(0, 10))
+        const already = local.get<AppNotification[]>('notifications', []).find(n =>
+          n.userId === s.id && n.type === 'reminder' && n.createdAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)
+        )
         if (!already) notify(s.id, '⏰ Reminder: Please submit your timesheet before Tuesday 4pm WAT', 'reminder')
       }
     })
   }
 
-  // Timesheet Core Logic
+  // ---------------------------------------------------------------------------
+  // Timesheet core logic
+  // ---------------------------------------------------------------------------
   function calculateWeekCap(target: Staff | null, weekKey: string): { cap: number, isHoliday: boolean, isCDS: boolean } {
     const caps = settings?.hourCaps
     let baseCap = target?.weekly_cap ? Number(target.weekly_cap) : (caps?.defaultStaffCap || 40)
-    
-    // Check if target is intern and has intern cap
-    if (target?.staffType === 'intern' && caps?.internCap) {
-       baseCap = caps.internCap
-    }
-
-    // Check custom caps (per staff)
+    if (target?.staffType === 'intern' && caps?.internCap) baseCap = caps.internCap
     const customCap = caps?.customCaps?.find(c => c.staffId === target?.id)
     if (customCap) baseCap = customCap.cap
-
     if (!target) return { cap: baseCap, isHoliday: false, isCDS: false }
-    
     let cap = baseCap
-    const isIntern = target.staffType === 'intern'
-    const isCDS = isIntern && !!target.cdsDay
-    
-    if (isCDS) cap -= 8 // Deduct 8h for CDS day (could also be dynamic if needed)
-    
+    const isCDS = target.staffType === 'intern' && !!target.cdsDay
+    if (isCDS) cap -= 8
     let isHoliday = false
-    
-    // Check holidays
     const holidays = publicHolidays || []
     const weekStart = new Date(weekKey)
     if (!isNaN(weekStart.getTime())) {
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
-      
       const weekHolidays = holidays.filter(h => {
         const d = new Date(h.date)
         return d >= weekStart && d <= weekEnd
       })
-      
       if (weekHolidays.length > 0) {
-        weekHolidays.forEach(h => {
-          cap -= (h.capReduction || 8)
-        })
+        weekHolidays.forEach(h => { cap -= (h.capReduction || 8) })
         isHoliday = true
       }
     }
-
     return { cap, isHoliday, isCDS }
   }
 
@@ -780,18 +668,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!entry) return
 
     let finalUpdates = { ...updates, updatedAt: new Date().toISOString() }
-    
     if (adminOverride && isAdmin) {
       const history: OverrideLog[] = entry.overrideHistory || []
       Object.keys(updates).forEach(key => {
         if ((updates as any)[key] !== (entry as any)[key]) {
           history.push({
-            id: genId(),
-            adminId: user?.id || '',
-            adminName: user?.name || '',
-            fieldName: key,
-            oldValue: (entry as any)[key],
-            newValue: (updates as any)[key],
+            id: genId(), adminId: user?.id || '', adminName: user?.name || '',
+            fieldName: key, oldValue: (entry as any)[key], newValue: (updates as any)[key],
             timestamp: new Date().toISOString()
           })
         }
@@ -800,20 +683,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const updatedEntries = entries.map(e => e.id === entryId ? { ...e, ...finalUpdates } : e)
-    
-    // Point Triggers
     const pConfig = settings?.pointsConfig
     if (updates.status === 'approved') {
       const isCorrected = updates.correctionNote || updates.corrected
       notify(entry.staffId, `Your timesheet entry for ${entry.project} was approved${isCorrected ? ' with corrections' : ''}.`, 'entry_approved', 'Entry Approved', entry.id, 'entry')
-
       const p = (pConfig?.approvedEntry || 0) + (entry.hours || 0) * (pConfig?.hoursBonus || 0)
       awardPoints(entry.staffId, p, `Entry approved: ${entry.project}`, entry.weekKey)
-      
-      // Perfect Week Check
       const weekEntries = updatedEntries.filter(e => e.staffId === entry.staffId && e.weekKey === entry.weekKey)
       const allApproved = weekEntries.every(e => e.status === 'approved')
-      const noRejections = weekEntries.every(e => !e.approvalHistory?.some(h => h.action === 'rejected'))
+      const noRejections = weekEntries.every(e => !e.approvalHistory?.some((h: any) => h.action === 'rejected'))
       if (allApproved && noRejections) {
         awardPoints(entry.staffId, pConfig?.perfectWeek || 0, 'Perfect Week Bonus', entry.weekKey)
         grantBadge(entry.staffId, 'perfect_week')
@@ -826,11 +704,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     saveEntries(updatedEntries)
-
-    // Sync to Firestore
-    try {
-      await setDoc(doc(db, 'timesheetEntries', entryId), { ...entry, ...finalUpdates }, { merge: true })
-    } catch (e) { console.error('Firestore entry sync failed', e) }
   }
 
   async function submitWeekEntries(staffId: string, weekKey: string, totalHours: number) {
@@ -841,69 +714,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const weekStart = new Date(weekKey)
     const submissionId = `${staffId}_${weekKey}`
 
-    // Get submission window status using the new configuration
     const { getSubmissionWindowStatus } = await import('../lib/utils')
     const windowStatus = getSubmissionWindowStatus(settings?.submissionWindow)
 
-    // Deadline Override Logic (legacy support)
     let deadline = new Date(weekStart)
-    deadline.setDate(deadline.getDate() + 1) // Monday
-    deadline.setDate(deadline.getDate() + 1) // Tuesday
-    deadline.setHours(16, 0, 0, 0) // 4:00pm
-
+    deadline.setDate(deadline.getDate() + 2)
+    deadline.setHours(16, 0, 0, 0)
     const caps = settings?.hourCaps
     if (caps?.deadlineOverride) {
-       const override = new Date(caps.deadlineOverride)
-       if (!isNaN(override.getTime())) deadline = override
+      const override = new Date(caps.deadlineOverride)
+      if (!isNaN(override.getTime())) deadline = override
     }
+    if (windowStatus.deadline) deadline = windowStatus.deadline
 
-    // Use window deadline if configured
-    if (windowStatus.deadline) {
-      deadline = windowStatus.deadline
-    }
-
-    // New Gamification Point Logic
     const pConfig = settings?.pointsConfig || DEFAULT_POINTS
-    const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, 2=Tue...
+    const dayOfWeek = now.getDay()
     const hour = now.getHours()
-
     let totalAward = pConfig.onTimeSubmission || 0
     let bonusDesc = 'On-time submission'
     let latePenalty = 0
     let isLate = false
 
-    // Check if submission is late using window status
     if (windowStatus.isPastDeadline && windowStatus.penalty < 0) {
       isLate = true
       latePenalty = windowStatus.penalty
-      totalAward += latePenalty // Add negative penalty
-      bonusDesc = `Late submission (${Math.abs(latePenalty)} pts penalty, ${windowStatus.periodsLate} period${windowStatus.periodsLate !== 1 ? 's' : ''} late)`
+      totalAward += latePenalty
+      bonusDesc = `Late submission (${Math.abs(latePenalty)} pts penalty)`
     } else {
-      // Apply on-time bonuses
-      if (dayOfWeek === 1) { // Monday
-        totalAward += (pConfig.mondayBonus || 0)
-        bonusDesc += ' + Monday Bonus'
-      } else if (dayOfWeek === 2 && hour < 10) { // Tuesday Early
-        totalAward += (pConfig.earlyBonus || 0)
-        bonusDesc += ' + Early Bonus'
-      }
+      if (dayOfWeek === 1) { totalAward += (pConfig.mondayBonus || 0); bonusDesc += ' + Monday Bonus' }
+      else if (dayOfWeek === 2 && hour < 10) { totalAward += (pConfig.earlyBonus || 0); bonusDesc += ' + Early Bonus' }
     }
 
     const submission: WeekSubmission = {
-      id: submissionId,
-      staffId,
-      weekKey,
-      status: 'submitted',
-      submittedAt: now.toISOString(),
-      totalHours,
-      latePenalty: isLate ? latePenalty : undefined,
-      isLate
+      id: submissionId, staffId, weekKey, status: 'submitted',
+      submittedAt: now.toISOString(), totalHours,
+      latePenalty: isLate ? latePenalty : undefined, isLate
     }
 
-    // Update entries status and ensure leadId is set
     const updatedEntries = entries.map(e => {
       if (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') {
-        // Inherit leadId from staff member if not set
         const leadId = e.leadId || staffMember.leadId || ''
         return { ...e, status: 'submitted' as const, submittedAt: now.toISOString(), leadId }
       }
@@ -911,35 +760,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     saveEntries(updatedEntries)
 
-    // Save submission record
     try {
-      await setDoc(doc(db, 'weekSubmissions', submissionId), submission)
+      await fetch('/api/week-submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submission),
+      })
       logAudit('submit', submissionId, { staffId, weekKey, totalHours })
-      
-      // Notify Task Owners/Admins
+
       const submittedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'submitted')
       const targetLeads = Array.from(new Set(submittedEntries.map(e => e.leadId || staffMember.leadId).filter(Boolean)))
       const adminIds = staff.filter(s => s.role === 'admin').map(s => s.id)
       const allToNotify = Array.from(new Set([...targetLeads, ...adminIds]))
-      
       allToNotify.forEach(lId => {
-         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
+        notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
       })
 
-      // Award points
       if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
-      
-      // Update streak
+
       const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))
       const hasLastWeek = entries.some(e => e.staffId === staffId && e.weekKey === lastWeek && ['submitted', 'approved'].includes(e.status))
       const newStreak = hasLastWeek ? (staffMember.streak || 0) + 1 : 1
       const updatedStaff = staff.map(s => s.id === staffId ? { ...s, streak: newStreak, lastSubmittedWeek: weekKey } : s)
       saveStaff(updatedStaff)
       if (staffId === user?.id) updateUser({ streak: newStreak, lastSubmittedWeek: weekKey })
-
     } catch (e) { console.error('Week submission failed', e) }
   }
 
+  // ---------------------------------------------------------------------------
+  // Context value
+  // ---------------------------------------------------------------------------
   const value = {
     user, staff, entries, notifications: myNotifications,
     unreadCount, settings, darkMode, online, features, redeems,
@@ -976,15 +826,9 @@ const DEFAULT_FEATURES = {
 }
 
 const DEFAULT_POINTS_CONFIG = {
-  onTimeSubmission: 10,
-  mondayBonus: 5,
-  earlyBonus: 5,
-  approvedEntry: 10,
-  approvedWithNote: 5,
-  perfectWeek: 20,
-  hoursBonus: 1,
-  streakBonus: 15,
-  rejectionDeduction: -5
+  onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5,
+  approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20,
+  hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -996,49 +840,20 @@ const DEFAULT_SETTINGS: AppSettings = {
     logoBase64: null,
   },
   featureToggles: {
-    gamification: true,
-    leaderboard: true,
-    messaging: true,
-    bulkImports: true,
-    darkMode: true,
-    twoFactorAdminsLeads: true,
-    deadlineCountdown: true,
-    firstLoginWalkthrough: true,
-    approvalDelegation: true,
-    pdfExport: true,
-    profilePhotos: true,
-    streakRecovery: true,
-    duplicateDetection: true,
-    announcements: true,
-    orgChart: true,
+    gamification: true, leaderboard: true, messaging: true, bulkImports: true,
+    darkMode: true, twoFactorAdminsLeads: true, deadlineCountdown: true,
+    firstLoginWalkthrough: true, approvalDelegation: true, pdfExport: true,
+    profilePhotos: true, streakRecovery: true, duplicateDetection: true,
+    announcements: true, orgChart: true,
   },
   pointsConfig: DEFAULT_POINTS_CONFIG,
-  hourCaps: {
-    defaultStaffCap: 45,
-    internCap: 32,
-    cdsVisibility: true,
-    customCaps: []
-  },
-  approvalWorkflow: {
-    secondLevelEnabled: true,
-    secondLevelThreshold: 60
-  },
-  idleTimeout: {
-    minutes: 30
-  },
+  hourCaps: { defaultStaffCap: 45, internCap: 32, cdsVisibility: true, customCaps: [] },
+  approvalWorkflow: { secondLevelEnabled: true, secondLevelThreshold: 60 },
+  idleTimeout: { minutes: 30 },
   submissionWindow: {
     enabled: true,
-    schedule: {
-      startDay: 'monday' as const,
-      startTime: '08:00',
-      endDay: 'tuesday' as const,
-      endTime: '16:00'
-    },
-    latePenalty: {
-      enabled: true,
-      pointsPerPeriod: -5,
-      periodHours: 12
-    },
+    schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
+    latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
     timezone: 'Africa/Windhoek'
   },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],

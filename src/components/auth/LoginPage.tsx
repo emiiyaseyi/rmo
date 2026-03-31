@@ -2,8 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
 import { local, logAudit, genId } from '../../lib/utils'
-import { db } from '../../lib/firebase'
-import { doc, getDoc, updateDoc, increment, setDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { Staff } from '../../types'
 import { Eye, EyeOff } from 'lucide-react'
@@ -38,63 +36,61 @@ export default function LoginPage() {
 
     try {
       const emailLower = email.toLowerCase().trim()
-      
-      // Query Firestore directly for the user by email
-      const staffRef = collection(db, 'staff')
-      const q = query(staffRef, where('email', '==', emailLower))
-      const snap = await getDocs(q)
-      
-      if (snap.empty) {
+
+      // Fetch user by email from PostgreSQL via API
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailLower }),
+      })
+
+      if (!res.ok) {
         setError('Invalid credentials.')
         setLoading(false)
         return
       }
 
-      const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as Staff
-      const userRef = doc(db, 'staff', found.id)
-      
-      // Double check lockout/suspension from the same doc or a fresh fetch
-      const userData = snap.docs[0].data() as any
-      
+      const found = await res.json() as Staff
+
       // Lockout check
-      if (userData.lockout_until && new Date(userData.lockout_until) > new Date()) {
-        const hours = Math.ceil((new Date(userData.lockout_until).getTime() - Date.now()) / (1000 * 60 * 60))
+      if (found.lockout_until && new Date(found.lockout_until) > new Date()) {
+        const hours = Math.ceil((new Date(found.lockout_until).getTime() - Date.now()) / (1000 * 60 * 60))
         setError(`Account locked. Try again in ${hours} hour(s).`)
         setLoading(false)
         return
       }
 
-      // Handle suspension
-      if (userData.suspended) {
+      // Suspension check
+      if (found.suspended) {
         setError('Account suspended. Contact Admin.')
         setLoading(false)
         return
       }
 
-      // Password Check
-      const isCorrect = (password === (found.password || userData.password) || (found as any).pin === password)
-      
+      // Password check
+      const isCorrect = password === found.password || (found as any).pin === password
+
       if (!isCorrect) {
-        // Increment failed attempts
-        await updateDoc(userRef, { failed_attempts: increment(1) })
-        
-        // Check for lockout after fresh attempt
-        const freshSnap = await getDoc(userRef)
-        const attempts = freshSnap.data()?.failed_attempts || 0
-        
-        if (attempts >= 5) {
+        const newAttempts = (found.failed_attempts || 0) + 1
+        const updates: any = { failed_attempts: newAttempts }
+        if (newAttempts >= 5) {
           const lockout = new Date()
           lockout.setHours(lockout.getHours() + 24)
-          await updateDoc(userRef, { lockout_until: lockout.toISOString() })
+          updates.lockout_until = lockout.toISOString()
           setError('Too many failed attempts. Account locked for 24h.')
         } else {
-          setError(`Invalid credentials. ${5 - attempts} attempts left.`)
+          setError(`Invalid credentials. ${5 - newAttempts} attempts left.`)
         }
+        await fetch(`/api/staff/${found.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        })
         setLoading(false)
         return
       }
 
-      // Success Logic
+      // Force password change on first login or default password
       if (found.first_login || password === 'dsn-staff' || password === '1234' || (found as any).mustChangePassword) {
         setFoundUser(found)
         setStep('change_password')
@@ -102,9 +98,8 @@ export default function LoginPage() {
         return
       }
 
-      // Final Login
       await login(found)
-      
+
     } catch (e: any) {
       console.error('Login error:', e)
       setError('An error occurred during sign-in. Please try again.')
@@ -124,16 +119,12 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const updatedUser = { ...foundUser, password: newPassword, pin: newPassword, first_login: false, mustChangePassword: false }
-      
-      // Update Firebase
-      const userRef = doc(db, 'staff', foundUser.id)
-      await setDoc(userRef, { 
-        password: newPassword, 
-        pin: newPassword, 
-        first_login: false, 
-        mustChangePassword: false,
-        last_password_change: new Date().toISOString()
-      }, { merge: true })
+
+      await fetch(`/api/staff/${foundUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword, pin: newPassword, first_login: false, mustChangePassword: false }),
+      })
 
       // Update Local State for Session Persistence
       sessionStorage.setItem('dsn_pin_change', JSON.stringify({ id: foundUser.id, password: newPassword }))
@@ -152,21 +143,21 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const emailLower = email.toLowerCase().trim()
-      const staffRef = collection(db, 'staff')
-      const q = query(staffRef, where('email', '==', emailLower))
-      const snap = await getDocs(q)
-      
-      if (!snap.empty) {
-        const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as Staff
+      const lookupRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailLower }),
+      })
+      if (lookupRes.ok) {
+        const found = await lookupRes.json() as Staff
         const reqId = genId()
-        const reqRef = doc(db, 'reset_requests', reqId)
-        await setDoc(reqRef, {
-          id: reqId,
-          staffId: found.id,
-          staffName: found.name,
-          email: found.email,
-          requestedAt: new Date().toISOString(),
-          status: 'pending'
+        await fetch('/api/reset-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: reqId, staffId: found.id, staffName: found.name,
+            email: found.email, requestedAt: new Date().toISOString(), status: 'pending'
+          }),
         })
       }
       setForgotSent(true)

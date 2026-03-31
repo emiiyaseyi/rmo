@@ -64,9 +64,16 @@ export default function AnalyticsPage() {
   // Filtered Data
   const filteredEntries = useMemo(() => {
     return scopedEntries.filter(e => {
-      if (e.deleted || !e.date) return false
-      const d = parseISO(e.date)
-      return isWithinInterval(d, { start: dateRange.start, end: dateRange.end })
+      if (e.deleted) return false
+      // Use date → startDate → weekKey as fallback (weekKey is always present)
+      const dateStr = e.date || e.startDate || e.weekKey
+      if (!dateStr) return false
+      try {
+        const d = parseISO(dateStr)
+        return isWithinInterval(d, { start: dateRange.start, end: dateRange.end })
+      } catch {
+        return false
+      }
     })
   }, [scopedEntries, dateRange])
 
@@ -151,7 +158,12 @@ export default function AnalyticsPage() {
     const prevMonthEnd = endOfMonth(prevMonthStart)
 
     const getMonthStats = (start: Date, end: Date) => {
-      const ents = scopedEntries.filter(e => !e.deleted && e.date && isWithinInterval(parseISO(e.date), { start, end }))
+      const ents = scopedEntries.filter(e => {
+        if (e.deleted) return false
+        const dateStr = e.date || e.startDate || e.weekKey
+        if (!dateStr) return false
+        try { return isWithinInterval(parseISO(dateStr), { start, end }) } catch { return false }
+      })
       const approved = ents.filter(e => e.status === 'approved')
       const hours = approved.reduce((sum, e) => sum + (e.hours || 0), 0)
       const submissionCount = new Set(ents.map(e => `${e.staffId}-${e.weekKey}`)).size
@@ -193,7 +205,12 @@ export default function AnalyticsPage() {
   const staffYTD = useMemo(() => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1)
     const yearEnd = new Date()
-    const ytdEntries = scopedEntries.filter(e => !e.deleted && e.date && parseISO(e.date) >= yearStart)
+    const ytdEntries = scopedEntries.filter(e => {
+      if (e.deleted) return false
+      const dateStr = e.date || e.startDate || e.weekKey
+      if (!dateStr) return false
+      try { return parseISO(dateStr) >= yearStart } catch { return false }
+    })
     
     return activeStaff.map(s => {
       const sEntries = ytdEntries.filter(e => e.staffId === s.id)

@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DSN Resource Management Office (RMO)
 
-## Getting Started
+Internal HR and timesheet management platform for Data Science Nigeria.
 
-First, run the development server:
+## Stack
+
+- **Frontend/Backend**: Next.js 15 (App Router)
+- **Database**: PostgreSQL 18 (local) / Azure PostgreSQL Flexible Server (production)
+- **Auth**: Custom session-based auth with bcrypt passwords
+- **Email**: Resend + React Email
+- **Deployment**: Netlify (frontend + serverless API) + Azure PostgreSQL
+
+## Features
+
+- Timesheet submission with configurable weekly windows and late penalties
+- Multi-level approval workflow (lead → 2nd-level admin for high-value or out-of-window entries)
+- Review window enforcement — leads are emailed when submission closes and penalised for late reviews
+- Leave requests and approvals
+- Staff management, organogram, and delegation support
+- Points, streaks, badges, leaderboard, and rewards system
+- Analytics: weekly/monthly reports, department breakdowns, utilisation
+- Announcements, public holidays, bulk imports
+- Admin: audit trail, password reset queue, forced logout, week locking
+
+## Local Development
 
 ```bash
+# Install dependencies
+npm install
+
+# Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires a `.env` file:
+```
+DATABASE_URL=postgresql://dsnrmo:dsnrmo_dev@localhost:5432/dsnrmo
+RESEND_API_KEY=...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Apply schema to local PostgreSQL:
+```bash
+psql $DATABASE_URL -f src/db/schema.sql
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database Migration (Firestore → PostgreSQL)
 
-## Learn More
+```bash
+# All essential tables (staff, projects, settings, leaves, etc.)
+npx tsx scripts/migrate-firestore-to-pg.ts
 
-To learn more about Next.js, take a look at the following resources:
+# Timesheet entries only
+npx tsx scripts/migrate-timesheet-entries.ts
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Both scripts require `scripts/service-account.json` (Firebase service account key — gitignored).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Production
 
-## Deploy on Vercel
+- **App**: [rmo.dsnsandbox.com](https://rmo.dsnsandbox.com) via Netlify
+- **Database**: Azure PostgreSQL Flexible Server (`dsn-rmo-database.postgres.database.azure.com`)
+- Set `DATABASE_URL` in Netlify environment variables pointing to Azure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy by pushing to `main` — Netlify auto-deploys.

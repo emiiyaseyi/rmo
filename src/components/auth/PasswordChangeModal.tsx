@@ -1,8 +1,6 @@
 'use client'
 import React, { useState } from 'react'
 import { useApp } from '../../context/AppContext'
-import { db } from '../../lib/firebase'
-import { doc, updateDoc } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, Lock, CheckCircle2, XCircle } from 'lucide-react'
 
@@ -30,11 +28,10 @@ export default function PasswordChangeModal() {
     if (error || mismatch || !user) return
     setLoading(true)
     try {
-      // Update Firestore
-      await updateDoc(doc(db, 'staff', user.id), {
-        password: newPassword,
-        first_login: false,
-        password_reset_pending: false
+      await fetch(`/api/staff/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword, first_login: false, password_reset_pending: false }),
       })
 
       // Update Local State

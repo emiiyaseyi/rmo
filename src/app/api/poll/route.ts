@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       query('SELECT * FROM staff ORDER BY name'),
       isAdmin
         ? query('SELECT * FROM timesheet_entries WHERE deleted = false ORDER BY created_at DESC')
-        : query('SELECT * FROM timesheet_entries WHERE staff_id = $1 AND deleted = false ORDER BY created_at DESC', [userId]),
+        : query('SELECT * FROM timesheet_entries WHERE (staff_id = $1 OR lead_id = $1) AND deleted = false ORDER BY created_at DESC', [userId]),
       isAdmin
         ? query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 1000')
         : query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200', [userId]),

@@ -763,10 +763,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updatedEntries = entries.map(e => {
       if (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') {
         const leadId = e.leadId || staffMember.leadId || ''
-        return { ...e, status: 'submitted' as const, submittedAt: now.toISOString(), leadId }
+        // New tasks submitted outside the window go to 2nd-level admin review, no late penalty
+        const status = e.isNewTask ? 'pending_2nd_approval' as const : 'submitted' as const
+        return { ...e, status, submittedAt: now.toISOString(), leadId }
       }
       return e
     })
+
+    // Late penalty only applies to non-new-task entries
+    const hasOnlyNewTasks = updatedEntries
+      .filter(e => e.staffId === staffId && e.weekKey === weekKey)
+      .every(e => e.isNewTask)
+    if (hasOnlyNewTasks && isLate) {
+      isLate = false
+      latePenalty = 0
+      totalAward = 0
+      bonusDesc = 'New task submission'
+    }
+
     saveEntries(updatedEntries)
 
     try {
@@ -778,8 +792,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logAudit('submit', submissionId, { staffId, weekKey, totalHours })
 
       const submittedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'submitted')
+      const newTaskEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey && e.status === 'pending_2nd_approval')
       const targetLeads = Array.from(new Set(submittedEntries.map(e => e.leadId || staffMember.leadId).filter(Boolean)))
       const adminIds = staff.filter(s => s.role === 'admin').map(s => s.id)
+      // Notify admins separately about new tasks requiring 2nd-level review
+      if (newTaskEntries.length > 0) {
+        adminIds.forEach(adminId => notify(adminId,
+          `${staffMember.name} submitted ${newTaskEntries.length} new task${newTaskEntries.length > 1 ? 's' : ''} outside the submission window requiring your review.`,
+          'submission_received', 'New Task — Admin Review Required', submissionId, 'entry'))
+      }
       const allToNotify = Array.from(new Set([...targetLeads, ...adminIds]))
       allToNotify.forEach(lId => {
         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')

@@ -326,7 +326,7 @@ export default function ApprovalsPage() {
   const currentWeekKey = getWeekKey(new Date())
   const [secondLevelWeek, setSecondLevelWeek] = useState<string>(currentWeekKey)
   const secondLevelWeekEntries = isAdmin
-    ? entries.filter(e => !e.deleted && e.weekKey === secondLevelWeek && e.hours >= secondLevelThreshold)
+    ? entries.filter(e => !e.deleted && e.weekKey === secondLevelWeek && (e.hours >= secondLevelThreshold || e.isNewTask))
     : []
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean).map(d => d as string)))
@@ -970,6 +970,7 @@ export default function ApprovalsPage() {
                     <tr>
                       <th>Staff</th>
                       <th>Project</th>
+                      <th>Type</th>
                       <th>Date</th>
                       <th>Hours</th>
                       <th>Week</th>
@@ -986,6 +987,12 @@ export default function ApprovalsPage() {
                       <tr key={e.id}>
                         <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                         <td>{e.project}</td>
+                        <td>
+                          {e.isNewTask
+                            ? <span className="badge badge-green" title="Submitted outside window as a new task — no late penalty">🆕 New Task</span>
+                            : <span className="badge badge-yellow" title="High-value entry requiring 2nd-level review">⚠️ High Value</span>
+                          }
+                        </td>
                         <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{fmtDate(e.date)}</td>
                         <td style={{ fontWeight: 700, color: 'var(--warning)' }}>{e.hours}h</td>
                         <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>

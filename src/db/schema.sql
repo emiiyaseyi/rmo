@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS timesheet_entries (
                        CHECK (status IN ('draft','submitted','approved','rejected','resubmitted',
                                          'clarification_needed','pending_clarification','pending_2nd_approval')),
     deleted            BOOLEAN DEFAULT FALSE,
+    is_new_task        BOOLEAN DEFAULT FALSE,
     lead               TEXT,
     lead_id            TEXT,
     approved_by        TEXT,

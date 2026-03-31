@@ -1,7 +1,5 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { db } from '../../lib/firebase'
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { useApp } from '../../context/AppContext'
 import { fmtDate, timeAgo } from '../../lib/utils'
 import { Check, X, ShieldAlert, Clock, Mail } from 'lucide-react'
@@ -15,13 +13,10 @@ export default function ResetRequestsPage() {
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   useEffect(() => {
-    const q = query(collection(db, 'reset_requests'), orderBy('timestamp', 'desc'))
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      setRequests(data)
-      setLoading(false)
-    })
-    return () => unsub()
+    fetch('/api/reset-requests')
+      .then(r => r.json())
+      .then(data => { setRequests(data); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [])
 
   const handleApprove = async (req: any) => {
@@ -29,23 +24,21 @@ export default function ResetRequestsPage() {
       isOpen: true,
       action: async () => {
         try {
-      await updateDoc(doc(db, 'staff', req.userId), {
-        password: '1234',
-        first_login: true,
-        password_reset_pending: true,
-        force_logout: true
-      })
-      // Update local state if needed
-      saveStaff(staff.map(s => s.id === req.userId ? { ...s, password: '1234', first_login: true, password_reset_pending: true } : s))
-      
-          await deleteDoc(doc(db, 'reset_requests', req.id))
-          notify(req.userId, '🔒 Your password has been reset to "1234" by Admin. Please change it on next login.', 'info')
+          await fetch(`/api/staff/${req.staffId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: '1234', first_login: true, password_reset_pending: true, force_logout: true }),
+          })
+          saveStaff(staff.map(s => s.id === req.staffId ? { ...s, password: '1234', first_login: true, password_reset_pending: true } : s))
+          await fetch(`/api/reset-requests/${req.id}`, { method: 'DELETE' })
+          setRequests(prev => prev.filter(r => r.id !== req.id))
+          notify(req.staffId, '🔒 Your password has been reset to "1234" by Admin. Please change it on next login.', 'info')
           toast.success('Reset request approved')
-        } catch (e) {
+        } catch {
           toast.error('Failed to approve request')
         }
       },
-      message: `Approve password reset for ${req.userName}?`,
+      message: `Approve password reset for ${req.staffName}?`,
       title: 'Approve Password Reset'
     })
   }
@@ -55,9 +48,10 @@ export default function ResetRequestsPage() {
       isOpen: true,
       action: async () => {
         try {
-          await deleteDoc(doc(db, 'reset_requests', id))
+          await fetch(`/api/reset-requests/${id}`, { method: 'DELETE' })
+          setRequests(prev => prev.filter(r => r.id !== id))
           toast.success('Request removed')
-        } catch (e) {
+        } catch {
           toast.error('Failed to remove request')
         }
       },
@@ -101,10 +95,10 @@ export default function ResetRequestsPage() {
                     <td style={{ fontSize: 12, color: 'var(--text-3)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Clock size={12} />
-                        {timeAgo(req.timestamp)}
+                        {timeAgo(req.requestedAt)}
                       </div>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{req.userName}</td>
+                    <td style={{ fontWeight: 600 }}>{req.staffName}</td>
                     <td style={{ fontSize: 13, color: 'var(--text-2)' }}>
                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Mail size={12} />
@@ -116,15 +110,15 @@ export default function ResetRequestsPage() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button 
-                          className="btn btn-primary btn-sm" 
+                        <button
+                          className="btn btn-primary btn-sm"
                           onClick={() => handleApprove(req)}
                           title="Reset to 1234"
                         >
                           <Check size={14} style={{ marginRight: 4 }} /> Approve
                         </button>
-                        <button 
-                          className="btn btn-secondary btn-sm" 
+                        <button
+                          className="btn btn-secondary btn-sm"
                           onClick={() => handleReject(req.id)}
                           title="Dismiss"
                         >
@@ -139,13 +133,13 @@ export default function ResetRequestsPage() {
           </table>
         </div>
       </div>
-      
-      <div style={{ 
-        background: 'var(--bg-elevated)', 
-        border: '1px solid var(--border)', 
-        borderRadius: 12, 
-        padding: 16, 
-        display: 'flex', 
+
+      <div style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        padding: 16,
+        display: 'flex',
         gap: 12,
         alignItems: 'flex-start'
       }}>

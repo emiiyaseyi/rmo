@@ -22,10 +22,8 @@ export default function SettingsPage() {
   } = useApp()
 
   const [tab, setTab] = useState<string>('branding')
-  const [testingConnection, setTestingConnection] = useState(false)
   
   // Local form state
-  const [fbForm, setFbForm] = useState(settings?.firebase || { url: '', anonKey: '', isConnected: false })
   const [brandForm, setBrandForm] = useState(settings?.branding || { appName: 'DSN Timesheet', welcomeMessage: 'Welcome', primaryColour: '#4F46E5', secondaryColour: '#10B981', logoBase64: null })
   const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
@@ -82,22 +80,6 @@ export default function SettingsPage() {
     toast.success('Settings updated')
   }
 
-  async function testFirebase() {
-    setTestingConnection(true)
-    // Simulate connection test
-    setTimeout(() => {
-      const success = fbForm.url.includes('firebase')
-      if (success) {
-        const update = { ...fbForm, isConnected: true, lastTestedAt: new Date().toISOString() }
-        setFbForm(update)
-        saveAllSettings({ firebase: update })
-        toast.success('Firebase connected!')
-      } else {
-        toast.error('Connection failed. Check URL.')
-      }
-      setTestingConnection(false)
-    }, 1500)
-  }
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -743,7 +725,7 @@ export default function SettingsPage() {
               <input className="form-input text-xs" style={{ width: '140px' }} type="date" placeholder="dd----yyyy" value={auditTo} onChange={e => setAuditTo(e.target.value)} />
             </div>
             <div className="text-xs text-3">
-              Showing {filteredAuditLogs.length} log event{filteredAuditLogs.length === 1 ? '' : 's'} from Firebase.
+              Showing {filteredAuditLogs.length} log event{filteredAuditLogs.length === 1 ? '' : 's'} .
             </div>
             <div className="table-wrap" style={{ maxHeight: 600 }}>
               <table>

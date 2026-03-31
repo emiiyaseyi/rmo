@@ -2,8 +2,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF, avatarColor, initials, logAudit } from '../../lib/utils'
-import { db } from '../../lib/firebase'
-import { doc, updateDoc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore'
 import { Search, Plus, Download, Upload, Edit2, UserX, UserCheck, Key, LogOut, Trash2, CheckSquare, Square, Unlock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Staff, Entry } from '../../types'
@@ -430,17 +428,19 @@ export default function StaffPage() {
 
   const departments = useMemo(() => Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort(), [staff])
 
-  // Subscribe to real-time active sessions from Firebase
+  // Poll active sessions every 30s
   useEffect(() => {
-    const q = query(collection(db, 'active_sessions'))
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => d.data())
-      // Filter out stale sessions (older than 2 mins) just in case cleanup failed
-      const cutoff = Date.now() - 2 * 60 * 1000
-      const active = data.filter((s: any) => new Date(s.lastSeen).getTime() > cutoff)
-      setActiveSessions(active)
-    })
-    return () => unsub()
+    const fetchSessions = async () => {
+      try {
+        const res = await fetch('/api/auth/heartbeat')
+        if (!res.ok) return
+        const data = await res.json()
+        setActiveSessions(data)
+      } catch {}
+    }
+    fetchSessions()
+    const interval = setInterval(fetchSessions, 30_000)
+    return () => clearInterval(interval)
   }, [])
 
   const filtered = useMemo(() => {
@@ -518,11 +518,6 @@ export default function StaffPage() {
     setConfirmAction({
       isOpen: true,
       action: () => {
-        // Actually delete from Firestore
-        ids.forEach(id => {
-          deleteDoc(doc(db, 'staff', id)).catch(e => console.error('Delete failed:', e))
-        })
-
         saveStaff(staff.filter(s => !ids.has(s.id)))
         logAudit('DELETE_STAFF', `${user?.name} deleted ${ids.size} staff`, user?.id || '', user?.name || '')
         setSelected(new Set())
@@ -574,10 +569,10 @@ export default function StaffPage() {
       isOpen: true,
       action: async () => {
         try {
-          await updateDoc(doc(db, 'staff', s.id), {
-            password: 'dsn-staff',
-            first_login: true,
-            password_reset_pending: true
+          await fetch(`/api/staff/${s.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: 'dsn-staff', first_login: true, password_reset_pending: true }),
           })
           saveStaff(staff.map(m => m.id === s.id ? { ...m, password: 'dsn-staff', first_login: true, password_reset_pending: true } : m))
           notify(s.id, 'Your password has been reset by admin to "dsn-staff". Please change it on next login.', 'password_reset', 'Password Reset', s.id, 'message')
@@ -596,9 +591,10 @@ export default function StaffPage() {
       isOpen: true,
       action: async () => {
         try {
-          await updateDoc(doc(db, 'staff', s.id), {
-            failed_attempts: 0,
-            lockout_until: null
+          await fetch(`/api/staff/${s.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ failed_attempts: 0, lockout_until: null }),
           })
           saveStaff(staff.map(m => m.id === s.id ? { ...m, failed_attempts: 0, lockout_until: undefined } : m))
           notify(s.id, 'Your account has been unlocked by an administrator. You can now login.', 'account_unlock', 'Account Unlocked', s.id, 'message')
@@ -618,11 +614,11 @@ export default function StaffPage() {
       isOpen: true,
       action: async () => {
         try {
-          // Set force_logout flag in Firestore
-          await updateDoc(doc(db, 'staff', s.id), { force_logout: true })
-
-          // Cleanup of local session mirror (if any existed) is handled by Firestore sync logic
-
+          await fetch(`/api/staff/${s.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force_logout: true }),
+          })
           logAudit('FORCE_LOGOUT', `${user?.name} force logged out ${s.name}`, user?.id || '', user?.name || '')
           toast.success(s.name + ' logged out')
         } catch (e: any) {

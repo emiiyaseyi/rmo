@@ -22,7 +22,7 @@ export default function SettingsPage() {
   } = useApp()
 
   const [tab, setTab] = useState<string>('branding')
-  
+
   // Local form state
   const [brandForm, setBrandForm] = useState(settings?.branding || { appName: 'DSN Timesheet', welcomeMessage: 'Welcome', primaryColour: '#4F46E5', secondaryColour: '#10B981', logoBase64: null })
   const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
@@ -141,49 +141,49 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="form-group">
                 <label className="form-label">App Name</label>
-                <input 
-                  className="form-input" 
+                <input
+                  className="form-input"
                   value={brandForm.appName}
-                  onChange={e => setBrandForm({...brandForm, appName: e.target.value})}
+                  onChange={e => setBrandForm({ ...brandForm, appName: e.target.value })}
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Welcome Message</label>
-                <input 
-                  className="form-input" 
+                <input
+                  className="form-input"
                   value={brandForm.welcomeMessage}
-                  onChange={e => setBrandForm({...brandForm, welcomeMessage: e.target.value})}
+                  onChange={e => setBrandForm({ ...brandForm, welcomeMessage: e.target.value })}
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Primary Colour</label>
                 <div className="flex gap-2">
-                  <input 
-                    type="color" 
+                  <input
+                    type="color"
                     className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
                     value={brandForm.primaryColour}
-                    onChange={e => setBrandForm({...brandForm, primaryColour: e.target.value})}
+                    onChange={e => setBrandForm({ ...brandForm, primaryColour: e.target.value })}
                   />
-                  <input 
+                  <input
                     className="form-input flex-1 uppercase"
                     value={brandForm.primaryColour}
-                    onChange={e => setBrandForm({...brandForm, primaryColour: e.target.value})}
+                    onChange={e => setBrandForm({ ...brandForm, primaryColour: e.target.value })}
                   />
                 </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Secondary Colour</label>
                 <div className="flex gap-2">
-                  <input 
-                    type="color" 
+                  <input
+                    type="color"
                     className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
                     value={brandForm.secondaryColour}
-                    onChange={e => setBrandForm({...brandForm, secondaryColour: e.target.value})}
+                    onChange={e => setBrandForm({ ...brandForm, secondaryColour: e.target.value })}
                   />
-                  <input 
+                  <input
                     className="form-input flex-1 uppercase"
                     value={brandForm.secondaryColour}
-                    onChange={e => setBrandForm({...brandForm, secondaryColour: e.target.value})}
+                    onChange={e => setBrandForm({ ...brandForm, secondaryColour: e.target.value })}
                   />
                 </div>
               </div>
@@ -205,9 +205,9 @@ export default function SettingsPage() {
                   <p className="text-[10px] text-3">Max 1MB. PNG, SVG or WEBP recommended.</p>
                 </div>
                 {brandForm.logoBase64 && (
-                  <button 
-                    className="btn btn-icon text-danger ml-auto" 
-                    onClick={() => setBrandForm({...brandForm, logoBase64: null})}
+                  <button
+                    className="btn btn-icon text-danger ml-auto"
+                    onClick={() => setBrandForm({ ...brandForm, logoBase64: null })}
                   >
                     🗑️
                   </button>
@@ -229,11 +229,11 @@ export default function SettingsPage() {
               {Object.entries(pointsForm).map(([key, val]) => (
                 <div key={key} className="form-group">
                   <label className="form-label capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
-                  <input 
+                  <input
                     type="number"
-                    className="form-input" 
+                    className="form-input"
                     value={val}
-                    onChange={e => setPointsForm({...pointsForm, [key]: Number(e.target.value)})}
+                    onChange={e => setPointsForm({ ...pointsForm, [key]: Number(e.target.value) })}
                   />
                 </div>
               ))}
@@ -251,26 +251,26 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-6">
               <div className="form-group">
                 <label className="form-label">Default Staff Cap (hrs)</label>
-                <input 
+                <input
                   type="number"
-                  className="form-input" 
+                  className="form-input"
                   value={capsForm.defaultStaffCap}
-                  onChange={e => setCapsForm({...capsForm, defaultStaffCap: Number(e.target.value)})}
+                  onChange={e => setCapsForm({ ...capsForm, defaultStaffCap: Number(e.target.value) })}
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Intern Cap (hrs)</label>
-                <input 
+                <input
                   type="number"
-                  className="form-input" 
+                  className="form-input"
                   value={capsForm.internCap}
-                  onChange={e => setCapsForm({...capsForm, internCap: Number(e.target.value)})}
+                  onChange={e => setCapsForm({ ...capsForm, internCap: Number(e.target.value) })}
                 />
               </div>
             </div>
             <div className="flex items-center gap-3 p-4 bg-2 rounded-lg border border-3">
               <button
-                onClick={() => setCapsForm({...capsForm, cdsVisibility: !capsForm.cdsVisibility})}
+                onClick={() => setCapsForm({ ...capsForm, cdsVisibility: !capsForm.cdsVisibility })}
                 className={`w-10 h-5 rounded-full relative transition-all ${capsForm.cdsVisibility ? 'bg-success' : 'bg-3'}`}
               >
                 <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${capsForm.cdsVisibility ? 'left-6' : 'left-1'}`}></div>
@@ -280,7 +280,7 @@ export default function SettingsPage() {
                 <div className="text-[10px] text-3">Show CDS Day selection in staff profiles.</div>
               </div>
             </div>
-            
+
             <div className="flex flex-col gap-3 p-4 bg-soft-warning rounded-lg border border-warning-subtle">
               <div className="flex items-center gap-2">
                 <span className="text-sm">🗓️</span>
@@ -288,18 +288,18 @@ export default function SettingsPage() {
               </div>
               <p className="text-[10px] text-warning-subtle">Sets a custom date/time until which the submission window remains open for all staff.</p>
               <div className="flex gap-2">
-                <input 
-                  type="datetime-local" 
+                <input
+                  type="datetime-local"
                   className="form-input text-xs"
                   value={capsForm.deadlineOverride || ''}
-                  onChange={e => setCapsForm({...capsForm, deadlineOverride: e.target.value})}
+                  onChange={e => setCapsForm({ ...capsForm, deadlineOverride: e.target.value })}
                 />
-                <button className="btn btn-secondary btn-sm" onClick={() => setCapsForm({...capsForm, deadlineOverride: null})}>Clear</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setCapsForm({ ...capsForm, deadlineOverride: null })}>Clear</button>
               </div>
             </div>
-            
+
             <div className="divider"></div>
-            
+
             <h4 className="text-xs font-bold">Custom Individual Caps</h4>
             <div className="flex flex-col gap-2">
               {capsForm.customCaps.map((c, i) => (
@@ -307,11 +307,11 @@ export default function SettingsPage() {
                   <div className="flex-1 text-xs font-medium">{staff.find(s => s.id === c.staffId)?.name || 'Unknown Staff'}</div>
                   <div className="px-2 py-1 bg-3 rounded text-[10px] font-bold uppercase">{c.label}</div>
                   <div className="text-xs font-bold">{c.cap}h</div>
-                  <button 
+                  <button
                     className="btn btn-icon text-danger"
                     onClick={() => {
                       const next = capsForm.customCaps.filter((_, idx) => idx !== i)
-                      setCapsForm({...capsForm, customCaps: next})
+                      setCapsForm({ ...capsForm, customCaps: next })
                     }}
                   >
                     🗑️
@@ -319,13 +319,13 @@ export default function SettingsPage() {
                 </div>
               ))}
               <div className="flex gap-2 mt-2">
-                 <select className="form-input text-xs" id="custom-staff-select">
-                    <option value="">Select Staff...</option>
-                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                 </select>
-                 <input type="number" className="form-input w-20 text-xs" placeholder="Cap" id="custom-cap-val" />
-                 <input type="text" className="form-input w-24 text-xs" placeholder="Label" id="custom-cap-label" defaultValue="custom" />
-                 <button 
+                <select className="form-input text-xs" id="custom-staff-select">
+                  <option value="">Select Staff...</option>
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <input type="number" className="form-input w-20 text-xs" placeholder="Cap" id="custom-cap-val" />
+                <input type="text" className="form-input w-24 text-xs" placeholder="Label" id="custom-cap-label" defaultValue="custom" />
+                <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
                     const sId = (document.getElementById('custom-staff-select') as HTMLSelectElement).value
@@ -333,9 +333,9 @@ export default function SettingsPage() {
                     const cLab = (document.getElementById('custom-cap-label') as HTMLInputElement).value
                     if (!sId || !cVal) return
                     const next = [...capsForm.customCaps, { staffId: sId, cap: cVal, label: cLab }]
-                    setCapsForm({...capsForm, customCaps: next})
+                    setCapsForm({ ...capsForm, customCaps: next })
                   }}
-                 >Add</button>
+                >Add</button>
               </div>
             </div>
 
@@ -356,7 +356,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-3">Configure timesheet submission schedule and penalties</p>
                 </div>
                 <button
-                  onClick={() => setSubmissionWindowForm({...submissionWindowForm, enabled: !submissionWindowForm.enabled})}
+                  onClick={() => setSubmissionWindowForm({ ...submissionWindowForm, enabled: !submissionWindowForm.enabled })}
                   className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
                 >
                   <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${submissionWindowForm.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
@@ -381,7 +381,7 @@ export default function SettingsPage() {
                       <select
                         className="rounded-lg border-2 border-slate-600 bg-slate-800/80 px-4 py-2 text-base text-white font-bold focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transition-all"
                         value={submissionWindowForm.timezone}
-                        onChange={e => setSubmissionWindowForm({...submissionWindowForm, timezone: e.target.value})}
+                        onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, timezone: e.target.value })}
                       >
                         <option className="bg-slate-800" value="Africa/Windhoek">Africa/Windhoek</option>
                         <option className="bg-slate-800" value="Africa/Lagos">Africa/Lagos</option>
@@ -408,11 +408,10 @@ export default function SettingsPage() {
                               ...submissionWindowForm,
                               schedule: { ...submissionWindowForm.schedule, startDay: day.value }
                             })}
-                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${
-                              submissionWindowForm.schedule.startDay === day.value
+                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${submissionWindowForm.schedule.startDay === day.value
                                 ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
                                 : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
-                            }`}
+                              }`}
                           >
                             {day.short}
                           </button>
@@ -445,11 +444,10 @@ export default function SettingsPage() {
                               ...submissionWindowForm,
                               schedule: { ...submissionWindowForm.schedule, endDay: day.value }
                             })}
-                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${
-                              submissionWindowForm.schedule.endDay === day.value
+                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${submissionWindowForm.schedule.endDay === day.value
                                 ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
                                 : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
-                            }`}
+                              }`}
                           >
                             {day.short}
                           </button>
@@ -481,7 +479,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => setSubmissionWindowForm({
                         ...submissionWindowForm,
-                        latePenalty: {...submissionWindowForm.latePenalty, enabled: !submissionWindowForm.latePenalty.enabled}
+                        latePenalty: { ...submissionWindowForm.latePenalty, enabled: !submissionWindowForm.latePenalty.enabled }
                       })}
                       className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.latePenalty.enabled ? 'bg-warning' : 'bg-3'}`}
                     >
@@ -500,7 +498,7 @@ export default function SettingsPage() {
                             value={submissionWindowForm.latePenalty.pointsPerPeriod}
                             onChange={e => setSubmissionWindowForm({
                               ...submissionWindowForm,
-                              latePenalty: {...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value)}
+                              latePenalty: { ...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value) }
                             })}
                             placeholder="-5"
                           />
@@ -513,7 +511,7 @@ export default function SettingsPage() {
                             value={submissionWindowForm.latePenalty.periodHours}
                             onChange={e => setSubmissionWindowForm({
                               ...submissionWindowForm,
-                              latePenalty: {...submissionWindowForm.latePenalty, periodHours: Number(e.target.value)}
+                              latePenalty: { ...submissionWindowForm.latePenalty, periodHours: Number(e.target.value) }
                             })}
                             min="1"
                             placeholder="12"
@@ -643,15 +641,15 @@ export default function SettingsPage() {
             <h3 className="font-bold">🔐 Week Locking</h3>
             <p className="text-xs text-3">Locking a week range prevents all staff from adding or submitting entries during that period.</p>
             <div className="flex gap-2 p-4 bg-2 rounded-lg border border-3 mb-2 flex-wrap">
-               <div className="flex items-center gap-2">
-                 <label className="text-xs text-3 font-medium">From:</label>
-                 <input type="date" className="form-input text-xs" id="lock-start-date" />
-               </div>
-               <div className="flex items-center gap-2">
-                 <label className="text-xs text-3 font-medium">To:</label>
-                 <input type="date" className="form-input text-xs" id="lock-end-date" />
-               </div>
-               <button
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-3 font-medium">From:</label>
+                <input type="date" className="form-input text-xs" id="lock-start-date" />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-3 font-medium">To:</label>
+                <input type="date" className="form-input text-xs" id="lock-end-date" />
+              </div>
+              <button
                 className="btn btn-danger btn-sm whitespace-nowrap"
                 onClick={() => {
                   const startDate = (document.getElementById('lock-start-date') as HTMLInputElement).value
@@ -674,7 +672,7 @@ export default function SettingsPage() {
                   logAudit('settings_change', weekId, { action: 'lock_week_range' })
                   toast.success(`Week range locked: ${weekId}`)
                 }}
-               >Lock Week Range</button>
+              >Lock Week Range</button>
             </div>
             <div className="grid gap-2">
               {weekLocks.length === 0 ? (
@@ -686,7 +684,7 @@ export default function SettingsPage() {
                       <div className="text-xs font-bold text-danger">Locked: {lock.weekId}</div>
                       <div className="text-[10px] text-danger-subtle">By {lock.lockedBy} on {new Date(lock.lockedAt).toLocaleDateString()}</div>
                     </div>
-                    <button 
+                    <button
                       className="btn btn-icon text-danger"
                       onClick={() => {
                         saveWeekLocks(weekLocks.filter(l => l.id !== lock.id))
@@ -709,7 +707,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <input type="text" className="form-input text-xs" id="holiday-name" placeholder="Holiday Name" />
               <input type="date" className="form-input text-xs" id="holiday-date" />
-              <button 
+              <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {
                   const name = (document.getElementById('holiday-name') as HTMLInputElement).value
@@ -736,7 +734,7 @@ export default function SettingsPage() {
                       <div className="text-[10px] text-3">{new Date(h.date).toLocaleDateString()} · -{h.capReduction}h cap reduction</div>
                     </div>
                   </div>
-                  <button 
+                  <button
                     className="btn btn-icon text-danger"
                     onClick={() => savePublicHolidays(publicHolidays.filter(x => x.id !== h.id))}
                   >
@@ -761,11 +759,11 @@ export default function SettingsPage() {
               <div className="form-group">
                 <label className="form-label">Default New User Password</label>
                 <div className="flex gap-2">
-                  <input 
-                    className="form-input" 
+                  <input
+                    className="form-input"
                     type="text"
                     value={securityForm.defaultPassword}
-                    onChange={e => setSecurityForm({...securityForm, defaultPassword: e.target.value})}
+                    onChange={e => setSecurityForm({ ...securityForm, defaultPassword: e.target.value })}
                   />
                 </div>
                 <p className="text-[10px] text-3 mt-1">This password will be assigned to all new users and during administrative resets.</p>
@@ -773,8 +771,8 @@ export default function SettingsPage() {
               <div className="form-group">
                 <label className="form-label">Active Features</label>
                 <div className="flex items-center gap-3 p-3 bg-2 rounded-lg border border-3">
-                   <button
-                    onClick={() => setSecurityForm({...securityForm, requireTwoFactor: !securityForm.requireTwoFactor})}
+                  <button
+                    onClick={() => setSecurityForm({ ...securityForm, requireTwoFactor: !securityForm.requireTwoFactor })}
                     className={`w-10 h-5 rounded-full relative transition-all ${securityForm.requireTwoFactor ? 'bg-success' : 'bg-3'}`}
                   >
                     <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${securityForm.requireTwoFactor ? 'left-6' : 'left-1'}`}></div>
@@ -876,7 +874,7 @@ export default function SettingsPage() {
         {tab === 'database' && (
           <div className="flex flex-col gap-6">
             <div className="card flex flex-col gap-4">
-              <h3 className="font-bold">🗄️ Firestore Database Statistics</h3>
+              <h3 className="font-bold">🗄️ PostgreSQL Database Statistics</h3>
               <p className="text-xs text-3">Real-time collection counts and estimated storage size</p>
 
               <div className="overflow-x-auto border border-3 rounded-lg">
@@ -943,7 +941,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="p-4 bg-soft-info rounded-lg text-xs text-info">
-                ℹ️ Data is synced in real-time from Firestore. Size estimates are based on JSON serialization and may differ from actual Firestore storage calculations.
+                ℹ️ Data is synced in real-time (every 30s) from the PostgreSQL Database. Size estimates are based on JSON serialization and may differ from actual storage calculations.
               </div>
             </div>
           </div>

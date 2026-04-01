@@ -264,9 +264,9 @@ export const BADGES = [
 export function weekRange(weekKey: string | undefined): string {
   if (!weekKey) return ''
   const mon = new Date(weekKey)
-  const sun = new Date(mon)
-  sun.setDate(sun.getDate() + 6)
-  return `${mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${sun.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+  const fri = new Date(mon)
+  fri.setDate(fri.getDate() + 4)
+  return `${mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
 export function exportCSV(rows: any[], filename: string): void {

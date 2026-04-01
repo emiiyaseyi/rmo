@@ -50,3 +50,5 @@ codacy.yaml
 
 service-account.json*
 scripts/service-account.json
+scripts/sync-prod-to-local.sh
+scripts/fix-lead-ids.sql

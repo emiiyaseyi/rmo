@@ -229,7 +229,7 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
 }
 
 export default function ApprovalsPage() {
-  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations, projects } = useApp()
+  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations, projects, pendingApprovals } = useApp()
   const [tab, setTab] = useState<string>('pending') // pending, history, delegations, outstanding
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -300,28 +300,8 @@ export default function ApprovalsPage() {
   }, [user, staff, approvalDelegations, isAdmin, now, entries, normalizedUserName])
   const isTaskOwner = isAdmin || user?.role === 'team_lead' || approvableStaffIds.length > 0
 
-  // Which entries this approver can see (based on reporting lead name matching)
-  const relevantEntries: Entry[] = useMemo(() => {
-    if (!user) return []
-
-    return entries.filter(e => {
-      if (e.deleted) return false
-
-      // Exclude user's own entries (prevent self-approval)
-      if (e.staffId === user.id && !isAdmin) return false
-
-      // Admin sees all entries including 2nd-level
-      if (isAdmin) {
-        return ['draft', 'submitted', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)
-      }
-
-      // Team leads, delegates and project/task owners
-      return ['draft', 'submitted', 'resubmitted', 'pending_clarification'].includes(e.status) && approvableStaffIds.includes(e.staffId)
-    })
-  }, [entries, user, isAdmin, approvableStaffIds])
-
-  // drafts are shown in the table for visibility but don't count as actionable pending
-  const pending = relevantEntries.filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
+  // Use the shared pendingApprovals() from context — same source as dashboard badge and menu count
+  const pending = pendingApprovals()
   const pending2ndLevel = isAdmin ? entries.filter(e => e.status === 'pending_2nd_approval' && !e.deleted) : []
   const history = entries.filter(e => ['approved', 'rejected'].includes(e.status) && !e.deleted && (isAdmin || approvableStaffIds.includes(e.staffId)))
   const currentWeekKey = getWeekKey(new Date())
@@ -331,7 +311,7 @@ export default function ApprovalsPage() {
     : []
 
   const departments = Array.from(new Set(staff.map(s => s.department).filter(Boolean).map(d => d as string)))
-  const weeks = Array.from(new Set(relevantEntries.map(e => e.weekKey))).sort().reverse()
+  const weeks = Array.from(new Set(pending.map(e => e.weekKey))).sort().reverse()
 
   function getFilteredPending(): Entry[] {
     return pending
@@ -781,13 +761,13 @@ export default function ApprovalsPage() {
           <div className="stat-value" style={{ color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
           <div className="stat-sub">{pending.length > 0 ? 'Requires action' : 'All caught up!'}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">{isAdmin ? '2nd-Level Review' : 'Approved (All time)'}</div>
-          <div className="stat-value" style={{ color: isAdmin ? (pending2ndLevel.length > 0 ? 'var(--warning)' : 'var(--text-3)') : 'var(--success)' }}>
-            {isAdmin ? pending2ndLevel.length : history.filter(e => e.status === 'approved').length}
+        {isAdmin && (
+          <div className="stat-card">
+            <div className="stat-label">2nd-Level Review</div>
+            <div className="stat-value" style={{ color: pending2ndLevel.length > 0 ? 'var(--warning)' : 'var(--text-3)' }}>{pending2ndLevel.length}</div>
+            <div className="stat-sub">High-value entries</div>
           </div>
-          <div className="stat-sub">{isAdmin ? 'High-value entries' : ''}</div>
-        </div>
+        )}
         <div className="stat-card">
           <div className="stat-label">Approved (All time)</div>
           <div className="stat-value" style={{ color: 'var(--success)' }}>{history.filter(e => e.status === 'approved').length}</div>
@@ -1024,7 +1004,7 @@ export default function ApprovalsPage() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>⚠️ Outstanding Submissions</h3>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Current Week: <strong>{weekRange(new Date().toISOString().split('T')[0])}</strong></div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Current Week: <strong>{weekRange(currentWeekKey)}</strong></div>
           </div>
           
           <div className="table-container">

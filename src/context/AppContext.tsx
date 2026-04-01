@@ -11,14 +11,21 @@ export const useApp = () => useContext(AppCtx) as AppContextType
 // ---------------------------------------------------------------------------
 // Generic upsert helper — calls PUT /api/<endpoint> for each item
 // ---------------------------------------------------------------------------
-async function apiUpsert(endpoint: string, items: any | any[]) {
+async function apiUpsert(endpoint: string, items: any | any[], { throwOnError = false } = {}): Promise<void> {
   const list: any[] = Array.isArray(items) ? items : [items]
-  for (const item of list) {
-    fetch(`/api/${endpoint}/${item.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    }).catch(e => console.error(`apiUpsert ${endpoint} failed`, e))
+  const results = await Promise.allSettled(
+    list.map(item =>
+      fetch(`/api/${endpoint}/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`) })
+    )
+  )
+  const failed = results.filter(r => r.status === 'rejected')
+  if (failed.length > 0) {
+    console.error(`apiUpsert ${endpoint} failed (${failed.length}/${list.length}):`, (failed[0] as PromiseRejectedResult).reason)
+    if (throwOnError) throw new Error(`Failed to save ${endpoint}`)
   }
 }
 
@@ -70,6 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const userRef = useRef<Staff | null>(null)
+  const pollNowRef = useRef<(() => void) | null>(null)
 
   // ---------------------------------------------------------------------------
   // Initialisation (session restore, dark mode, idle listeners)
@@ -167,9 +175,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    pollNowRef.current = fetchAll
     fetchAll()
     const interval = setInterval(fetchAll, 30_000)
-    return () => clearInterval(interval)
+    return () => { clearInterval(interval); pollNowRef.current = null }
   }, [user?.id, user?.role])
 
   // ---------------------------------------------------------------------------
@@ -258,7 +267,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function saveEntries(data: Entry[]) {
     setEntries(data)
-    data.forEach(e => apiUpsert('entries', e))
+    apiUpsert('entries', data).catch(() => {
+      // Re-sync from DB immediately so the UI doesn't stay in a stale optimistic state
+      pollNowRef.current?.()
+    })
   }
 
   function saveNots(data: AppNotification[]) {
@@ -785,7 +797,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bonusDesc = 'New task submission'
     }
 
-    saveEntries(updatedEntries)
+    // Save entries to DB first — must succeed before we show "Submitted" in the UI
+    try {
+      const changedEntries = updatedEntries.filter(e => e.staffId === staffId && e.weekKey === weekKey)
+      await apiUpsert('entries', changedEntries, { throwOnError: true })
+    } catch {
+      toast.error('Submission failed — please try again.')
+      return
+    }
+    // Only update UI state once DB write confirmed
+    setEntries(updatedEntries)
 
     try {
       await fetch('/api/week-submissions', {

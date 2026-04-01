@@ -97,7 +97,17 @@ export default function AnalyticsPage() {
     
     const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
     const activeStaffCount = staffWithEntries.length
-    const notSubmittedList = activeStaff.filter(s => !staffWithEntries.includes(s.id) && !s.exemptFromTimesheet)
+    // Not-submitted = staff with no submitted/approved/resubmitted entry in the current week
+    // (same logic as Dashboard Org Submission Rate)
+    const currentWeek = getWeekKey(new Date())
+    const submittedThisWeek = new Set(
+      scopedEntries.filter(e =>
+        e.weekKey === currentWeek &&
+        ['submitted', 'approved', 'resubmitted'].includes(e.status) &&
+        !e.deleted
+      ).map(e => e.staffId)
+    )
+    const notSubmittedList = activeStaff.filter(s => !submittedThisWeek.has(s.id) && !s.exemptFromTimesheet)
 
     return {
       totalHours: parseFloat(totalHours.toFixed(1)),
@@ -106,7 +116,7 @@ export default function AnalyticsPage() {
       activeStaffCount,
       notSubmittedList
     }
-  }, [filteredEntries, activeStaff])
+  }, [filteredEntries, activeStaff, scopedEntries])
 
   // Bar chart - hours logged across last 5 weeks
   const last5WeeksData = useMemo(() => {

@@ -34,7 +34,7 @@ npm run dev
 
 Requires a `.env` file:
 ```
-DATABASE_URL=postgresql://dsnrmo:dsnrmo_dev@localhost:5432/dsnrmo
+DATABASE_URL=postgresql://database:password@host:5432/database
 RESEND_API_KEY=...
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
@@ -59,7 +59,7 @@ Both scripts require `scripts/service-account.json` (Firebase service account ke
 ## Production
 
 - **App**: [rmo.dsnsandbox.com](https://rmo.dsnsandbox.com) via Netlify
-- **Database**: Azure PostgreSQL Flexible Server (`dsn-rmo-database.postgres.database.azure.com`)
+- **Database**: PostgreSQL 18
 - Set `DATABASE_URL` in Netlify environment variables pointing to Azure
 
 Deploy by pushing to `main` — Netlify auto-deploys.

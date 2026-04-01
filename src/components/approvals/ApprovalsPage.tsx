@@ -320,7 +320,8 @@ export default function ApprovalsPage() {
     })
   }, [entries, user, isAdmin, approvableStaffIds])
 
-  const pending = relevantEntries.filter(e => ['draft', 'submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
+  // drafts are shown in the table for visibility but don't count as actionable pending
+  const pending = relevantEntries.filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
   const pending2ndLevel = isAdmin ? entries.filter(e => e.status === 'pending_2nd_approval' && !e.deleted) : []
   const history = entries.filter(e => ['approved', 'rejected'].includes(e.status) && !e.deleted && (isAdmin || approvableStaffIds.includes(e.staffId)))
   const currentWeekKey = getWeekKey(new Date())

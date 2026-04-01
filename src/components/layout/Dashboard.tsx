@@ -163,6 +163,7 @@ interface DashboardProps {
 
 export default function Dashboard({ setPage }: DashboardProps) {
   const { user, entries, staff, pendingApprovals, unreadCount, settings, leaves, approvalDelegations } = useApp()
+  const [showNotSubmittedModal, setShowNotSubmittedModal] = useState(false)
   const thisWeek = getWeekKey()
 
   const myEntries = entries.filter(e => e.staffId === user?.id && e.weekKey === thisWeek && !e.deleted)
@@ -214,6 +215,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
     .slice(0, 5)
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Welcome */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -366,7 +368,14 @@ export default function Dashboard({ setPage }: DashboardProps) {
                   {notSubmittedList.slice(0, 5).map(s => (
                     <span key={s.id} className="badge badge-gray" style={{ fontSize: 9 }}>{s.name.split(' ')[0]}</span>
                   ))}
-                  {notSubmittedList.length > 5 && <span style={{ fontSize: 9, color: 'var(--text-3)' }}>+{notSubmittedList.length - 5} more</span>}
+                  {notSubmittedList.length > 5 && (
+                    <button
+                      onClick={() => setShowNotSubmittedModal(true)}
+                      style={{ fontSize: 9, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      +{notSubmittedList.length - 5} more
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -526,5 +535,37 @@ export default function Dashboard({ setPage }: DashboardProps) {
         </div>
       </div>
     </div>
+
+    {/* Not-submitted staff modal */}
+    {showNotSubmittedModal && (
+      <div className="modal-overlay" onClick={() => setShowNotSubmittedModal(false)}>
+        <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+          <div className="modal-header">
+            <span className="modal-title">Not Submitted — {weekRange(thisWeek)}</span>
+            <button className="btn btn-icon btn-secondary btn-sm" onClick={() => setShowNotSubmittedModal(false)}>✕</button>
+          </div>
+          <div className="modal-body" style={{ maxHeight: 420, overflowY: 'auto' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
+              {notSubmittedList.length} of {totalStaffCount} staff have not submitted a timesheet this week.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[...notSubmittedList].sort((a, b) => (a.department || '').localeCompare(b.department || '') || a.name.localeCompare(b.name)).map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{s.department || 'No Department'}</div>
+                  </div>
+                  <span className="badge badge-gray" style={{ fontSize: 10 }}>{s.role?.replace('_', ' ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={() => setShowNotSubmittedModal(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

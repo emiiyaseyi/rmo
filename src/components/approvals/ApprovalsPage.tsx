@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus } from '../../lib/utils'
+import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF } from '../../lib/utils'
 import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
@@ -228,6 +228,83 @@ function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationMo
   )
 }
 
+function MultiSelectDropdown({
+  label, filterKey, items, selected, onToggle, onToggleAll, countMap,
+}: {
+  label: string
+  filterKey: string
+  items: { value: string; label: string }[]
+  selected: string[]
+  onToggle: (value: string) => void
+  onToggleAll: () => void
+  countMap?: Record<string, number>
+}) {
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+  const allSelected = selected.length === items.length
+  const summary = selected.length === 0 || allSelected ? `All ${label}` : `${selected.length} selected`
+
+  React.useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div ref={ref} className="form-group" style={{ margin: 0, position: 'relative' }}>
+      <label className="form-label">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8,
+          background: 'var(--bg-input, var(--bg-elevated))', fontSize: 13, cursor: 'pointer',
+          color: selected.length === 0 || allSelected ? 'var(--text-3)' : 'var(--text-1)',
+        }}
+      >
+        <span>{summary}</span>
+        <span style={{ fontSize: 10, color: 'var(--text-3)', marginLeft: 8 }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 100, top: '100%', left: 0, right: 0, marginTop: 4,
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{selected.length} of {items.length} selected</span>
+            <button
+              type="button"
+              style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              onClick={onToggleAll}
+            >
+              {allSelected ? 'Clear all' : 'Select all'}
+            </button>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: '6px 0' }}>
+            {items.map(item => (
+              <label key={item.value} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(item.value)}
+                  onChange={() => onToggle(item.value)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+                />
+                <span style={{ flex: 1, color: selected.includes(item.value) ? 'var(--text-1)' : 'var(--text-2)' }}>{item.label}</span>
+                {countMap && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{countMap[item.value] ?? 0}</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ApprovalsPage() {
   const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations, projects, pendingApprovals } = useApp()
   const [tab, setTab] = useState<string>('pending') // pending, history, delegations, outstanding
@@ -238,6 +315,9 @@ export default function ApprovalsPage() {
   const [showDelegationModal, setShowDelegationModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
   const [reviewTimeLeft, setReviewTimeLeft] = useState('')
+  const [historyEntry, setHistoryEntry] = useState<Entry | null>(null)
+  const [exportFilters, setExportFilters] = useState<{ statuses: string[], departments: string[], weeks: string[] }>({ statuses: [], departments: [], weeks: [] })
+  const [exporting, setExporting] = useState(false)
 
   // Compute review window directly from settings — no DB needed
   const reviewWindowInfo = useMemo(() => {
@@ -429,7 +509,7 @@ export default function ApprovalsPage() {
         }
         break
 
-      case 'reject':
+      case 'reject': {
         updates = {
           ...updates,
           status: 'rejected' as const,
@@ -438,18 +518,38 @@ export default function ApprovalsPage() {
           rejectionReason: note
         }
         notify(entry.staffId, `❌ Entry rejected by ${user.name}: ${note}`, 'rejection')
+        const staffMemberReject = staff.find(s => s.id === entry.staffId)
+        if (staffMemberReject?.email) {
+          sendEmailNotification(
+            staffMemberReject.email,
+            `Your timesheet entry was rejected`,
+            `Your entry for "${entry.project}" (${entry.hours}h, week of ${weekRange(entry.weekKey)}) was rejected by ${user.name}.\n\nReason: ${note}\n\nPlease review and resubmit if needed.`,
+            '/timesheet'
+          )
+        }
         toast.success('Entry rejected')
         break
+      }
 
-      case 'clarify':
+      case 'clarify': {
         updates = {
           ...updates,
           status: 'pending_clarification' as const,
           clarificationNote: note
         }
         notify(entry.staffId, `❓ Clarification needed from ${user.name}: ${note}`, 'info')
+        const staffMemberClarify = staff.find(s => s.id === entry.staffId)
+        if (staffMemberClarify?.email) {
+          sendEmailNotification(
+            staffMemberClarify.email,
+            `Clarification needed on your timesheet entry`,
+            `${user.name} has requested clarification on your entry for "${entry.project}" (${entry.hours}h, week of ${weekRange(entry.weekKey)}).\n\nRequest: ${note}\n\nPlease update your entry and resubmit.`,
+            '/timesheet'
+          )
+        }
         toast.success('Clarification requested')
         break
+      }
     }
 
     const updated = entries.map(e => e.id === entryId ? { ...e, ...updates, updatedAt: now } : e)
@@ -805,6 +905,7 @@ export default function ApprovalsPage() {
         <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
         {isAdmin && <button className={`tab ${tab === '2nd_level' ? 'active' : ''}`} onClick={() => setTab('2nd_level')}>2nd-Level Review ({secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})</button>}
         {isTaskOwner && <button className={`tab ${tab === 'delegations' ? 'active' : ''}`} onClick={() => setTab('delegations')}>Delegations</button>}
+        {isAdmin && <button className={`tab ${tab === 'export' ? 'active' : ''}`} onClick={() => setTab('export')}>Export</button>}
       </div>
 
       {tab === 'pending' && (
@@ -1069,7 +1170,7 @@ export default function ApprovalsPage() {
                 </thead>
                 <tbody>
                   {history.sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.updatedAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.updatedAt || '').getTime()).slice(0, 100).map(e => (
-                    <tr key={e.id}>
+                    <tr key={e.id} style={{ cursor: 'pointer' }} onClick={() => setHistoryEntry(e)} title="Click to view details">
                       <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                       <td>{e.project}</td>
                       <td style={{ fontFamily: 'var(--mono)' }}>
@@ -1180,6 +1281,173 @@ export default function ApprovalsPage() {
         </div>
       )}
 
+      {tab === 'export' && isAdmin && (() => {
+        const allWeeks = Array.from(new Set(entries.filter(e => !e.deleted).map(e => e.weekKey))).sort().reverse()
+        const allStatuses = [
+          { value: 'draft', label: 'Draft' },
+          { value: 'submitted', label: 'Submitted' },
+          { value: 'resubmitted', label: 'Resubmitted' },
+          { value: 'pending_clarification', label: 'Pending Clarification' },
+          { value: 'pending_2nd_approval', label: 'Pending 2nd Review' },
+          { value: 'approved', label: 'Approved' },
+          { value: 'rejected', label: 'Rejected' },
+        ]
+
+        function toggleFilter(key: 'statuses' | 'departments' | 'weeks', value: string) {
+          setExportFilters(f => {
+            const cur = f[key]
+            return { ...f, [key]: cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value] }
+          })
+        }
+        function toggleAll(key: 'statuses' | 'departments' | 'weeks', allValues: string[]) {
+          setExportFilters(f => ({ ...f, [key]: f[key].length === allValues.length ? [] : allValues }))
+        }
+
+        const hasFilters = exportFilters.statuses.length > 0 || exportFilters.departments.length > 0 || exportFilters.weeks.length > 0
+
+        const exportRows = entries.filter(e => {
+          if (e.deleted) return false
+          if (exportFilters.statuses.length > 0 && !exportFilters.statuses.includes(e.status)) return false
+          if (exportFilters.departments.length > 0) {
+            const s = staff.find(m => m.id === e.staffId)
+            if (!s?.department || !exportFilters.departments.includes(s.department)) return false
+          }
+          if (exportFilters.weeks.length > 0 && !exportFilters.weeks.includes(e.weekKey)) return false
+          return true
+        })
+
+        const toExportRows = exportRows.map(e => ({
+          'Staff': e.staffName,
+          'Department': staff.find(s => s.id === e.staffId)?.department || '',
+          'Project': e.project,
+          'Lead': e.lead || '',
+          'Week': weekRange(e.weekKey),
+          'Date': fmtDate(e.date),
+          'Hours': e.hours,
+          'Category': e.category || '',
+          'Description': e.description,
+          'Status': e.status,
+          'Submitted At': fmtDate(e.submittedAt || ''),
+          'Approved By': e.approvedByName || '',
+          'Approved At': fmtDate(e.approvedAt || ''),
+          'Rejection Reason': e.rejectionReason || '',
+          'Correction Note': e.correctionNote || '',
+        }))
+
+        const pdfColumns = [
+          { key: 'Staff', label: 'Staff' }, { key: 'Department', label: 'Dept' },
+          { key: 'Project', label: 'Project' }, { key: 'Lead', label: 'Lead' },
+          { key: 'Week', label: 'Week' }, { key: 'Hours', label: 'Hrs' },
+          { key: 'Status', label: 'Status' }, { key: 'Approved By', label: 'Actioned By' },
+          { key: 'Rejection Reason', label: 'Note' },
+        ]
+
+        async function doExport(format: 'csv' | 'pdf') {
+          if (!toExportRows.length) { toast.error('No entries match the selected filters'); return }
+          setExporting(true)
+          try {
+            const label = `approvals_export_${new Date().toISOString().slice(0, 10)}`
+            if (format === 'csv') {
+              exportCSV(toExportRows, `${label}.csv`)
+              toast.success(`Exported ${toExportRows.length} entries as CSV`)
+            } else {
+              const title = `Timesheet Export — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+              await exportPDF(toExportRows, pdfColumns, title, `${label}.pdf`)
+              toast.success(`Exported ${toExportRows.length} entries as PDF`)
+            }
+          } catch { toast.error('Export failed') }
+          finally { setExporting(false) }
+        }
+
+        const statusCountMap = Object.fromEntries(allStatuses.map(s => [s.value, entries.filter(e => !e.deleted && e.status === s.value).length]))
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card" style={{ paddingBottom: 12 }}>
+              <div style={{ marginBottom: 16 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Export Timesheet Data</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Filter entries across all staff — empty selection means all included. Export as CSV or PDF.</p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                <MultiSelectDropdown label="Status" filterKey="statuses" items={allStatuses} selected={exportFilters.statuses} onToggle={v => toggleFilter('statuses', v)} onToggleAll={() => toggleAll('statuses', allStatuses.map(s => s.value))} countMap={statusCountMap} />
+                <MultiSelectDropdown label="Department" filterKey="departments" items={departments.map(d => ({ value: d, label: d }))} selected={exportFilters.departments} onToggle={v => toggleFilter('departments', v)} onToggleAll={() => toggleAll('departments', departments)} />
+                <MultiSelectDropdown label="Weeks" filterKey="weeks" items={allWeeks.map(w => ({ value: w, label: weekRange(w) }))} selected={exportFilters.weeks} onToggle={v => toggleFilter('weeks', v)} onToggleAll={() => toggleAll('weeks', allWeeks)} />
+              </div>
+            </div>
+
+            {/* Preview count + actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
+              <div>
+                <span style={{ fontSize: 22, fontWeight: 700 }}>{exportRows.length}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-3)', marginLeft: 8 }}>entries match</span>
+                <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {exportFilters.statuses.map(s => <span key={s} className="badge badge-blue" style={{ fontSize: 10 }}>{s.replace(/_/g, ' ')}</span>)}
+                  {exportFilters.departments.map(d => <span key={d} className="badge badge-gray" style={{ fontSize: 10 }}>{d}</span>)}
+                  {exportFilters.weeks.length > 0 && exportFilters.weeks.length <= 3
+                    ? exportFilters.weeks.map(w => <span key={w} className="badge badge-gray" style={{ fontSize: 10 }}>{weekRange(w)}</span>)
+                    : exportFilters.weeks.length > 3 && <span className="badge badge-gray" style={{ fontSize: 10 }}>{exportFilters.weeks.length} weeks</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {hasFilters && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setExportFilters({ statuses: [], departments: [], weeks: [] })}>
+                    Clear all
+                  </button>
+                )}
+                <button className="btn btn-secondary btn-sm" disabled={exporting || !exportRows.length} onClick={() => doExport('csv')}>
+                  ⬇ CSV
+                </button>
+                <button className="btn btn-primary btn-sm" disabled={exporting || !exportRows.length} onClick={() => doExport('pdf')}>
+                  {exporting ? 'Generating…' : '⬇ PDF'}
+                </button>
+              </div>
+            </div>
+
+            {/* Preview table */}
+            {exportRows.length > 0 && (
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', fontSize: 12 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Staff</th><th>Dept</th><th>Project</th><th>Lead</th>
+                        <th>Week</th><th>Hrs</th><th>Status</th><th>Submitted</th><th>Actioned By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exportRows.slice(0, 50).map(e => (
+                        <tr key={e.id}>
+                          <td style={{ fontWeight: 600 }}>{e.staffName}</td>
+                          <td style={{ color: 'var(--text-3)' }}>{staff.find(s => s.id === e.staffId)?.department || '—'}</td>
+                          <td>{e.project}</td>
+                          <td style={{ color: 'var(--text-3)' }}>{e.lead || '—'}</td>
+                          <td style={{ fontSize: 11, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>
+                          <td style={{ fontFamily: 'var(--mono)' }}>{e.hours}h</td>
+                          <td>
+                            <span className={`badge badge-${
+                              e.status === 'approved' ? 'green' :
+                              e.status === 'rejected' ? 'red' :
+                              e.status === 'submitted' || e.status === 'resubmitted' ? 'blue' : 'gray'
+                            }`} style={{ fontSize: 10 }}>{e.status.replace(/_/g, ' ')}</span>
+                          </td>
+                          <td style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDate(e.submittedAt || '')}</td>
+                          <td style={{ color: 'var(--text-3)' }}>{e.approvedByName || e.rejectedBy || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {exportRows.length > 50 && (
+                    <div style={{ textAlign: 'center', padding: '10px', fontSize: 12, color: 'var(--text-3)' }}>
+                      Showing 50 of {exportRows.length} — all rows included in export
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {selectedEntry && (
         <ApprovalModal
           entry={selectedEntry}
@@ -1205,6 +1473,66 @@ export default function ApprovalsPage() {
         onConfirm={confirmAction.action}
         onCancel={() => setConfirmAction({isOpen: false, action: () => {}, message: ''})}
       />
+
+      {/* History detail modal — read-only view of a past entry */}
+      {historyEntry && (
+        <div className="modal-overlay" onClick={() => setHistoryEntry(null)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Entry Detail</span>
+              <button className="btn btn-icon btn-secondary btn-sm" onClick={() => setHistoryEntry(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="grid-2">
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Staff</span><strong>{historyEntry.staffName}</strong></div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Department</span>{staff.find(s => s.id === historyEntry.staffId)?.department || '—'}</div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Project</span><strong>{historyEntry.project}</strong></div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Lead</span>{historyEntry.lead || '—'}</div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Date</span>{fmtDate(historyEntry.date)}</div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Hours</span><strong>{historyEntry.hours}h{historyEntry.corrected ? ' ✏️ (corrected)' : ''}</strong></div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Category</span>{historyEntry.category}</div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Week</span>{weekRange(historyEntry.weekKey)}</div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Status</span>
+                    <span className={`badge badge-${historyEntry.status === 'approved' ? 'green' : 'red'}`}>{historyEntry.status}</span>
+                  </div>
+                  <div><span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block' }}>Submitted</span>{fmtDate(historyEntry.submittedAt || '')}</div>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)', display: 'block', marginBottom: 4 }}>Description</span>
+                  <p style={{ fontSize: 13, color: 'var(--text-1)' }}>{historyEntry.description}</p>
+                </div>
+                {(historyEntry.rejectionReason || historyEntry.correctionNote) && (
+                  <div style={{ background: historyEntry.status === 'rejected' ? 'var(--danger-bg)' : 'var(--warning-bg)', padding: '8px 12px', borderRadius: 6, fontSize: 12, color: historyEntry.status === 'rejected' ? 'var(--danger)' : 'var(--warning)' }}>
+                    <strong>{historyEntry.status === 'rejected' ? 'Rejection reason' : 'Correction note'}:</strong> {historyEntry.rejectionReason || historyEntry.correctionNote}
+                  </div>
+                )}
+              </div>
+              {historyEntry.approvalHistory && historyEntry.approvalHistory.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 8 }}>Approval History</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {[...historyEntry.approvalHistory].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(h => (
+                      <div key={h.id} style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div>
+                          <strong>{h.reviewerName}</strong>
+                          <span style={{ color: 'var(--text-3)', marginLeft: 6 }}>({h.reviewerRole})</span>
+                          <span style={{ marginLeft: 8 }}>{h.action}{h.correctedHours ? ` → ${h.correctedHours}h` : ''}</span>
+                          {h.note && <div style={{ color: 'var(--text-2)', marginTop: 2 }}>{h.note}</div>}
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{fmtDate(h.timestamp)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setHistoryEntry(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

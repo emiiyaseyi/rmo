@@ -602,7 +602,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const allIds = Array.from(new Set([...myStaffIds, ...delegatedStaffIds, ...projectOwnerStaffIds]))
     return entries.filter(e =>
       ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status) &&
-      allIds.includes(e.staffId) && !e.deleted
+      allIds.includes(e.staffId) &&
+      e.staffId !== user.id &&  // exclude own entries
+      !e.deleted
     )
   }
 
@@ -762,7 +764,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const updatedEntries = entries.map(e => {
       if (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') {
-        const leadId = e.leadId || staffMember.leadId || ''
+        // Resolve leadId: prefer entry's own, then staff profile, then look up by lead name
+        const leadByName = e.lead ? staff.find(s => s.name.toLowerCase() === e.lead!.toLowerCase()) : null
+        const leadId = e.leadId || staffMember.leadId || leadByName?.id || ''
         // New tasks submitted outside the window go to 2nd-level admin review, no late penalty
         const status = e.isNewTask ? 'pending_2nd_approval' as const : 'submitted' as const
         return { ...e, status, submittedAt: now.toISOString(), leadId }

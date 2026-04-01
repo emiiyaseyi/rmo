@@ -142,7 +142,7 @@ export function entryToRow(d: any) {
     deleted: d.deleted ?? false,
     is_new_task: d.isNewTask ?? false,
     lead: d.lead ?? null,
-    lead_id: d.leadId ?? null,
+    lead_id: d.leadId || null,
     approved_by: d.approvedBy ?? null,
     approved_at: d.approvedAt ?? null,
     approved_by_name: d.approvedByName ?? null,

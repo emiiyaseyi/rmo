@@ -12,13 +12,14 @@ interface ApprovalModalProps {
   entry: Entry;
   staff: Staff[];
   onClose: () => void;
-  onAction: (entryId: string, action: string, note: string, correctedHours: number) => void;
+  onAction: (entryId: string, action: string, note: string, correctedHours: number, notNewTask?: boolean) => void;
 }
 
 function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) {
   const [action, setAction] = useState<string>('')
   const [note, setNote] = useState<string>('')
   const [correctedHours, setCorrectedHours] = useState<number>(entry.hours)
+  const [notNewTask, setNotNewTask] = useState(false)
 
   const submitter = staff.find(s => s.id === entry.staffId)
 
@@ -67,6 +68,33 @@ function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) 
             )}
           </div>
 
+          {/* New task override toggle */}
+          {entry.isNewTask && (
+            <div style={{
+              background: notNewTask ? 'rgba(239,68,68,0.08)' : 'rgba(234,179,8,0.08)',
+              border: `1px solid ${notNewTask ? 'rgba(239,68,68,0.3)' : 'rgba(234,179,8,0.3)'}`,
+              borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12
+            }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: notNewTask ? 'var(--danger)' : 'var(--warning)' }}>
+                  🆕 Flagged as New Task (no late penalty)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                  {notNewTask ? 'Will be treated as a late submission — points will be deducted.' : 'Staff submitted this outside the window as a new task.'}
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={notNewTask}
+                  onChange={e => setNotNewTask(e.target.checked)}
+                  style={{ width: 15, height: 15, cursor: 'pointer' }}
+                />
+                Not a new task
+              </label>
+            </div>
+          )}
+
           {/* Action picker */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {['approve', 'approve_correction', 'reject', 'clarify'].map(a => (
@@ -108,7 +136,7 @@ function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) 
               (action === 'clarify' && !note.trim()) ||
               (action === 'approve_correction' && !note.trim())
             }
-            onClick={() => onAction(entry.id, action, note, correctedHours)}
+            onClick={() => onAction(entry.id, action, note, correctedHours, notNewTask)}
           >
             Submit Decision
           </button>
@@ -404,7 +432,7 @@ export default function ApprovalsPage() {
       .sort((a, b) => new Date(b.submittedAt || b.createdAt || '').getTime() - new Date(a.submittedAt || a.createdAt || '').getTime())
   }
 
-  function handleAction(entryId: string, action: string, note: string, correctedHours: number) {
+  function handleAction(entryId: string, action: string, note: string, correctedHours: number, notNewTask?: boolean) {
     if (!user) return
     const entry = entries.find(e => e.id === entryId)
     if (!entry) return
@@ -437,7 +465,7 @@ export default function ApprovalsPage() {
     }
 
     const approvalHistory = [...(entry.approvalHistory || []), historyEntry]
-    let updates: Partial<Entry> = { approvalHistory }
+    let updates: Partial<Entry> = { approvalHistory, ...(notNewTask && entry.isNewTask ? { isNewTask: false } : {}) }
 
     switch (action) {
       case 'approve':
@@ -818,8 +846,8 @@ export default function ApprovalsPage() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
               {reviewWindowInfo.isOverdue
-                ? `Deadline was ${reviewWindowInfo.reviewDeadline.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. Unreviewed entries will incur a 5-point deduction each.`
-                : `You have ${reviewTimeLeft} to review all submitted timesheets before the 5-point-per-entry late penalty applies.`
+                ? `Deadline was ${reviewWindowInfo.reviewDeadline.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. Unreviewed entries will incur a ${Math.abs(settings?.reviewWindow?.penaltyPerEntry ?? 5)}-point deduction each.`
+                : `You have ${reviewTimeLeft} to review all submitted timesheets before the ${Math.abs(settings?.reviewWindow?.penaltyPerEntry ?? 5)}-point-per-entry late penalty applies.`
               }
             </div>
           </div>

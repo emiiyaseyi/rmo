@@ -124,9 +124,10 @@ export default function AnalyticsPage() {
     const end = dateRange.end
     const start = subWeeks(end, 4)
     const interval = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 })
-    
+
     interval.forEach(w => {
-      const wKey = getWeekKey(w)
+      // Use format() to get YYYY-MM-DD in local time (avoids UTC offset shifting the day)
+      const wKey = format(w, 'yyyy-MM-dd')
       const wEntries = scopedEntries.filter(e => e.weekKey === wKey && e.status === 'approved' && !e.deleted)
       weeks.push({
         week: format(w, 'dd MMM'),
@@ -399,14 +400,40 @@ export default function AnalyticsPage() {
               <div className="stat-sub">Of submitted entries</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Pending Count</div>
-              <div className="stat-value text-warning">{stats.pendingCount}</div>
-              <div className="stat-sub">Awaiting review</div>
+              <div className="stat-label">Pending Review</div>
+              <div className="stat-value" style={{ color: stats.pendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>{stats.pendingCount}</div>
+              <div className="stat-sub">Awaiting approval</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Active Staff</div>
               <div className="stat-value">{stats.activeStaffCount}</div>
               <div className="stat-sub">Logging hours in period</div>
+            </div>
+          </div>
+          <div className="grid-4">
+            <div className="stat-card">
+              <div className="stat-label">Org Submission Rate</div>
+              <div className="stat-value" style={{ color: activeStaff.length > 0 && (activeStaff.length - stats.notSubmittedList.length) / activeStaff.length >= 0.8 ? 'var(--success)' : 'var(--warning)' }}>
+                {activeStaff.length > 0 ? Math.round(((activeStaff.length - stats.notSubmittedList.length) / activeStaff.length) * 100) : 0}%
+              </div>
+              <div className="stat-sub">Staff submitted this week</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Not Submitted</div>
+              <div className="stat-value" style={{ color: stats.notSubmittedList.length > 0 ? 'var(--danger)' : 'var(--success)' }}>{stats.notSubmittedList.length}</div>
+              <div className="stat-sub">This week (current)</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Approved (Period)</div>
+              <div className="stat-value text-success">{filteredEntries.filter(e => e.status === 'approved').length}</div>
+              <div className="stat-sub">Entries fully approved</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Rejected (Period)</div>
+              <div className="stat-value" style={{ color: filteredEntries.filter(e => e.status === 'rejected').length > 0 ? 'var(--danger)' : 'var(--text-3)' }}>
+                {filteredEntries.filter(e => e.status === 'rejected').length}
+              </div>
+              <div className="stat-sub">Entries rejected</div>
             </div>
           </div>
 

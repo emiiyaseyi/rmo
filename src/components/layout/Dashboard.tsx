@@ -191,21 +191,24 @@ export default function Dashboard({ setPage }: DashboardProps) {
       ? staff.filter(s => !s.suspended)
       : []
 
-  const totalStaffCount = managedStaff.length
-  const managedStaffIds = managedStaff.map(s => s.id)
+  // Exclude exempt staff from submission tracking
+  const trackableStaff = managedStaff.filter(s => !s.exemptFromTimesheet)
+
+  const totalStaffCount = trackableStaff.length
+  const managedStaffIds = trackableStaff.map(s => s.id)
 
   const submittedThisWeek = Array.from(new Set(
-    entries.filter(e => 
-      e.weekKey === thisWeek && 
+    entries.filter(e =>
+      e.weekKey === thisWeek &&
       managedStaffIds.includes(e.staffId) &&
       ['submitted', 'approved', 'resubmitted'].includes(e.status)
     ).map(e => e.staffId)
   )).length
 
   const submissionRate = totalStaffCount > 0 ? Math.round((submittedThisWeek / totalStaffCount) * 100) : 0
-  const notSubmittedList = managedStaff.filter(s => !entries.some(e => 
-    e.staffId === s.id && 
-    e.weekKey === thisWeek && 
+  const notSubmittedList = trackableStaff.filter(s => !entries.some(e =>
+    e.staffId === s.id &&
+    e.weekKey === thisWeek &&
     ['submitted', 'approved', 'resubmitted'].includes(e.status)
   ))
 

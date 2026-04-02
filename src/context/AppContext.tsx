@@ -158,6 +158,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ settings: data.settings }),
           }).catch(() => {})
+
+          // Submission reminder: email staff 30 min before window closes
+          fetch('/api/submission-reminder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings: data.settings }),
+          }).catch(() => {})
         }
 
         // Force-logout check (replaces security onSnapshot listener)
@@ -231,7 +238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     setIdleCountdown(null)
-    const totalMins = settings?.idle_minutes || 2
+    const totalMins = settings?.idle_minutes || 5
     const warnAt = (totalMins * 60) - 30
 
     idleTimerRef.current = setTimeout(() => {

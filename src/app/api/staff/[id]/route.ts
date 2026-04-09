@@ -13,7 +13,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params
     const body = await req.json()
 
-    // Allow partial updates: only update provided fields
+    // Check if staff member already exists
+    const existing = await queryOne('SELECT id FROM staff WHERE id = $1', [id])
+
+    if (!existing) {
+      // New staff member — full upsert insert
+      const row = staffToRow({ ...body, id })
+      const { text, values } = buildUpsert('staff', row)
+      await pool.query(text, values)
+      const inserted = await queryOne('SELECT * FROM staff WHERE id = $1', [id])
+      return Response.json(rowToStaff(inserted), { status: 201 })
+    }
+
+    // Existing staff member — partial update with only provided fields
     const fieldMap: Record<string, string> = {
       name: 'name', email: 'email', password: 'password', role: 'role',
       department: 'department', jobTitle: 'job_title', status: 'status',

@@ -7,8 +7,13 @@ import { LeaveApprovalEmail } from '@/emails/LeaveApprovalEmail'
 import { PasswordResetEmail } from '@/emails/PasswordResetEmail'
 import { WelcomeEmail } from '@/emails/WelcomeEmail'
 
-// Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Initialize Resend lazily — returns null when key is not configured (e.g. local dev)
+let _resend: Resend | null = null
+function getResend(): Resend | null {
+  if (!process.env.RESEND_API_KEY) return null
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
+  return _resend
+}
 
 export interface EmailOptions {
   to: string | string[]
@@ -18,6 +23,11 @@ export interface EmailOptions {
 
 // Base email sending function
 export async function sendEmail(options: EmailOptions, html: string) {
+  const resend = getResend()
+  if (!resend) {
+    console.log('[Email skipped — RESEND_API_KEY not set]', options.subject)
+    return { success: false, error: 'Email disabled (no API key)' }
+  }
   try {
     const { data, error } = await resend.emails.send({
       from: options.from || 'DSN RMO <noreply@rmo.dsnsandbox.com>',

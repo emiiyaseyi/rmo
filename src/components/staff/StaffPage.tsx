@@ -486,7 +486,7 @@ export default function StaffPage() {
   }
 
   /* ── CRUD ── */
-  function handleSave(form: any) {
+  async function handleSave(form: any) {
     if (editStaff) {
       saveStaff(staff.map(s => s.id === editStaff.id ? { ...s, ...form } : s))
       logAudit('EDIT_STAFF', `${user?.name} edited ${form.name}`, user?.id || '', user?.name || '')
@@ -495,15 +495,26 @@ export default function StaffPage() {
       if (staff.find(s => s.email?.toLowerCase() === form.email?.toLowerCase())) {
         toast.error('Email address already exists'); return
       }
-      const ns: Staff = { 
-        ...form, 
-        id: genId(), 
-        points: 0, 
-        streak: 0, 
-        badges: [], 
+      const ns: Staff = {
+        ...form,
+        id: genId(),
+        points: 0,
+        streak: 0,
+        badges: [],
         status: form.status || 'active',
         role: form.role as any,
-        createdAt: new Date().toISOString() 
+        createdAt: new Date().toISOString()
+      }
+      // POST directly to ensure the row is INSERT-ed before we create a notification
+      // (notify does a PUT to notifications which has a FK on staff.id)
+      try {
+        await fetch('/api/staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ns),
+        })
+      } catch (e) {
+        console.error('Failed to create staff:', e)
       }
       saveStaff([...staff, ns])
       logAudit('ADD_STAFF', `${user?.name} added ${form.name}`, user?.id || '', user?.name || '')

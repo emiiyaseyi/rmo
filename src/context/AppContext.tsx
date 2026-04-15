@@ -273,8 +273,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function saveEntries(data: Entry[]) {
+    // Only upsert entries that actually changed — avoids firing 100s of PUTs on every keystroke
+    const changed = data.filter(e => {
+      const prev = entries.find(p => p.id === e.id)
+      return !prev || JSON.stringify(prev) !== JSON.stringify(e)
+    })
     setEntries(data)
-    apiUpsert('entries', data).catch(() => {
+    if (changed.length === 0) return
+    apiUpsert('entries', changed).catch(() => {
       // Re-sync from DB immediately so the UI doesn't stay in a stale optimistic state
       pollNowRef.current?.()
     })

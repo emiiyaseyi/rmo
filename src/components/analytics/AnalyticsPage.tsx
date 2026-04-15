@@ -97,12 +97,12 @@ export default function AnalyticsPage() {
     
     const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
     const activeStaffCount = staffWithEntries.length
-    // Not-submitted = staff with no submitted/approved/resubmitted entry in the current week
-    // (same logic as Dashboard Org Submission Rate)
-    const currentWeek = getWeekKey(new Date())
+    // Not-submitted = staff with no submitted/approved/resubmitted entry in the selected week
+    // Uses the filter's week so changing the period filter updates these stats
+    const filterWeek = getWeekKey(dateRange.start)
     const submittedThisWeek = new Set(
       scopedEntries.filter(e =>
-        e.weekKey === currentWeek &&
+        e.weekKey === filterWeek &&
         ['submitted', 'approved', 'resubmitted'].includes(e.status) &&
         !e.deleted
       ).map(e => e.staffId)
@@ -116,7 +116,7 @@ export default function AnalyticsPage() {
       activeStaffCount,
       notSubmittedList
     }
-  }, [filteredEntries, activeStaff, scopedEntries])
+  }, [filteredEntries, activeStaff, scopedEntries, dateRange])
 
   // Bar chart - hours logged across last 5 weeks
   const last5WeeksData = useMemo(() => {
@@ -416,12 +416,12 @@ export default function AnalyticsPage() {
               <div className="stat-value" style={{ color: activeStaff.length > 0 && (activeStaff.length - stats.notSubmittedList.length) / activeStaff.length >= 0.8 ? 'var(--success)' : 'var(--warning)' }}>
                 {activeStaff.length > 0 ? Math.round(((activeStaff.length - stats.notSubmittedList.length) / activeStaff.length) * 100) : 0}%
               </div>
-              <div className="stat-sub">Staff submitted this week</div>
+              <div className="stat-sub">Submitted in selected week</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Not Submitted</div>
               <div className="stat-value" style={{ color: stats.notSubmittedList.length > 0 ? 'var(--danger)' : 'var(--success)' }}>{stats.notSubmittedList.length}</div>
-              <div className="stat-sub">This week (current)</div>
+              <div className="stat-sub">In selected week</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Approved (Period)</div>

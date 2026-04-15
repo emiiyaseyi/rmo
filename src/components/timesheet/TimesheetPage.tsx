@@ -566,6 +566,12 @@ export default function TimesheetPage() {
   const isCurrentWeek = selectedWeek === currentWeek
   const isWindowOpen = isSubmissionOpen(settings?.submissionWindow)
 
+  // Pending clarification entries across ALL weeks — shown in a banner so staff always see them
+  const pendingClarifications = useMemo(() =>
+    entries.filter(e => e.staffId === effectiveUserId && e.status === 'pending_clarification' && !e.deleted),
+    [entries, effectiveUserId]
+  )
+
   // Calculate submission window status
   const windowStatus = useMemo(() =>
     getSubmissionWindowStatus(settings?.submissionWindow),
@@ -1117,6 +1123,40 @@ export default function TimesheetPage() {
 
       {isLocked && <div style={{ background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--danger)' }}>🔒 Week locked by admin. No changes allowed.</div>}
       {hasRejected && <div style={{ background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--danger)' }}>❌ Some entries were rejected. Review and resubmit below.</div>}
+
+      {/* Pending clarification banner — visible regardless of which week is selected */}
+      {pendingClarifications.length > 0 && !viewingStaffId && (
+        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 10, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
+            ❓ {pendingClarifications.length} entr{pendingClarifications.length === 1 ? 'y needs' : 'ies need'} clarification
+          </div>
+          {pendingClarifications.map(e => (
+            <div key={e.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, background: 'var(--bg-card)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{e.project}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                  Week of {weekRange(e.weekKey)} · {e.hours}h · {e.category}
+                </div>
+                {e.clarificationNote && (
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4, fontStyle: 'italic' }}>
+                    "{e.clarificationNote}"
+                  </div>
+                )}
+              </div>
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ flexShrink: 0 }}
+                onClick={() => {
+                  if (selectedWeek !== e.weekKey) setSelectedWeek(e.weekKey)
+                  setClarifyEntry(e)
+                }}
+              >
+                Explain
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Template notice */}
       {myTemplates.length > 0 && (

@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useRef } from 'react'
+import React, { useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, avatarColor, initials, BADGES, getWeekKey, weekRange, local } from '../../lib/utils'
 import { Staff, Entry, Leave, Template, AppSettings } from '../../types'
@@ -18,8 +18,6 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
   const [fontSize, setFontSize] = useState<number>(local.get<number>('font_size', 14))
   const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weeklyHourGoal || user?.weekly_goal || 40)
-  const fileRef = useRef<HTMLInputElement>(null)
-
   const weekCap = settings?.weekly_cap || 45
   const currentWeek = getWeekKey()
   const myEntries = entries.filter(e => e.staffId === user?.id && !e.deleted)
@@ -69,39 +67,6 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
     updateUser({ password: passwordForm.newPassword, first_login: false })
     setPasswordForm({ current: '', newPassword: '', confirm: '' })
     toast.success('Password updated successfully')
-  }
-
-  function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    
-    // Validate format
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!validTypes.includes(file.type)) { toast.error('Format must be JPG, PNG or WEBP'); return }
-    
-    // Validate size (2MB)
-    if (file.size > 2 * 1024 * 1024) { toast.error('Photo must be under 2MB'); return }
-    
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const result = ev.target?.result as string
-      updateUser({ 
-        photo: result, // Legacy field
-        profilePhoto: {
-          base64: result,
-          uploadedAt: new Date().toISOString(),
-          fileSize: file.size,
-          mimeType: file.type as any
-        }
-      })
-      toast.success('Profile photo updated')
-    }
-    reader.readAsDataURL(file)
-  }
-
-  function removePhoto() {
-    updateUser({ photo: null, profilePhoto: null })
-    toast.success('Photo removed')
   }
 
   function submitLeave(e: React.FormEvent) {
@@ -156,25 +121,8 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Profile header */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <div
-            className="avatar avatar-xl"
-            style={{ background: avatarColor(user?.name || ''), fontSize: 28, cursor: 'pointer' }}
-            onClick={() => fileRef.current?.click()}
-          >
-            {user?.photo ? <img src={user.photo} alt="" /> : initials(user?.name || '')}
-          </div>
-          <button
-            onClick={() => fileRef.current?.click()}
-            style={{
-              position: 'absolute', bottom: 0, right: 0,
-              width: 24, height: 24, borderRadius: '50%',
-              background: 'var(--accent)', border: '2px solid var(--bg-card)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, color: 'white'
-            }}
-          >📷</button>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+        <div className="avatar avatar-xl" style={{ background: avatarColor(user?.name || ''), fontSize: 28 }}>
+          {initials(user?.name || '')}
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -205,9 +153,7 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
             </div>
           </div>
         </div>
-        {user?.photo && (
-          <button className="btn btn-secondary btn-sm" onClick={removePhoto}>Remove Photo</button>
-        )}
+
       </div>
 
       {/* Weekly goal */}

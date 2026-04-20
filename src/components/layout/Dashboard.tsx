@@ -469,7 +469,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
                     {i + 1}
                   </div>
                   <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 9 }}>
-                    {s.photo ? <img src={s.photo} alt="" /> : initials(s.name)}
+                    {initials(s.name)}
                   </div>
                   <div style={{ flex: 1, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {s.name} {s.id === user?.id && '(You)'}
@@ -500,7 +500,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
                     }}>
                       <div style={{ fontSize: 14, fontWeight: 800, width: 20 }}>{myIdx + 1}</div>
                       <div className="avatar avatar-sm" style={{ background: avatarColor(me.name), fontSize: 9 }}>
-                        {me.photo ? <img src={me.photo} alt="" /> : initials(me.name)}
+                        {initials(me.name)}
                       </div>
                       <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{me.name} (You)</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{me.points?.toLocaleString() || 0}</div>

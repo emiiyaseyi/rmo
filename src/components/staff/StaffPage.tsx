@@ -17,7 +17,7 @@ interface StaffModalProps {
 
 function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
   const leads = allStaff.filter(s => s.role === 'team_lead' || s.role === 'admin')
-  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', photoUrl: '', password: 'dsn-staff', mustChangePassword: true, weekly_cap: '' })
+  const [form, setForm] = useState<any>(existing || { name: '', email: '', department: '', jobTitle: '', role: 'staff', status: 'active', leadId: '', leadName: '', phone: '', password: 'dsn-staff', mustChangePassword: true, weekly_cap: '' })
   const [errors, setErrors] = useState<any>({})
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
 
@@ -89,10 +89,6 @@ function StaffModal({ existing, allStaff, onSave, onClose }: StaffModalProps) {
               <input className="form-input" type="password" value={form.password} onChange={e => F('password', e.target.value)} />
               {errors.password && <span className="form-error">{errors.password}</span>}
               <span className="form-hint">Default: dsn-staff. Staff will change on first login</span>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Profile Photo URL</label>
-              <input className="form-input" value={form.photoUrl || ''} onChange={e => F('photoUrl', e.target.value)} placeholder="https://..." />
             </div>
             <div className="form-group">
               <label className="form-label">Status</label>
@@ -962,7 +958,7 @@ export default function StaffPage() {
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 10, position: 'relative' }}>
-                              {s.profilePhoto?.base64 || s.photo ? <img src={s.profilePhoto?.base64 || s.photo || ''} alt="" /> : initials(s.name)}
+                              {initials(s.name)}
                               {isOnline && <div style={{ position: 'absolute', bottom: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', border: '1.5px solid var(--bg-card)' }} />}
                             </div>
                             <span style={{ fontWeight: 600 }}>{s.name}</span>

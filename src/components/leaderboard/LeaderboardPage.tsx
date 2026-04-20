@@ -321,7 +321,7 @@ export default function LeaderboardPage() {
                         <td>
                           <div className="flex items-center gap-2">
                              <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>
-                                {s.profilePhoto?.base64 || s.photo ? <img src={s.profilePhoto?.base64 || s.photo || ''} alt="" /> : s.name?.[0]}
+                                {s.name?.[0]}
                              </div>
                             <span className="font-bold">{s.name}{isMe ? ' (You)' : ''}</span>
                           </div>

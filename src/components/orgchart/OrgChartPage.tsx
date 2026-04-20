@@ -26,7 +26,7 @@ function StaffNode({ member, reports }: StaffNodeProps) {
         onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
       >
         <div className="avatar avatar-md" style={{ background: avatarColor(member.name), margin: '0 auto 8px', fontSize: 14 }}>
-          {member.photo ? <img src={member.photo} alt="" /> : initials(member.name)}
+          {initials(member.name)}
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>{member.name}</div>
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{member.department || member.role}</div>

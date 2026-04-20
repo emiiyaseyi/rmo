@@ -134,7 +134,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setStaff(data.staff ?? [])
         setEntries(data.entries ?? [])
-        setNots(data.notifications ?? [])
+        if (data.notifications) {
+          setNots(prev => {
+            const readIds = new Set(prev.filter(n => n.read).map(n => n.id))
+            return data.notifications.map((n: any) => readIds.has(n.id) ? { ...n, read: true } : n)
+          })
+        }
         setApprovalDelegations(data.approvalDelegations ?? [])
         setLeaves(data.leaves ?? [])
         setRewards(data.rewards ?? [])
@@ -545,8 +550,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function markRead(notifId: string) {
-    const updated = notifications.map(n => n.id === notifId ? { ...n, read: true } : n)
-    saveNots(updated)
+    setNots(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n))
+    fetch('/api/notifications/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: notifId }),
+    }).catch(() => {})
   }
 
   function markAllRead() {

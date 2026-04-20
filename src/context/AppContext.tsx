@@ -143,6 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPublicHolidays(data.publicHolidays ?? [])
         setAuditLogs((data.auditLogs ?? []).slice(0, 2000))
         setProjects(data.projects ?? [])
+        if (data.templates) setTemplates(data.templates)
 
         if (data.settings && Object.keys(data.settings).length) {
           setSettings(s => ({

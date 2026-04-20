@@ -426,7 +426,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               onMouseLeave={e => { if (page !== 'profile') e.currentTarget.style.background = 'transparent' }}
             >
               <div className="avatar avatar-sm" title={user?.name} style={{ background: avatarColor(user?.name || ''), fontSize: 10, flexShrink: 0 }}>
-                {user?.profilePhoto?.base64 || user?.photo ? <img src={user?.profilePhoto?.base64 || user?.photo || ''} alt="" /> : initials(user?.name || '')}
+                {initials(user?.name || '')}
               </div>
               {(!collapsed || isMobile) && (
                 <div style={{ flex: 1, minWidth: 0 }}>

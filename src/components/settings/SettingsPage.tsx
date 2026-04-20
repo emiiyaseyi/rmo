@@ -86,18 +86,6 @@ export default function SettingsPage() {
     toast.success('Settings updated')
   }
 
-
-  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const base64 = ev.target?.result as string
-      setBrandForm({ ...brandForm, logoBase64: base64, logoUploadedAt: new Date().toISOString() })
-    }
-    reader.readAsDataURL(file)
-  }
-
   const scheduleDays = [
     { short: 'Sun', value: 'sunday' },
     { short: 'Mon', value: 'monday' },

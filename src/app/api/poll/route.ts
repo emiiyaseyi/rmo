@@ -2,7 +2,7 @@ import { query, queryOne } from '@/lib/db'
 import {
   rowToStaff, rowToEntry, rowToNotification, rowToApprovalDelegation,
   rowToLeave, rowToReward, rowToRedeem, rowToAnnouncement,
-  rowToPublicHoliday, rowToAuditLog, rowToProject,
+  rowToPublicHoliday, rowToAuditLog, rowToProject, rowToTemplate,
 } from '../_helpers/mappers'
 
 export async function GET(req: Request) {
@@ -29,6 +29,7 @@ export async function GET(req: Request) {
       auditRows,
       projectsRows,
       currentUser,
+      templatesRows,
     ] = await Promise.all([
       query('SELECT * FROM staff ORDER BY name'),
       isAdmin
@@ -60,6 +61,7 @@ export async function GET(req: Request) {
       query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 2000'),
       query('SELECT * FROM projects ORDER BY name'),
       queryOne<{ force_logout: boolean }>('SELECT force_logout FROM staff WHERE id = $1', [userId]),
+      query('SELECT * FROM templates WHERE staff_id = $1 ORDER BY created_at DESC', [userId]),
     ])
 
     return Response.json({
@@ -75,6 +77,7 @@ export async function GET(req: Request) {
       publicHolidays:      holidaysRows.map(rowToPublicHoliday),
       auditLogs:           auditRows.map(rowToAuditLog),
       projects:            projectsRows.map(rowToProject),
+      templates:           templatesRows.map(rowToTemplate),
       forceLogout:         currentUser?.force_logout ?? false,
     })
   } catch (err) {

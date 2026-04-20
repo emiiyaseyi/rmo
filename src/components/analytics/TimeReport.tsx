@@ -37,7 +37,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
 
   const exportXLSX = () => {
     const data = filtered.map(e => ({
-      Date: e.date,
+      'Last Modified': e.updatedAt ? format(new Date(e.updatedAt), 'dd MMM yyyy, HH:mm') : e.startDate || e.date || '—',
       Staff: e.staffName,
       Department: staff.find(s => s.id === e.staffId)?.department || '—',
       Project: e.project,
@@ -55,7 +55,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
 
   const handleExportCSV = () => {
     const data = filtered.map(e => ({
-      Date: e.date,
+      'Last Modified': e.updatedAt ? format(new Date(e.updatedAt), 'dd MMM yyyy, HH:mm') : e.startDate || e.date || '—',
       Staff: e.staffName,
       Department: staff.find(s => s.id === e.staffId)?.department || '—',
       Project: e.project,
@@ -74,7 +74,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
       { key: 'status', label: 'Status' }
     ]
     const rows = filtered.map(e => ({
-      date: e.date,
+      date: e.updatedAt ? format(new Date(e.updatedAt), 'dd MMM yyyy, HH:mm') : e.startDate || e.date || '—',
       staff: e.staffName,
       project: e.project,
       hours: e.hours + 'h',
@@ -128,7 +128,7 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
           <table>
             <thead className="sticky top-0 bg-surface z-10">
               <tr>
-                <th>Date</th>
+                <th>Last Modified</th>
                 <th>Staff</th>
                 <th>Project</th>
                 <th>Category</th>
@@ -140,7 +140,11 @@ export default function TimeReport({ entries, staff, projects, dateRange }: Time
             <tbody>
               {filtered.map(e => (
                 <tr key={e.id}>
-                  <td className="whitespace-nowrap font-mono text-[11px] text-3">{e.date}</td>
+                  <td className="whitespace-nowrap font-mono text-[11px] text-3">
+                    {e.updatedAt
+                      ? format(new Date(e.updatedAt), 'dd MMM yyyy, HH:mm')
+                      : e.startDate || e.date || '—'}
+                  </td>
                   <td className="font-medium whitespace-nowrap">{e.staffName}</td>
                   <td className="truncate max-w-[120px]" title={e.project}>{e.project}</td>
                   <td className="text-3 text-xs">{e.category}</td>

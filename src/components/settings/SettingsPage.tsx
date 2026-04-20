@@ -21,10 +21,9 @@ export default function SettingsPage() {
     projects
   } = useApp()
 
-  const [tab, setTab] = useState<string>('branding')
+  const [tab, setTab] = useState<string>('points')
 
   // Local form state
-  const [brandForm, setBrandForm] = useState(settings?.branding || { appName: 'DSN Timesheet', welcomeMessage: 'Welcome', primaryColour: '#4F46E5', secondaryColour: '#10B981', logoBase64: null })
   const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
   const [securityForm, setSecurityForm] = useState(settings?.security || { defaultPassword: 'dsn-staff', requireTwoFactor: false })
@@ -45,7 +44,6 @@ export default function SettingsPage() {
   const [auditTo, setAuditTo] = useState('')
 
   const tabs = [
-    { id: 'branding', label: 'Branding' },
     { id: 'points', label: 'Points' },
     { id: 'caps', label: 'Caps' },
     { id: 'submission', label: 'Submission Window' },
@@ -133,93 +131,6 @@ export default function SettingsPage() {
 
       <div className="grid gap-6">
 
-
-        {/* BRANDING */}
-        {tab === 'branding' && (
-          <div className="card flex flex-col gap-6">
-            <h3 className="font-bold">🎨 App Branding</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="form-group">
-                <label className="form-label">App Name</label>
-                <input
-                  className="form-input"
-                  value={brandForm.appName}
-                  onChange={e => setBrandForm({ ...brandForm, appName: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Welcome Message</label>
-                <input
-                  className="form-input"
-                  value={brandForm.welcomeMessage}
-                  onChange={e => setBrandForm({ ...brandForm, welcomeMessage: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Primary Colour</label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
-                    value={brandForm.primaryColour}
-                    onChange={e => setBrandForm({ ...brandForm, primaryColour: e.target.value })}
-                  />
-                  <input
-                    className="form-input flex-1 uppercase"
-                    value={brandForm.primaryColour}
-                    onChange={e => setBrandForm({ ...brandForm, primaryColour: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Secondary Colour</label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    className="w-10 h-10 rounded border-0 p-0 cursor-pointer"
-                    value={brandForm.secondaryColour}
-                    onChange={e => setBrandForm({ ...brandForm, secondaryColour: e.target.value })}
-                  />
-                  <input
-                    className="form-input flex-1 uppercase"
-                    value={brandForm.secondaryColour}
-                    onChange={e => setBrandForm({ ...brandForm, secondaryColour: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Logo</label>
-              <div className="flex items-center gap-4 border border-dashed border-3 p-6 rounded-xl bg-2">
-                {brandForm.logoBase64 ? (
-                  <img src={brandForm.logoBase64} alt="App Logo" className="max-h-16 max-w-[120px] object-contain rounded bg-white p-2 border border-3" />
-                ) : (
-                  <div className="w-16 h-16 rounded bg-3 flex items-center justify-center text-xl">🖼️</div>
-                )}
-                <div className="flex flex-col gap-2">
-                  <label className="btn btn-secondary text-xs cursor-pointer inline-block w-fit">
-                    Upload New Logo
-                    <input type="file" className="hidden" accept="image/*" onChange={handleLogoChange} />
-                  </label>
-                  <p className="text-[10px] text-3">Max 1MB. PNG, SVG or WEBP recommended.</p>
-                </div>
-                {brandForm.logoBase64 && (
-                  <button
-                    className="btn btn-icon text-danger ml-auto"
-                    onClick={() => setBrandForm({ ...brandForm, logoBase64: null })}
-                  >
-                    🗑️
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ branding: brandForm })}>
-              Save Branding Changes
-            </button>
-          </div>
-        )}
 
         {/* POINTS CONFIG */}
         {tab === 'points' && (

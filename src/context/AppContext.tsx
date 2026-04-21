@@ -797,13 +797,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       latePenalty: isLate ? latePenalty : undefined, isLate
     }
 
+    const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 60
     const updatedEntries = entries.map(e => {
       if (e.staffId === staffId && e.weekKey === weekKey && e.status === 'draft') {
-        // Resolve leadId: prefer entry's own, then staff profile, then look up by lead name
         const leadByName = e.lead ? staff.find(s => s.name.toLowerCase() === e.lead!.toLowerCase()) : null
         const leadId = e.leadId || staffMember.leadId || leadByName?.id || ''
-        // New tasks submitted outside the window go to 2nd-level admin review, no late penalty
-        const status = e.isNewTask ? 'pending_2nd_approval' as const : 'submitted' as const
+        // Only skip team lead and go straight to admin review if it's a new task AND exceeds the hour threshold
+        const status = (e.isNewTask && (e.hours || 0) >= secondLevelThreshold)
+          ? 'pending_2nd_approval' as const
+          : 'submitted' as const
         return { ...e, status, submittedAt: now.toISOString(), leadId }
       }
       return e

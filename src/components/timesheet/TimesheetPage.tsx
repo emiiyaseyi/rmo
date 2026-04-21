@@ -25,8 +25,15 @@ interface EntryFormProps {
 /* ────────────────────────────────────────────────────────────── */
 function EntryForm({ entry, onSave, onClose, projects, leads, categories, templates, onSaveTemplate, windowOpen }: EntryFormProps) {
   const today = new Date().toISOString().slice(0, 10)
+  const fridayOfWeek = (() => {
+    const d = new Date()
+    const day = d.getDay() // 0=Sun,1=Mon,...,5=Fri,6=Sat
+    const diff = day <= 5 ? 5 - day : 6 // if Sun (0), go to next Fri
+    d.setDate(d.getDate() + diff)
+    return d.toISOString().slice(0, 10)
+  })()
   const [form, setForm] = useState<any>({
-    project: '', lead: '', description: '', startDate: today, endDate: today,
+    project: '', lead: '', description: '', startDate: today, endDate: fridayOfWeek,
     hours: '', category: categories[0] || 'Client Work',
     isNewTask: false,
     ...(entry || {})

@@ -39,6 +39,15 @@ export default function ProjectsPage() {
       return
     }
 
+    const nameLower = form.name.trim().toLowerCase()
+    const duplicate = projects.find((p: any) =>
+      p.name.trim().toLowerCase() === nameLower && (!editing || p.id !== editing.id)
+    )
+    if (duplicate) {
+      toast.error(`A project named "${duplicate.name}" already exists`)
+      return
+    }
+
     if (editing) {
       saveProjects(projects.map((p: any) => p.id === editing.id ? { ...p, ...form } : p))
       logAudit('project_update', editing.id, { name: form.name, active: form.active, budget: form.budget })

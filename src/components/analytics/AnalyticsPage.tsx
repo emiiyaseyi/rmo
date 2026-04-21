@@ -97,17 +97,27 @@ export default function AnalyticsPage() {
     
     const staffWithEntries = Array.from(new Set(filteredEntries.map(e => e.staffId)))
     const activeStaffCount = staffWithEntries.length
-    // Not-submitted = staff with no submitted/approved/resubmitted entry in the selected week
-    // Uses the filter's week so changing the period filter updates these stats
-    const filterWeek = getWeekKey(dateRange.start)
-    const submittedThisWeek = new Set(
-      scopedEntries.filter(e =>
-        e.weekKey === filterWeek &&
-        ['submitted', 'approved', 'resubmitted'].includes(e.status) &&
-        !e.deleted
-      ).map(e => e.staffId)
-    )
-    const notSubmittedList = activeStaff.filter(s => !submittedThisWeek.has(s.id) && !s.exemptFromTimesheet)
+    // Not-submitted: for week view use selectedWeek directly (avoids UTC timezone shift from getWeekKey).
+    // For month/custom, check staff who have no qualifying entry in any week within the range.
+    let notSubmittedList: typeof activeStaff
+    if (periodType === 'week') {
+      const submittedSet = new Set(
+        scopedEntries.filter(e =>
+          e.weekKey === selectedWeek &&
+          ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval'].includes(e.status) &&
+          !e.deleted
+        ).map(e => e.staffId)
+      )
+      notSubmittedList = activeStaff.filter(s => !submittedSet.has(s.id) && !s.exemptFromTimesheet)
+    } else {
+      const submittedSet = new Set(
+        scopedEntries.filter(e =>
+          ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval'].includes(e.status) &&
+          !e.deleted
+        ).map(e => e.staffId)
+      )
+      notSubmittedList = activeStaff.filter(s => !submittedSet.has(s.id) && !s.exemptFromTimesheet)
+    }
 
     return {
       totalHours: parseFloat(totalHours.toFixed(1)),
@@ -116,7 +126,7 @@ export default function AnalyticsPage() {
       activeStaffCount,
       notSubmittedList
     }
-  }, [filteredEntries, activeStaff, scopedEntries, dateRange])
+  }, [filteredEntries, activeStaff, scopedEntries, dateRange, periodType, selectedWeek])
 
   // Bar chart - hours logged across last 5 weeks
   const last5WeeksData = useMemo(() => {
@@ -600,8 +610,9 @@ export default function AnalyticsPage() {
         const days = (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
         const weeksInPeriod = Math.max(days / 7, 1)
 
+        const COUNTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval', 'pending_clarification']
         const staffWithHours = activeStaff.map(s => {
-          const sEntries = filteredEntries.filter(e => e.staffId === s.id && e.status === 'approved')
+          const sEntries = filteredEntries.filter(e => e.staffId === s.id && COUNTED_STATUSES.includes(e.status))
           const totalHours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
           const avgWeekly = totalHours / weeksInPeriod
           return { ...s, totalHours: parseFloat(totalHours.toFixed(1)), avgWeekly: parseFloat(avgWeekly.toFixed(1)) }

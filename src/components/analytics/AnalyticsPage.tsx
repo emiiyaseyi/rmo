@@ -610,8 +610,9 @@ export default function AnalyticsPage() {
         const days = (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)
         const weeksInPeriod = Math.max(days / 7, 1)
 
+        const COUNTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval', 'pending_clarification']
         const staffWithHours = activeStaff.map(s => {
-          const sEntries = filteredEntries.filter(e => e.staffId === s.id && e.status === 'approved')
+          const sEntries = filteredEntries.filter(e => e.staffId === s.id && COUNTED_STATUSES.includes(e.status))
           const totalHours = sEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
           const avgWeekly = totalHours / weeksInPeriod
           return { ...s, totalHours: parseFloat(totalHours.toFixed(1)), avgWeekly: parseFloat(avgWeekly.toFixed(1)) }

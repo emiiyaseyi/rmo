@@ -197,11 +197,13 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const totalStaffCount = trackableStaff.length
   const managedStaffIds = trackableStaff.map(s => s.id)
 
+  const SUBMITTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval', 'pending_clarification']
+
   const submittedThisWeek = Array.from(new Set(
     entries.filter(e =>
       e.weekKey === thisWeek &&
       managedStaffIds.includes(e.staffId) &&
-      ['submitted', 'approved', 'resubmitted'].includes(e.status)
+      SUBMITTED_STATUSES.includes(e.status)
     ).map(e => e.staffId)
   )).length
 
@@ -209,7 +211,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const notSubmittedList = trackableStaff.filter(s => !entries.some(e =>
     e.staffId === s.id &&
     e.weekKey === thisWeek &&
-    ['submitted', 'approved', 'resubmitted'].includes(e.status)
+    SUBMITTED_STATUSES.includes(e.status)
   ))
 
   const recentActivity = entries

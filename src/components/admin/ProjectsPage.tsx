@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF } from '../../lib/utils'
-import { Briefcase, Plus, Search, Download, Trash2, Edit2 } from 'lucide-react'
+import { Briefcase, Plus, Search, Download, Trash2, Edit2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
 
@@ -11,7 +11,8 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<any>(null)
-  const [form, setForm] = useState({ name: '', active: true, budget: 0 })
+  const [form, setForm] = useState<{ name: string; active: boolean; budget: number; tasks: string[] }>({ name: '', active: true, budget: 0, tasks: [] })
+  const [taskInput, setTaskInput] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, projectId: string, projectName: string}>({isOpen: false, projectId: '', projectName: ''})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
@@ -60,7 +61,8 @@ export default function ProjectsPage() {
     }
     setShowAdd(false)
     setEditing(null)
-    setForm({ name: '', active: true, budget: 0 })
+    setForm({ name: '', active: true, budget: 0, tasks: [] })
+    setTaskInput('')
   }
 
   const handleDelete = (id: string) => {
@@ -99,7 +101,7 @@ export default function ProjectsPage() {
     const data = projectStats.map(p => ({
       Project: p.name,
       Status: p.active ? 'Active' : 'Inactive',
-      Budget: p.budget || 0,
+      Tasks: (p.tasks || []).join(', '),
       TotalHours: p.totalHours,
       StaffCount: p.staffCount
     }))
@@ -110,7 +112,7 @@ export default function ProjectsPage() {
       const cols = [
         { key: 'Project', label: 'Project Name' },
         { key: 'Status', label: 'Status' },
-        { key: 'Budget', label: 'Budget' },
+        { key: 'Tasks', label: 'Approved Tasks' },
         { key: 'TotalHours', label: 'Total Hours' },
         { key: 'StaffCount', label: 'Staff' }
       ]
@@ -122,57 +124,59 @@ export default function ProjectsPage() {
   const handleImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.csv'
-    input.onchange = (e: any) => {
+    input.accept = '.csv,.xlsx,.xls'
+    input.onchange = async (e: any) => {
       const file = e.target.files[0]
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = (evt) => {
-        try {
-          const text = evt.target?.result as string
-          const lines = text.split('\n').filter(r => r.trim())
-          if (lines.length === 0) {
-            toast.error('Empty CSV file')
-            return
-          }
+      try {
+        const XLSX = await import('xlsx')
+        const buf = await file.arrayBuffer()
+        const wb = XLSX.read(buf, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
 
-          // Parse header row
-          const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+        if (rows.length === 0) { toast.error('Empty file'); return }
 
-          // Parse data rows
-          const newProjects = lines.slice(1).map(line => {
-            const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
-            const projectName = values[headers.indexOf('ProjectName')] || values[headers.indexOf('Project Name')] || values[headers.indexOf('Project')] || values[0]
+        const getName = (r: any) =>
+          r['Project Name'] || r['ProjectName'] || r['Project'] || r['project'] || Object.values(r)[0] as string
 
-            if (!projectName || !projectName.trim()) return null
-
-            // Check for duplicates
-            if (projects.some((p: any) => p.name.toLowerCase() === projectName.toLowerCase())) {
-              return null
-            }
-
-            return {
-              id: genId(),
-              name: projectName.trim(),
-              active: true,
-              budget: 0
-            }
-          }).filter(Boolean)
-
-          if (newProjects.length === 0) {
-            toast.error('No valid projects found or all are duplicates')
-            return
-          }
-
-          saveProjects([...projects, ...newProjects])
-          logAudit('project_bulk_import', 'bulk', { count: newProjects.length, projects: newProjects.map((p: any) => p.name) })
-          toast.success(`Imported ${newProjects.length} projects`)
-        } catch (error) {
-          toast.error('Failed to parse CSV file')
-          console.error('Import error:', error)
+        const getTasks = (r: any): string[] => {
+          const raw: string = r['Tasks'] || r['Task'] || r['Approved Tasks'] || ''
+          return raw ? raw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
         }
+
+        let added = 0, updated = 0
+        let updatedProjects = [...projects]
+        for (const row of rows) {
+          const name = String(getName(row) || '').trim()
+          if (!name) continue
+          const tasks = getTasks(row)
+          const existing = updatedProjects.find((p: any) => p.name.toLowerCase() === name.toLowerCase())
+          if (existing) {
+            if (tasks.length > 0) {
+              updatedProjects = updatedProjects.map((p: any) =>
+                p.id === existing.id ? { ...p, tasks } : p
+              )
+              updated++
+            }
+          } else {
+            updatedProjects.push({ id: genId(), name, active: true, budget: 0, tasks })
+            added++
+          }
+        }
+
+        if (added === 0 && updated === 0) { toast.error('No valid projects found'); return }
+
+        saveProjects(updatedProjects)
+        logAudit('project_bulk_import', 'bulk', { added, updated })
+        const parts = []
+        if (added > 0) parts.push(`${added} added`)
+        if (updated > 0) parts.push(`${updated} updated`)
+        toast.success(`Import complete: ${parts.join(', ')}`)
+      } catch (error) {
+        toast.error('Failed to parse file')
+        console.error('Import error:', error)
       }
-      reader.readAsText(file)
     }
     input.click()
   }
@@ -191,9 +195,13 @@ export default function ProjectsPage() {
             </button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={handleImport}>
-            📁 Import CSV
+            📁 Import CSV/XLSX
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => exportCSV([{ ProjectName: 'Project X' }, { ProjectName: 'Project Y' }], 'projects_template.csv')}>
+          <button className="btn btn-secondary btn-sm" onClick={() => exportCSV([
+              { 'Project Name': '3MTT/DeepTech_Ready', Tasks: 'Meetings, Content Development, LMS/Student Management Assignments, Teaching Assistance, Social Media, Video Production, Stakeholder Management and Planning' },
+              { 'Project Name': 'Administration', Tasks: 'Email Tracking and Response, Business Operational Reporting, Meetings, Business Operations, Employee Onboarding & Orientation, Event Planning & Management, Project Support' },
+              { 'Project Name': 'New Project Example', Tasks: 'Task One, Task Two, Task Three' },
+            ], 'projects_template.csv')}>
             📄 Template
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>
@@ -231,7 +239,7 @@ export default function ProjectsPage() {
                 </th>
                 <th>Project Name</th>
                 <th>Status</th>
-                <th>Budget (h)</th>
+                <th>Approved Tasks</th>
                 <th>Total Hours</th>
                 <th>Staff Contributors</th>
                 <th>Actions</th>
@@ -249,12 +257,16 @@ export default function ProjectsPage() {
                       {p.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td style={{ fontFamily: 'var(--mono)' }}>{p.budget || 0}h</td>
+                  <td>
+                    {p.tasks?.length > 0
+                      ? <span className="badge badge-blue">{p.tasks.length} task{p.tasks.length !== 1 ? 's' : ''}</span>
+                      : <span style={{ fontSize: 12, color: 'var(--text-3)' }}>—</span>}
+                  </td>
                   <td style={{ fontWeight: 800, color: 'var(--accent)' }}>{p.totalHours.toLocaleString()}h</td>
                   <td>{p.staffCount}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0 }); setShowAdd(true) }}>
+                      <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0, tasks: p.tasks || [] }); setTaskInput(''); setShowAdd(true) }}>
                         <Edit2 size={12} />
                       </button>
                       <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
@@ -316,13 +328,43 @@ export default function ProjectsPage() {
                 <label className="form-label">Project Name</label>
                 <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Project X" />
               </div>
-              <div className="form-group">
-                <label className="form-label">Budget Hours</label>
-                <input className="form-input" type="number" value={form.budget} onChange={e => setForm({ ...form, budget: parseInt(e.target.value) || 0 })} />
-              </div>
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} id="p-active" />
                 <label htmlFor="p-active" style={{ fontSize: 13, fontWeight: 600 }}>Active Project</label>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Approved Tasks</label>
+                <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>Staff can only select from these tasks when logging hours for this project.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {form.tasks.map((t, i) => (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--accent-subtle)', color: 'var(--accent)', borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>
+                      {t}
+                      <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit' }} onClick={() => setForm({ ...form, tasks: form.tasks.filter((_, j) => j !== i) })}><X size={10} /></button>
+                    </span>
+                  ))}
+                  {form.tasks.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>No tasks yet</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="form-input"
+                    placeholder="Add task name…"
+                    value={taskInput}
+                    onChange={e => setTaskInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault()
+                        const t = taskInput.trim()
+                        if (t && !form.tasks.includes(t)) setForm({ ...form, tasks: [...form.tasks, t] })
+                        setTaskInput('')
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+                    const t = taskInput.trim()
+                    if (t && !form.tasks.includes(t)) setForm({ ...form, tasks: [...form.tasks, t] })
+                    setTaskInput('')
+                  }}>Add</button>
+                </div>
               </div>
             </div>
             <div className="modal-footer">

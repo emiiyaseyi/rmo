@@ -252,7 +252,7 @@ export default function LeaderboardPage() {
       <div className="tabs">
         {['individual', 'department', 'badges', 'hof', 'recovery'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '👤 Individual' : t === 'department' ? '🏢 Department' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
+            {t === 'individual' ? '👤 Individual' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
           </div>
         ))}
       </div>

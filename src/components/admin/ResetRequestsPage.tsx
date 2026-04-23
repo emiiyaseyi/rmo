@@ -33,6 +33,19 @@ export default function ResetRequestsPage() {
           await fetch(`/api/reset-requests/${req.id}`, { method: 'DELETE' })
           setRequests(prev => prev.filter(r => r.id !== req.id))
           notify(req.staffId, '🔒 Your password has been reset to "1234" by Admin. Please change it on next login.', 'info')
+          if (req.email) {
+            fetch('/api/email/send-template', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'password-reset',
+                to: req.email,
+                staffName: req.staffName,
+                resetUrl: `${window.location.origin}/login`,
+                expiresIn: 'immediately',
+              }),
+            }).catch(() => {})
+          }
           toast.success('Reset request approved')
         } catch {
           toast.error('Failed to approve request')

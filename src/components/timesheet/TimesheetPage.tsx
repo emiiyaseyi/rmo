@@ -25,9 +25,16 @@ interface EntryFormProps {
 /* ────────────────────────────────────────────────────────────── */
 function EntryForm({ entry, onSave, onClose, projects, leads, categories, templates, onSaveTemplate, windowOpen }: EntryFormProps) {
   const today = new Date().toISOString().slice(0, 10)
+  const fridayOfWeek = (() => {
+    const d = new Date()
+    const day = d.getDay() // 0=Sun,1=Mon,...,5=Fri,6=Sat
+    const diff = day <= 5 ? 5 - day : 6 // if Sun (0), go to next Fri
+    d.setDate(d.getDate() + diff)
+    return d.toISOString().slice(0, 10)
+  })()
   const [form, setForm] = useState<any>({
-    project: '', lead: '', description: '', startDate: today, endDate: today,
-    hours: '', category: categories[0] || 'Client Work',
+    project: '', lead: '', description: '', startDate: today, endDate: fridayOfWeek,
+    hours: '', category: 'Project Execution',
     isNewTask: false,
     ...(entry || {})
   })
@@ -39,12 +46,14 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
   function validate() {
     const e: any = {}
     if (!form.project) e.project = 'Required'
-    if (!form.lead) e.lead = 'Required'
+    if (!form.lead && !form.leadId) e.lead = 'Required'
     if (!form.description) e.description = 'Required'
     if (!form.startDate) e.startDate = 'Required'
     if (!form.endDate) e.endDate = 'Required'
     if (form.startDate && form.endDate && form.endDate < form.startDate) e.endDate = 'End must be ≥ start'
     if (!form.hours || parseFloat(form.hours) <= 0 || parseFloat(form.hours) > 24) e.hours = 'Must be 0.5–24'
+    const selectedProj = projects.find((p: any) => p.name === form.project)
+    if (selectedProj?.tasks?.length && !form.task) e.task = 'Required'
     return e
   }
 
@@ -98,7 +107,10 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Project *</label>
-              <select className="form-input" value={form.project} onChange={e => F('project', e.target.value)}>
+              <select className="form-input" value={form.project} onChange={e => {
+                const proj = projects.find((p: any) => p.name === e.target.value)
+                setForm((f: any) => ({ ...f, project: e.target.value, task: '', category: 'Project Execution' }))
+              }}>
                 <option value="">— Select project —</option>
                 {projects.filter(p => p.active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
@@ -106,8 +118,13 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
             </div>
             <div className="form-group">
               <label className="form-label">Lead / Supervisor *</label>
-              <input className="form-input" list="lead-list" placeholder="Select lead…" value={form.lead} onChange={e => F('lead', e.target.value)} />
-              <datalist id="lead-list">{leads.map(l => <option key={l.id} value={l.name} />)}</datalist>
+              <select className="form-input" value={form.leadId || ''} onChange={e => {
+                const selected = leads.find(l => l.id === e.target.value)
+                setForm((f: any) => ({ ...f, leadId: e.target.value, lead: selected?.name || '' }))
+              }}>
+                <option value="">Select lead…</option>
+                {leads.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
               {errors.lead && <span className="form-error">{errors.lead}</span>}
             </div>
           </div>
@@ -146,6 +163,21 @@ function EntryForm({ entry, onSave, onClose, projects, leads, categories, templa
               </button>
             </div>
           )}
+
+          {(() => {
+            const proj = projects.find((p: any) => p.name === form.project)
+            if (!proj?.tasks?.length) return null
+            return (
+              <div className="form-group">
+                <label className="form-label">Task *</label>
+                <select className="form-select" value={form.task || ''} onChange={e => F('task', e.target.value)}>
+                  <option value="">— Select task —</option>
+                  {proj.tasks.map((t: string) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {errors.task && <span className="form-error">{errors.task}</span>}
+              </div>
+            )
+          })()}
 
           <div className="form-group">
             <label className="form-label">Description *</label>

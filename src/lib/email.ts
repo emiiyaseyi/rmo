@@ -3,7 +3,6 @@ import { render } from '@react-email/components'
 import { NotificationEmail } from '@/emails/NotificationEmail'
 import { TimesheetApprovalEmail } from '@/emails/TimesheetApprovalEmail'
 import { TimesheetReminderEmail } from '@/emails/TimesheetReminderEmail'
-import { LeaveApprovalEmail } from '@/emails/LeaveApprovalEmail'
 import { PasswordResetEmail } from '@/emails/PasswordResetEmail'
 import { WelcomeEmail } from '@/emails/WelcomeEmail'
 
@@ -112,36 +111,6 @@ export async function sendTimesheetReminderEmail(
   )
 }
 
-// Leave approval email
-export async function sendLeaveApprovalEmail(
-  to: string | string[],
-  staffName: string,
-  leaveType: string,
-  startDate: string,
-  endDate: string,
-  status: 'approved' | 'rejected',
-  message?: string,
-  actionUrl?: string
-) {
-  const html = await render(
-    LeaveApprovalEmail({
-      staffName,
-      leaveType,
-      startDate,
-      endDate,
-      status,
-      message,
-      actionUrl,
-    })
-  )
-
-  const subject =
-    status === 'approved'
-      ? 'Leave Request Approved'
-      : 'Leave Request Denied'
-
-  return sendEmail({ to, subject }, html)
-}
 
 // Password reset email
 export async function sendPasswordResetEmail(

@@ -404,7 +404,7 @@ function CompareModal({ staffA, staffB, entries, onClose }: CompareModalProps) {
 
 /* ─── Main Component ──────────────────────────────────────────────── */
 export default function StaffPage() {
-  const { staff, saveStaff, entries, leaves, saveLeaves, notify, user, settings, grantBadge, awardPoints, logAudit } = useApp()
+  const { staff, saveStaff, entries, notify, user, settings, grantBadge, awardPoints, logAudit } = useApp()
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
@@ -451,15 +451,13 @@ export default function StaffPage() {
     return staff.map(s => {
       const weekEntries = entries.filter(e => e.staffId === s.id && e.weekKey === currentWeekKey && !e.deleted)
       const weekHours = weekEntries.reduce((a, e) => a + (e.hours || 0), 0)
-      const isOnLeave = leaves.some(l => l.staffId === s.id && l.status === 'approved' && now >= l.from && now <= l.to)
-      return { ...s, weekHours, isOnLeave }
+      return { ...s, weekHours }
     }).filter(s => {
       if (search && !s.name?.toLowerCase().includes(search.toLowerCase()) && !s.email?.toLowerCase().includes(search.toLowerCase()) && !s.department?.toLowerCase().includes(search.toLowerCase())) return false
       if (deptFilter && s.department !== deptFilter) return false
       if (roleFilter && s.role !== roleFilter) return false
       if (statusFilter === 'active' && s.suspended) return false
       if (statusFilter === 'suspended' && !s.suspended) return false
-      if (statusFilter === 'on_leave' && !s.isOnLeave) return false
       
       const lowThreshold = settings?.utilizationThresholds?.low || 25
       const highThreshold = settings?.utilizationThresholds?.high || 40
@@ -469,7 +467,7 @@ export default function StaffPage() {
       
       return true
     })
-  }, [staff, entries, leaves, search, deptFilter, roleFilter, statusFilter, utilFilter, settings])
+  }, [staff, entries, search, deptFilter, roleFilter, statusFilter, utilFilter, settings])
 
   /* ── Selection helpers ── */
   const allSelectedOnPage = filtered.length > 0 && filtered.every(s => selected.has(s.id))
@@ -645,7 +643,6 @@ export default function StaffPage() {
       Points: s.points || 0, Streak: s.streak || 0, Badges: (s.badges || []).length,
       Status: s.status || (s.suspended ? 'suspended' : 'active'), 
       WeekHours: (s as any).weekHours || 0,
-      OnLeave: (s as any).isOnLeave ? 'Yes' : 'No',
       Joined: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
     }))
     exportCSV(rows, 'dsn_staff.csv')
@@ -776,65 +773,6 @@ export default function StaffPage() {
     } catch { toast.error('PDF export failed — try CSV instead') }
   }
 
-  /* ── Leave ── */
-  function approveLeave(id: string) {
-    const l = leaves.find((x: any) => x.id === id)
-    if (!l) return
-
-    const isTeamLead = user?.role === 'team_lead'
-    const isAdmin = user?.role === 'admin'
-
-    let updates: any = {}
-    if (isTeamLead && l.status === 'pending') {
-      // Team lead approves first
-      updates = {
-        status: 'lead_approved',
-        leadApprovedBy: user?.id,
-        leadApprovedAt: new Date().toISOString()
-      }
-      // Notify admins for final approval
-      staff.filter(s => s.role === 'admin').forEach(a =>
-        notify(a.id, `${l.staffName}'s ${l.type} leave has been approved by team lead, awaiting your approval`, 'leave_request', 'Leave Approval Needed', id, 'leave')
-      )
-      logAudit('leave_lead_approval', id, { approver: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to })
-      toast.success('Leave approved (awaiting admin approval)')
-    } else if (isAdmin) {
-      // Admin gives final approval
-      updates = {
-        status: 'approved',
-        approvedBy: user?.id,
-        approvedAt: new Date().toISOString()
-      }
-      notify(l.staffId, '✅ Your leave request has been approved', 'leave_approved', 'Leave Approved', id, 'leave')
-      logAudit('leave_admin_approval', id, { approver: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to })
-      toast.success('Leave approved')
-    }
-
-    saveLeaves(leaves.map((x: any) => x.id === id ? { ...x, ...updates } : x))
-  }
-
-  function rejectLeave(id: string, reason: string) {
-    const l = leaves.find((x: any) => x.id === id)
-    if (!l) return
-
-    saveLeaves(leaves.map((x: any) => x.id === id ? {
-      ...x,
-      status: 'rejected',
-      rejectionReason: reason,
-      rejectedBy: user?.id,
-      rejectedAt: new Date().toISOString()
-    } : x))
-
-    notify(l.staffId, `❌ Leave request rejected: ${reason}`, 'leave_declined', 'Leave Declined', id, 'leave')
-    logAudit('leave_rejection', id, { rejector: user?.name, staffName: l.staffName, type: l.type, from: l.from, to: l.to, reason })
-    toast.success('Leave rejected')
-  }
-
-  const pendingLeaves = leaves.filter((l: any) => {
-    if (user?.role === 'admin') return l.status === 'pending' || l.status === 'lead_approved'
-    if (user?.role === 'team_lead') return l.status === 'pending'
-    return false
-  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -871,9 +809,6 @@ export default function StaffPage() {
         <div className={'tab' + (tab === 'sessions' ? ' active' : '')} onClick={() => setTab('sessions')}>
           Active Sessions <span className="badge badge-green" style={{ marginLeft: 6 }}>{activeSessions.length}</span>
         </div>
-        <div className={'tab' + (tab === 'leaves' ? ' active' : '')} onClick={() => setTab('leaves')}>
-          Leave Requests {pendingLeaves.length > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>{pendingLeaves.length}</span>}
-        </div>
       </div>
 
       {/* ── STAFF LIST TAB ── */}
@@ -899,7 +834,6 @@ export default function StaffPage() {
               <option value="">All Status</option>
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
-              <option value="on_leave">On Leave</option>
             </select>
             <select className="form-select" style={{ width: 'auto' }} value={utilFilter} onChange={e => setUtilFilter(e.target.value)}>
               <option value="">All Utilization</option>
@@ -1075,40 +1009,6 @@ export default function StaffPage() {
         </div>
       )}
 
-      {/* ── LEAVES TAB ── */}
-      {tab === 'leaves' && (
-        leaves.length === 0
-          ? <div className="empty-state card"><div className="empty-state-icon">🌴</div><div className="empty-state-title">No leave requests</div></div>
-          : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Staff</th><th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    {leaves.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((l: any) => (
-                      <tr key={l.id}>
-                        <td style={{ fontWeight: 600 }}>{l.staffName}</td>
-                        <td><span className="badge badge-blue">{l.type || 'Annual'}</span></td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{l.from}</td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{l.to}</td>
-                        <td style={{ color: 'var(--text-3)', maxWidth: 200 }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.reason || '—'}</div></td>
-                        <td><span className={'badge badge-' + (l.status === 'approved' ? 'green' : l.status === 'rejected' ? 'red' : 'yellow')}>{l.status}</span></td>
-                        <td>
-                          {l.status === 'pending' && (
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button className="btn btn-success btn-sm" onClick={() => approveLeave(l.id)}>Approve</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => { const r = prompt('Rejection reason:'); if (r) rejectLeave(l.id, r) }}>Reject</button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-      )}
 
       {/* ── Modals ── */}
       {showModal && <StaffModal existing={editStaff} allStaff={staff} onSave={handleSave} onClose={() => { setShowModal(false); setEditStaff(null) }} />}

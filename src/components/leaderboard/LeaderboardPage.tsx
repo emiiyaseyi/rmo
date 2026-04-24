@@ -32,19 +32,20 @@ export default function LeaderboardPage() {
   const [deptFilter, setDeptFilter] = useState('')
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
-  // Rankings
-  const ranked: RankedStaff[] = useMemo(() =>
+  const SUBMITTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_clarification', 'pending_2nd_approval']
+
+  function calcSubmissionRate(s: Staff) {
+    const myEntries = entries.filter(e => e.staffId === s.id)
+    const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
+    const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && SUBMITTED_STATUSES.includes(e.status)))
+    return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
+  }
+
+  // Rankings — split by role
+  const allRanked: RankedStaff[] = useMemo(() =>
     staff
       .filter(s => !s.suspended)
-      .map(s => ({
-        ...s,
-        submissionRate: (() => {
-          const myEntries = entries.filter(e => e.staffId === s.id)
-          const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
-          const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status)))
-          return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
-        })()
-      }))
+      .map(s => ({ ...s, submissionRate: calcSubmissionRate(s) }))
       .filter(s => {
         const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
         const matchDept = !deptFilter || s.department === deptFilter
@@ -54,7 +55,9 @@ export default function LeaderboardPage() {
     [staff, entries, search, deptFilter]
   )
 
-  const myRank = ranked.findIndex(s => s.id === user?.id) + 1
+  const ranked = tab === 'leads' ? allRanked.filter(s => s.role === 'team_lead' || s.role === 'admin') : allRanked.filter(s => s.role === 'staff')
+
+  const myRank = allRanked.findIndex(s => s.id === user?.id) + 1
 
   // Department leaderboard
   const deptRanked: DeptRank[] = useMemo(() => {
@@ -69,7 +72,7 @@ export default function LeaderboardPage() {
       d.totalPts += s.points || 0
       const myEntries = entries.filter(e => e.staffId === s.id)
       const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
-      const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status)))
+      const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && SUBMITTED_STATUSES.includes(e.status)))
       d.totalRate += weeks.length > 0 ? (submitted.length / weeks.length) * 100 : 0
     })
     return Object.values(depts).map(d => ({
@@ -250,14 +253,14 @@ export default function LeaderboardPage() {
       </div>
 
       <div className="tabs">
-        {['individual', 'department', 'badges', 'hof', 'recovery'].map(t => (
+        {['individual', 'leads', 'department', 'badges', 'hof', 'recovery'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '👤 Individual' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
+            {t === 'individual' ? '👤 Staff' : t === 'leads' ? '🎯 Team Leads' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
           </div>
         ))}
       </div>
 
-      {tab === 'individual' && (
+      {(tab === 'individual' || tab === 'leads') && (
         <div className="flex flex-col gap-4">
           <div className="card flex items-center justify-between gap-4 flex-wrap">
             <div className="flex gap-3 flex-1 min-w-[300px]">

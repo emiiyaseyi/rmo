@@ -1,7 +1,7 @@
 import { query, queryOne } from '@/lib/db'
 import {
   rowToStaff, rowToEntry, rowToNotification, rowToApprovalDelegation,
-  rowToLeave, rowToReward, rowToRedeem, rowToAnnouncement,
+  rowToReward, rowToRedeem, rowToAnnouncement,
   rowToPublicHoliday, rowToAuditLog, rowToProject, rowToTemplate,
 } from '../_helpers/mappers'
 
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       notifRows,
       approvalDelRows,
       settingsRow,
-      leavesRows,
+
       rewardsRows,
       redeemsRows,
       announcementsRows,
@@ -51,9 +51,7 @@ export async function GET(req: Request) {
         : query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200', [userId]),
       query('SELECT * FROM approval_delegations WHERE task_owner_id = $1 OR delegate_id = $1', [userId]),
       queryOne('SELECT value FROM settings WHERE key = $1', ['global']),
-      isAdmin
-        ? query('SELECT * FROM leaves ORDER BY created_at DESC')
-        : query('SELECT * FROM leaves WHERE staff_id = $1 ORDER BY created_at DESC', [userId]),
+
       query('SELECT * FROM rewards ORDER BY name'),
       query('SELECT * FROM redeems ORDER BY created_at DESC'),
       query('SELECT * FROM announcements ORDER BY created_at DESC'),
@@ -70,7 +68,7 @@ export async function GET(req: Request) {
       notifications:       notifRows.map(rowToNotification),
       approvalDelegations: approvalDelRows.map(rowToApprovalDelegation),
       settings:            settingsRow?.value ?? null,
-      leaves:              leavesRows.map(rowToLeave),
+
       rewards:             rewardsRows.map(rowToReward),
       redeems:             redeemsRows.map(rowToRedeem),
       announcements:       announcementsRows.map(rowToAnnouncement),

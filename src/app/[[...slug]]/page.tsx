@@ -15,7 +15,6 @@ import AnalyticsPage from '@/components/analytics/AnalyticsPage'
 import StaffPage from '@/components/staff/StaffPage'
 import SettingsPage from '@/components/settings/SettingsPage'
 import ProfilePage from '@/components/profile/ProfilePage'
-import LeaveRequestPage from '@/components/leave/LeaveRequestPage'
 import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
@@ -34,7 +33,6 @@ const PAGE_ROLES: Record<string, string[]> = {
   audit: ['admin'],
   settings: ['admin'],
   profile: ['staff', 'team_lead', 'admin'],
-  leave: ['staff', 'team_lead', 'admin'],
   help: ['staff', 'team_lead', 'admin'],
 }
 
@@ -183,7 +181,6 @@ export default function Home() {
       case 'dashboard': return <Dashboard setPage={navigate} />
       case 'timesheet': return <TimesheetPage />
       case 'approvals': return <ApprovalsPage />
-      case 'leave': return <LeaveRequestPage />
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'projects': return <ProjectsPage />

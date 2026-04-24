@@ -21,7 +21,6 @@ import {
   sendNotificationEmail,
   sendTimesheetApprovalEmail,
   sendTimesheetReminderEmail,
-  sendLeaveApprovalEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
 } from '@/lib/email'
@@ -79,18 +78,6 @@ export async function POST(req: Request) {
         )
         break
 
-      case 'leave-approval':
-        result = await sendLeaveApprovalEmail(
-          to,
-          params.staffName,
-          params.leaveType,
-          params.startDate,
-          params.endDate,
-          params.status,
-          params.message,
-          params.actionUrl
-        )
-        break
 
       case 'password-reset':
         result = await sendPasswordResetEmail(

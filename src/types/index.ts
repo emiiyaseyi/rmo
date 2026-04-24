@@ -128,7 +128,7 @@ export interface AppNotification {
     createdAt: string;
     title?: string;
     linkedId?: string;
-    linkedType?: 'entry' | 'leave' | 'message' | 'redemption' | 'request' | 'streak_recovery' | 'project' | string;
+    linkedType?: 'entry' | 'message' | 'redemption' | 'request' | 'streak_recovery' | 'project' | string;
 }
 
 export interface MessageThread {
@@ -205,14 +205,11 @@ export interface AppSettings {
     };
     pointsConfig: {
         onTimeSubmission: number;
-        mondayBonus: number;
-        earlyBonus: number;
         approvedEntry: number;
         approvedWithNote: number;
         perfectWeek: number;
-        hoursBonus: number; // per hour
+        hoursBonus: number;
         streakBonus: number;
-        rejectionDeduction: number;
     };
     hourCaps: {
         defaultStaffCap: number;
@@ -309,25 +306,6 @@ export interface AuditLog {
     metadata: any;
 }
 
-export interface Leave {
-    id: string;
-    staffId: string;
-    staffName: string;
-    type: string;
-    from: string;
-    to: string;
-    reason?: string;
-    status: 'pending' | 'lead_approved' | 'approved' | 'rejected';
-    createdAt: string;
-    approvedBy?: string;
-    approvedAt?: string;
-    rejectionReason?: string;
-    leadApprovedBy?: string;
-    leadApprovedAt?: string;
-    leadId?: string;
-    rejectedBy?: string;
-    rejectedAt?: string;
-}
 
 export interface PasswordResetRequest {
     id: string;
@@ -480,7 +458,7 @@ export interface AppContextType {
     entries: Entry[];
     announcements: Announcement[];
     notifications: AppNotification[];
-    leaves: Leave[];
+
     hof: HofEntry[];
     bulkStaffImportLogs: BulkStaffImportLog[];
     rewards: Reward[];
@@ -497,7 +475,6 @@ export interface AppContextType {
     saveEntries: (data: Entry[]) => void;
     saveAnnouncements: (data: Announcement[]) => void;
     saveNotifications: (data: AppNotification[]) => void;
-    saveLeaves: (data: Leave[]) => void;
     saveHof: (data: HofEntry[]) => void;
     saveRewards: (data: Reward[]) => void;
     saveRedeems: (data: Redemption[]) => void;

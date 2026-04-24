@@ -13,7 +13,6 @@ export default function SettingsPage() {
     publicHolidays, savePublicHolidays,
     staff,
     entries,
-    leaves,
     nots,
     rewards,
     redeems,
@@ -789,7 +788,6 @@ export default function SettingsPage() {
                     {[
                       { name: 'staff', count: staff?.length || 0, data: staff },
                       { name: 'timesheetEntries', count: entries?.length || 0, data: entries },
-                      { name: 'leaves', count: leaves?.length || 0, data: leaves },
                       { name: 'notifications', count: nots?.length || 0, data: nots },
                       { name: 'auditLogs', count: auditLogs?.length || 0, data: auditLogs },
                       { name: 'rewards', count: rewards?.length || 0, data: rewards },
@@ -815,7 +813,6 @@ export default function SettingsPage() {
                         {[
                           staff?.length || 0,
                           entries?.length || 0,
-                          leaves?.length || 0,
                           nots?.length || 0,
                           auditLogs?.length || 0,
                           rewards?.length || 0,
@@ -829,7 +826,7 @@ export default function SettingsPage() {
                       </td>
                       <td className="p-3 text-right font-mono">
                         {(
-                          [staff, entries, leaves, nots, auditLogs, rewards, redeems, announcements, publicHolidays, weekLocks, projects, settings]
+                          [staff, entries, nots, auditLogs, rewards, redeems, announcements, publicHolidays, weekLocks, projects, settings]
                             .filter(Boolean)
                             .reduce((sum, data) => sum + JSON.stringify(data).length, 0) / 1024
                         ).toFixed(2)} KB

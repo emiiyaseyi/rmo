@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import toast from 'react-hot-toast'
 import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
 import { format, subWeeks } from 'date-fns'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, Leave, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -59,7 +59,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [redeems, setRedeems] = useState<Redemption[]>([])
   const [rewards, setRewards] = useState<Reward[]>([])
   const [hof, setHof] = useState<HofEntry[]>([])
-  const [leaves, setLeaves] = useState<Leave[]>([])
   const [delegations, setDelegations] = useState<any[]>([])
   const [approvalDelegations, setApprovalDelegations] = useState<ApprovalDelegation[]>([])
   const [lockedWeeks, setLockedWeeks] = useState<any[]>([])
@@ -141,7 +140,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })
         }
         setApprovalDelegations(data.approvalDelegations ?? [])
-        setLeaves(data.leaves ?? [])
         setRewards(data.rewards ?? [])
         setRedeems(data.redeems ?? [])
         setAnnouncements(data.announcements ?? [])
@@ -315,10 +313,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiPost('hof', data)
   }
 
-  function saveLeaves(data: Leave[]) {
-    setLeaves(data)
-    data.forEach(l => apiUpsert('leaves', l))
-  }
 
   function saveSettings(data: AppSettings) {
     setSettings(data)
@@ -542,7 +536,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (sendEmail && targetEmail && targetEmail.endsWith('@datasciencenigeria.ai') && EMAIL_TYPES.includes(type)) {
       let link = ''
       if (linkedType === 'entry') link = `/approvals`
-      else if (linkedType === 'leave') link = `/leave`
       else if (linkedId) link = `/dashboard`
       sendEmailNotification(targetEmail, title || 'New Notification', message, link)
     }
@@ -744,7 +737,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } else if (updates.status === 'rejected') {
       notify(entry.staffId, `Your timesheet entry for ${entry.project} was rejected.`, 'entry_rejected', 'Entry Rejected', entry.id, 'entry')
-      awardPoints(entry.staffId, pConfig?.rejectionDeduction || 0, `Entry rejected: ${entry.project}`, entry.weekKey)
     } else if (updates.status === 'pending_clarification' || updates.status === 'clarification_needed') {
       notify(entry.staffId, `Clarification requested for your entry on ${entry.project}.`, 'clarification_requested', 'Clarification Requested', entry.id, 'entry')
     }
@@ -774,21 +766,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (windowStatus.deadline) deadline = windowStatus.deadline
 
     const pConfig = settings?.pointsConfig || DEFAULT_POINTS
-    const dayOfWeek = now.getDay()
-    const hour = now.getHours()
-    let totalAward = pConfig.onTimeSubmission || 0
-    let bonusDesc = 'On-time submission'
+    let totalAward = 0
+    let bonusDesc = ''
     let latePenalty = 0
     let isLate = false
 
     if (windowStatus.isPastDeadline && windowStatus.penalty < 0) {
+      // Submitted after deadline — late penalty only, no on-time points
       isLate = true
       latePenalty = windowStatus.penalty
-      totalAward += latePenalty
+      totalAward = latePenalty
       bonusDesc = `Late submission (${Math.abs(latePenalty)} pts penalty)`
+    } else if (windowStatus.isOpen) {
+      // Submitted within the configured window — on-time points
+      totalAward = pConfig.onTimeSubmission || 0
+      bonusDesc = 'On-time submission'
     } else {
-      if (dayOfWeek === 1) { totalAward += (pConfig.mondayBonus || 0); bonusDesc += ' + Monday Bonus' }
-      else if (dayOfWeek === 2 && hour < 10) { totalAward += (pConfig.earlyBonus || 0); bonusDesc += ' + Early Bonus' }
+      // Window not yet open (e.g. submitted before window starts) — no points, no penalty
+      totalAward = 0
+      bonusDesc = 'Submission outside window'
     }
 
     const submission: WeekSubmission = {
@@ -873,11 +869,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = {
     user, staff, entries, notifications: myNotifications,
     unreadCount, settings, darkMode, online, features, redeems,
-    rewards, hof, projects, leaves, delegations, approvalDelegations, lockedWeeks, budgets, templates,
+    rewards, hof, projects, delegations, approvalDelegations, lockedWeeks, budgets, templates,
     projectBudgets, bulkImportLogs, bulkStaffImportLogs, streakRecoveries, pointsHistory,
     login, logout, updateUser, toggleDark,
     saveStaff, saveEntries, saveNotifications: saveNots,
-    saveRedeems, saveRewards, saveHof, saveLeaves,
+    saveRedeems, saveRewards, saveHof,
     saveDelegations, saveApprovalDelegations, saveLockedWeeks, saveFeatures, saveSettings, saveProjects,
     saveBudgets, saveTemplates, saveProjectBudgets, saveBulkImportLogs, saveBulkStaffImportLogs,
     saveStreakRecoveries, savePointsHistory,
@@ -901,14 +897,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 const DEFAULT_FEATURES = {
   leaderboard: true, gamification: true,
-  analytics: true, leave_requests: true, bulk_import: true,
+  analytics: true, bulk_import: true,
   dark_mode: true, pdf_export: true, org_chart: true, delegation: true,
 }
 
 const DEFAULT_POINTS_CONFIG = {
-  onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5,
+  onTimeSubmission: 10,
   approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20,
-  hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5
+  hoursBonus: 1, streakBonus: 15
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

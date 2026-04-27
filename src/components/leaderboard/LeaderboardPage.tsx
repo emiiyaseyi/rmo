@@ -22,7 +22,7 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify } = useApp()
+  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify, settings } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
@@ -41,7 +41,7 @@ export default function LeaderboardPage() {
     return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
   }
 
-  // Rankings — split by role
+  // Submission leaderboard — all staff, ranked by points
   const allRanked: RankedStaff[] = useMemo(() =>
     staff
       .filter(s => !s.suspended)
@@ -55,9 +55,72 @@ export default function LeaderboardPage() {
     [staff, entries, search, deptFilter]
   )
 
-  const ranked = tab === 'leads' ? allRanked.filter(s => s.role === 'team_lead' || s.role === 'admin') : allRanked.filter(s => s.role === 'staff')
+  const ranked = allRanked
 
   const myRank = allRanked.findIndex(s => s.id === user?.id) + 1
+
+  // Reviewal leaderboard — team leads & admins, ranked by review speed score
+  interface ReviewerStat {
+    id: string; name: string; role: string; department?: string;
+    totalReviewed: number; avgScore: number;
+  }
+
+  function reviewSpeedScore(submittedAt: string | undefined, reviewedAt: string | undefined, weekKey: string): number {
+    if (!submittedAt || !reviewedAt) return 0
+    const subWin = settings?.submissionWindow
+    // Derive the submission deadline for this entry's week from weekKey (e.g. "2026-W17")
+    let deadline: Date | null = null
+    if (subWin?.enabled && subWin.schedule) {
+      const [year, weekPart] = weekKey.split('-W')
+      const weekNum = parseInt(weekPart, 10)
+      if (!isNaN(weekNum)) {
+        // ISO week: Jan 4 is always in W1
+        const jan4 = new Date(parseInt(year), 0, 4)
+        const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay()
+        const monday = new Date(jan4)
+        monday.setDate(jan4.getDate() - (jan4Day - 1) + (weekNum - 1) * 7)
+        const DAY: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
+        const endDayOff = (DAY[subWin.schedule.endDay.toLowerCase()] || 2) - 1
+        deadline = new Date(monday)
+        deadline.setDate(deadline.getDate() + endDayOff)
+        const [h, m] = subWin.schedule.endTime.split(':').map(Number)
+        deadline.setHours(h, m, 0, 0)
+      }
+    }
+    const reviewedMs = new Date(reviewedAt).getTime()
+    if (deadline && reviewedMs <= deadline.getTime()) return 100
+    // Hours after deadline (or after submission if no deadline config)
+    const baseMs = deadline ? deadline.getTime() : new Date(submittedAt).getTime()
+    const hoursAfter = (reviewedMs - baseMs) / (1000 * 60 * 60)
+    if (hoursAfter <= 2) return 80
+    if (hoursAfter <= 24) return 60
+    return 0
+  }
+
+  const reviewalRanked: ReviewerStat[] = useMemo(() => {
+    const reviewers = staff.filter(s => !s.suspended && (s.role === 'team_lead' || s.role === 'admin'))
+    return reviewers.map(s => {
+      const reviewed = entries.filter(e =>
+        !e.deleted && (
+          (e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved' ||
+          (e.rejectedBy === s.id) && e.status === 'rejected'
+        )
+      )
+      const scores = reviewed
+        .filter(e => e.submittedAt && e.updatedAt && e.weekKey)
+        .map(e => reviewSpeedScore(e.submittedAt, e.updatedAt, e.weekKey))
+      const avgScore = scores.length > 0
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0
+      return { id: s.id, name: s.name, role: s.role, department: s.department, totalReviewed: reviewed.length, avgScore }
+    })
+    .filter(s => {
+      const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
+      const matchDept = !deptFilter || s.department === deptFilter
+      return matchSearch && matchDept
+    })
+    .sort((a, b) => b.avgScore - a.avgScore || b.totalReviewed - a.totalReviewed)
+  }, [staff, entries, search, deptFilter, settings])
 
   // Department leaderboard
   const deptRanked: DeptRank[] = useMemo(() => {
@@ -253,15 +316,15 @@ export default function LeaderboardPage() {
       </div>
 
       <div className="tabs">
-        {['individual', 'leads', 'department', 'badges', 'hof', 'recovery'].map(t => (
+        {['individual', 'reviewal', 'department', 'badges', 'hof', 'recovery'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '👤 Staff' : t === 'leads' ? '🎯 Team Leads' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
+            {t === 'individual' ? '📋 Submission' : t === 'reviewal' ? '✅ Reviewal' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
           </div>
         ))}
       </div>
 
-      {(tab === 'individual' || tab === 'leads') && (
-        <div className="flex flex-col gap-4">
+      {tab === 'individual' && (
+        <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
           <div className="card flex items-center justify-between gap-4 flex-wrap">
             <div className="flex gap-3 flex-1 min-w-[300px]">
               <input 
@@ -361,6 +424,100 @@ export default function LeaderboardPage() {
               </table>
             </div>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+            {[
+              { score: 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +4 after 3 consecutive early weeks`, color: 'var(--success)' },
+              { score: 2, label: 'On-time (within submission window)', color: 'var(--accent)' },
+              { score: 1, label: 'Late addition (after window closes)', color: 'var(--warning)' },
+              { score: -1, label: 'Outside window', color: 'var(--danger)' },
+            ].map(({ score, label, color }, i, arr) => (
+              <React.Fragment key={score}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontWeight: 800, color, fontFamily: 'var(--mono)' }}>{score > 0 ? `+${score}` : score}</span>
+                  <span>{label}</span>
+                </span>
+                {i < arr.length - 1 && <span style={{ opacity: 0.4 }}>·</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'reviewal' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Reviewer</th>
+                  <th>Reviewed</th>
+                  <th title="Avg score based on review speed: 100 within submission window, 80 within 2h after, 60 within 24h, 0 after 24h">Avg Score</th>
+                  <th>Performance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviewalRanked.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No review data yet</td></tr>
+                )}
+                {reviewalRanked.map((s, i) => {
+                  const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--text-3)'
+                  const scoreLabel = s.avgScore === 100 ? 'Excellent' : s.avgScore >= 80 ? 'Great' : s.avgScore >= 60 ? 'Good' : s.avgScore >= 40 ? 'Fair' : s.avgScore > 0 ? 'Slow' : '—'
+                  return (
+                    <tr key={s.id} className={s.id === user?.id ? 'bg-accent-subtle' : ''}>
+                      <td className="font-bold text-lg">{i < 3 ? MEDAL[i] : `#${i + 1}`}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>{s.name?.[0]}</div>
+                          <div>
+                            <span className="font-bold">{s.name}{s.id === user?.id ? ' (You)' : ''}</span>
+                            <div className="text-xs text-3">{s.department} · {s.role.replace('_', ' ')}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>{s.totalReviewed}</td>
+                      <td>
+                        {s.totalReviewed === 0
+                          ? <span className="text-4">—</span>
+                          : <span style={{ fontWeight: 800, color: scoreColor, fontFamily: 'var(--mono)', fontSize: 16 }}>{s.avgScore}</span>
+                        }
+                      </td>
+                      <td>
+                        {s.totalReviewed === 0 ? <span className="text-4">—</span> : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="progress" style={{ width: 80 }}>
+                              <div className="progress-bar" style={{ width: `${s.avgScore}%`, background: scoreColor }} />
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: scoreColor }}>{scoreLabel}</span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+          {[
+            { score: 100, label: 'Within submission window', color: 'var(--success)' },
+            { score: 80, label: '≤ 2h after window closes', color: 'var(--accent)' },
+            { score: 60, label: '≤ 24h after window closes', color: 'var(--warning)' },
+            { score: 0, label: 'After 24h', color: 'var(--danger)' },
+          ].map(({ score, label, color }, i, arr) => (
+            <React.Fragment key={score}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontWeight: 800, color, fontFamily: 'var(--mono)' }}>{score}</span>
+                <span>{label}</span>
+              </span>
+              {i < arr.length - 1 && <span style={{ opacity: 0.4 }}>→</span>}
+            </React.Fragment>
+          ))}
+        </div>
         </div>
       )}
 

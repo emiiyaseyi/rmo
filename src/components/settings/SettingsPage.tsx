@@ -23,7 +23,13 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<string>('points')
 
   // Local form state
-  const [pointsForm, setPointsForm] = useState(settings?.pointsConfig || { onTimeSubmission: 10, mondayBonus: 5, earlyBonus: 5, approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20, hoursBonus: 1, streakBonus: 15, rejectionDeduction: -5 })
+  const [pointsForm, setPointsForm] = useState({
+    earlySubmission: settings?.pointsConfig?.earlySubmission ?? 3,
+    onTimeSubmission: settings?.pointsConfig?.onTimeSubmission ?? 2,
+    lateAddition: settings?.pointsConfig?.lateAddition ?? 1,
+    outsideWindowPenalty: settings?.pointsConfig?.outsideWindowPenalty ?? -1,
+    earlySubmissionHours: settings?.pointsConfig?.earlySubmissionHours ?? 4,
+  })
   const [capsForm, setCapsForm] = useState(settings?.hourCaps || { defaultStaffCap: 40, internCap: 32, cdsVisibility: true, customCaps: [] })
   const [securityForm, setSecurityForm] = useState(settings?.security || { defaultPassword: 'dsn-staff', requireTwoFactor: false })
   const [submissionWindowForm, setSubmissionWindowForm] = useState(settings?.submissionWindow || {
@@ -123,19 +129,34 @@ export default function SettingsPage() {
         {tab === 'points' && (
           <div className="card flex flex-col gap-6">
             <h3 className="font-bold">🎯 Points & Awards Configuration</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Object.entries(pointsForm).map(([key, val]) => (
-                <div key={key} className="form-group">
-                  <label className="form-label capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={val}
-                    onChange={e => setPointsForm({ ...pointsForm, [key]: Number(e.target.value) })}
-                  />
-                </div>
-              ))}
+
+            <div className="flex flex-col gap-2">
+              <div className="text-sm font-semibold text-2">Submission Points</div>
+              <p className="text-xs text-4" style={{ marginBottom: 8 }}>
+                Points awarded when staff submit their weekly timesheet.
+                <br />
+                <span style={{ fontStyle: 'italic' }}>
+                  Rubric: Early ({pointsForm.earlySubmissionHours}h from window open) → On-time → Late addition → Outside window
+                </span>
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {([
+                  { key: 'earlySubmission', label: 'Early Submission', hint: `Within first ${pointsForm.earlySubmissionHours}h of window opening` },
+                  { key: 'earlySubmissionHours', label: 'Early Window (hours)', hint: 'Hours from window open that count as early' },
+                  { key: 'onTimeSubmission', label: 'On-Time Submission', hint: 'Within submission window (after early cutoff)' },
+                  { key: 'lateAddition', label: 'Late Addition', hint: 'Submitted after window closes' },
+                  { key: 'outsideWindowPenalty', label: 'Outside Window Penalty', hint: 'Submitted outside any window period' },
+                ] as { key: keyof typeof pointsForm, label: string, hint: string }[]).map(({ key, label, hint }) => (
+                  <div key={key} className="form-group">
+                    <label className="form-label">{label}</label>
+                    <input type="number" className="form-input" value={pointsForm[key]}
+                      onChange={e => setPointsForm({ ...pointsForm, [key]: Number(e.target.value) })} />
+                    <div className="text-xs text-4 mt-1">{hint}</div>
+                  </div>
+                ))}
+              </div>
             </div>
+
             <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ pointsConfig: pointsForm })}>
               Save Points Configuration
             </button>

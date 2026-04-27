@@ -726,15 +726,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (updates.status === 'approved') {
       const isCorrected = updates.correctionNote || updates.corrected
       notify(entry.staffId, `Your timesheet entry for ${entry.project} was approved${isCorrected ? ' with corrections' : ''}.`, 'entry_approved', 'Entry Approved', entry.id, 'entry')
-      const p = (pConfig?.approvedEntry || 0) + (entry.hours || 0) * (pConfig?.hoursBonus || 0)
-      awardPoints(entry.staffId, p, `Entry approved: ${entry.project}`, entry.weekKey)
-      const weekEntries = updatedEntries.filter(e => e.staffId === entry.staffId && e.weekKey === entry.weekKey)
-      const allApproved = weekEntries.every(e => e.status === 'approved')
-      const noRejections = weekEntries.every(e => !e.approvalHistory?.some((h: any) => h.action === 'rejected'))
-      if (allApproved && noRejections) {
-        awardPoints(entry.staffId, pConfig?.perfectWeek || 0, 'Perfect Week Bonus', entry.weekKey)
-        grantBadge(entry.staffId, 'perfect_week')
-      }
     } else if (updates.status === 'rejected') {
       notify(entry.staffId, `Your timesheet entry for ${entry.project} was rejected.`, 'entry_rejected', 'Entry Rejected', entry.id, 'entry')
     } else if (updates.status === 'pending_clarification' || updates.status === 'clarification_needed') {
@@ -765,32 +756,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (windowStatus.deadline) deadline = windowStatus.deadline
 
-    const pConfig = settings?.pointsConfig || DEFAULT_POINTS
+    const pConfig = settings?.pointsConfig || DEFAULT_POINTS_CONFIG
     let totalAward = 0
     let bonusDesc = ''
-    let latePenalty = 0
     let isLate = false
 
-    if (windowStatus.isPastDeadline && windowStatus.penalty < 0) {
-      // Submitted after deadline — late penalty only, no on-time points
+    // Compute window open time for early-submission check
+    let windowOpenTime: Date | null = null
+    const subWin = settings?.submissionWindow
+    if (subWin?.enabled && subWin.schedule) {
+      const DAY_NUM: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
+      const currentDay = now.getDay()
+      const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay
+      const monday = new Date(now)
+      monday.setDate(monday.getDate() + mondayOffset)
+      monday.setHours(0, 0, 0, 0)
+      const startDayOff = (DAY_NUM[subWin.schedule.startDay.toLowerCase()] || 1) - 1
+      windowOpenTime = new Date(monday)
+      windowOpenTime.setDate(windowOpenTime.getDate() + startDayOff)
+      const [sh, sm] = subWin.schedule.startTime.split(':').map(Number)
+      windowOpenTime.setHours(sh, sm, 0, 0)
+    }
+
+    if (windowStatus.isOpen) {
+      const earlyHours = pConfig.earlySubmissionHours ?? 4
+      const isEarly = windowOpenTime && now.getTime() <= windowOpenTime.getTime() + earlyHours * 3600000
+      if (isEarly) {
+        totalAward = pConfig.earlySubmission ?? 3
+        bonusDesc = 'Early submission bonus'
+      } else {
+        totalAward = pConfig.onTimeSubmission ?? 2
+        bonusDesc = 'On-time submission'
+      }
+    } else if (windowStatus.isPastDeadline) {
       isLate = true
-      latePenalty = windowStatus.penalty
-      totalAward = latePenalty
-      bonusDesc = `Late submission (${Math.abs(latePenalty)} pts penalty)`
-    } else if (windowStatus.isOpen) {
-      // Submitted within the configured window — on-time points
-      totalAward = pConfig.onTimeSubmission || 0
-      bonusDesc = 'On-time submission'
+      totalAward = pConfig.lateAddition ?? 1
+      bonusDesc = 'Late submission'
     } else {
-      // Window not yet open (e.g. submitted before window starts) — no points, no penalty
-      totalAward = 0
-      bonusDesc = 'Submission outside window'
+      isLate = true
+      totalAward = pConfig.outsideWindowPenalty ?? -1
+      bonusDesc = 'Outside submission window'
     }
 
     const submission: WeekSubmission = {
       id: submissionId, staffId, weekKey, status: 'submitted',
       submittedAt: now.toISOString(), totalHours,
-      latePenalty: isLate ? latePenalty : undefined, isLate
+      isLate
     }
 
     const secondLevelThreshold = (settings?.approvalWorkflow?.secondLevelThreshold as number) || 60
@@ -813,8 +824,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .every(e => e.isNewTask)
     if (hasOnlyNewTasks && isLate) {
       isLate = false
-      latePenalty = 0
-      totalAward = 0
+      totalAward = pConfig.lateAddition ?? 1
       bonusDesc = 'New task submission'
     }
 
@@ -852,6 +862,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
       })
 
+      // Early streak bonus: 3 consecutive early submissions unlock +1 on subsequent early submissions
+      if (bonusDesc === 'Early submission bonus') {
+        const earlyWeeks = pointsHistory
+          .filter(h => h.action === 'Early submission bonus')
+          .map(h => h.weekId)
+          .filter((v, i, a) => a.indexOf(v) === i) // unique weeks
+          .sort()
+          .slice(-3)
+        if (earlyWeeks.length >= 3) {
+          totalAward += 1
+          bonusDesc = 'Early submission bonus (streak +1)'
+        }
+      }
       if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
 
       const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))
@@ -902,9 +925,11 @@ const DEFAULT_FEATURES = {
 }
 
 const DEFAULT_POINTS_CONFIG = {
-  onTimeSubmission: 10,
-  approvedEntry: 10, approvedWithNote: 5, perfectWeek: 20,
-  hoursBonus: 1, streakBonus: 15
+  earlySubmission: 3,
+  onTimeSubmission: 2,
+  lateAddition: 1,
+  outsideWindowPenalty: -1,
+  earlySubmissionHours: 4,
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

@@ -3,7 +3,6 @@ import {
   sendNotificationEmail,
   sendTimesheetApprovalEmail,
   sendTimesheetReminderEmail,
-  sendLeaveApprovalEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
 } from '@/lib/email'
@@ -71,18 +70,6 @@ export async function POST(req: Request) {
         )
         break
 
-      case 'leave-approval':
-        result = await sendLeaveApprovalEmail(
-          testEmail,
-          'John Doe',
-          'Annual Leave',
-          'April 1, 2026',
-          'April 5, 2026',
-          'approved',
-          'Enjoy your well-deserved vacation!',
-          'https://rmo.dsnsandbox.com/leave'
-        )
-        break
 
       case 'password-reset':
         result = await sendPasswordResetEmail(

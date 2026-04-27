@@ -162,7 +162,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, unreadCount, settings, leaves, approvalDelegations } = useApp()
+  const { user, entries, staff, pendingApprovals, unreadCount, settings, approvalDelegations } = useApp()
   const [showNotSubmittedModal, setShowNotSubmittedModal] = useState(false)
   const thisWeek = getWeekKey()
 
@@ -248,9 +248,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
       {(() => {
         const clarificationEntries = entries.filter(e => e.staffId === user?.id && e.status === 'pending_clarification' && !e.deleted)
         const rejectedEntries = entries.filter(e => e.staffId === user?.id && e.status === 'rejected' && !e.deleted)
-        const pendingLeaves = leaves.filter(l => l.staffId === user?.id && l.status === 'pending')
-        
-        if (rejectedEntries.length === 0 && pendingLeaves.length === 0 && clarificationEntries.length === 0) return null
+        if (rejectedEntries.length === 0 && clarificationEntries.length === 0) return null
         
         return (
           <div style={{ 
@@ -282,15 +280,6 @@ export default function Dashboard({ setPage }: DashboardProps) {
                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Request: {e.clarificationNote || 'No details provided'}</div>
                   </div>
                   <button className="btn btn-primary btn-sm" onClick={() => setPage('timesheet')}>Explain</button>
-                </div>
-              ))}
-              {pendingLeaves.map(l => (
-                <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Leave Pending: {l.type}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDate(l.from)} → {fmtDate(l.to)}</div>
-                  </div>
-                  <span className="badge badge-yellow">Pending</span>
                 </div>
               ))}
             </div>
@@ -523,10 +512,6 @@ export default function Dashboard({ setPage }: DashboardProps) {
             <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('timesheet')}>
               <span style={{ fontSize: 24 }}>📋</span>
               <span>Log Hours</span>
-            </button>
-            <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('profile')}>
-              <span style={{ fontSize: 24 }}>🏖️</span>
-              <span>Request Leave</span>
             </button>
             <button className="btn btn-secondary" style={{ height: 'auto', padding: '16px', flexDirection: 'column', gap: 8 }} onClick={() => setPage('messages')}>
               <span style={{ fontSize: 24 }}>💬</span>

@@ -21,7 +21,6 @@ function getNavItems(role: string): NavItem[] {
     { id: 'work_header', label: 'MY WORK', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'admin', 'team_lead'] },
-    { id: 'leave', label: 'Request Leave', icon: '🏝️', roles: ['staff', 'team_lead', 'admin'] },
     { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead', 'staff'], badge: 'approvals' },
 
     { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
@@ -91,7 +90,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       { id: 'settings', label: 'Security Settings', keywords: ['security', 'password', 'authentication', '2fa', 'two factor'], type: 'page' as const },
       { id: 'settings', label: 'Activity Log', keywords: ['activity', 'log', 'audit', 'history', 'events'], type: 'page' as const },
       // Staff management features
-      { id: 'staff', label: 'Leave Approvals', keywords: ['leave', 'approvals', 'approve leave', 'vacation', 'time off'], type: 'page' as const },
+      { id: 'staff', label: 'Staff Management', keywords: ['staff', 'approvals'], type: 'page' as const },
       { id: 'staff', label: 'Staff Accounts', keywords: ['staff', 'accounts', 'users', 'employees', 'team members'], type: 'page' as const },
       { id: 'staff', label: 'Password Resets', keywords: ['password', 'reset', 'unlock', 'account recovery'], type: 'page' as const },
       // Profile features
@@ -497,7 +496,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                       const handleClick = () => {
                         if (!n.read) markRead(n.id)
                         let targetPage = n.linkedType === 'entry' ? 'approvals' :
-                                         n.linkedType === 'leave' ? 'profile' :
                                          n.linkedId ? 'dashboard' : null
                         if (targetPage) setPage(targetPage as any)
                         setNotifOpen(false)

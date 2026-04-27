@@ -2,7 +2,7 @@
 import React, { useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, avatarColor, initials, BADGES, getWeekKey, weekRange, local } from '../../lib/utils'
-import { Staff, Entry, Leave, Template, AppSettings } from '../../types'
+import { Staff, Entry, Template, AppSettings } from '../../types'
 import toast from 'react-hot-toast'
 
 interface ProfilePageProps {
@@ -11,11 +11,10 @@ interface ProfilePageProps {
 }
 
 export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
-  const { user, updateUser, staff, entries, leaves, saveLeaves, settings, notify, templates, saveTemplates, setPrefillTemplate, savePasswordResetRequests, passwordResetRequests } = useApp()
+  const { user, updateUser, staff, entries, settings, notify, templates, saveTemplates, setPrefillTemplate, savePasswordResetRequests, passwordResetRequests } = useApp()
   const [tab, setTab] = useState<string>(initialTab || 'overview')
   const [passwordForm, setPasswordForm] = useState({ current: '', newPassword: '', confirm: '' })
   const [passwordError, setPasswordError] = useState<string>('')
-  const [leaveForm, setLeaveForm] = useState({ type: 'Annual', from: '', to: '', reason: '' })
   const [fontSize, setFontSize] = useState<number>(local.get<number>('font_size', 14))
   const [weeklyGoal, setWeeklyGoal] = useState<number>(user?.weeklyHourGoal || user?.weekly_goal || 40)
   const weekCap = settings?.weekly_cap || 45
@@ -29,8 +28,6 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
   const submittedWeeks = allWeeks.filter(w => myEntries.some(e => e.weekKey === w && ['submitted', 'approved', 'resubmitted'].includes(e.status)))
   const submitRate = allWeeks.length > 0 ? Math.round((submittedWeeks.length / allWeeks.length) * 100) : 0
   const rank = [...staff].sort((a, b) => (b.points || 0) - (a.points || 0)).findIndex(s => s.id === user?.id) + 1
-  const myLeaves = leaves.filter(l => l.staffId === user?.id)
-
   function validateNewPassword(pass: string) {
     if (pass.length < 4) return 'Password must be at least 4 characters'
     if (pass === '1234') return 'Password cannot be "1234"'
@@ -67,30 +64,6 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
     updateUser({ password: passwordForm.newPassword, first_login: false })
     setPasswordForm({ current: '', newPassword: '', confirm: '' })
     toast.success('Password updated successfully')
-  }
-
-  function submitLeave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!leaveForm.from || !leaveForm.to) { toast.error('Select dates'); return }
-    if (new Date(leaveForm.from) > new Date(leaveForm.to)) { toast.error('End date must be after start'); return }
-    const req: Leave = {
-      id: genId(),
-      staffId: user?.id || '',
-      staffName: user?.name || '',
-      type: leaveForm.type,
-      from: leaveForm.from,
-      to: leaveForm.to,
-      reason: leaveForm.reason,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    }
-    saveLeaves([...leaves, req])
-    // Notify admins
-    staff.filter(s => s.role === 'admin').forEach(a =>
-      notify(a.id, `${user?.name} requested ${leaveForm.type} leave (${leaveForm.from} to ${leaveForm.to})`, 'info')
-    )
-    setLeaveForm({ type: 'Annual', from: '', to: '', reason: '' })
-    toast.success('Leave request submitted')
   }
 
   function applyFontSize(size: number) {
@@ -181,9 +154,9 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
       </div>
 
       <div className="tabs">
-        {['overview', 'change_password', 'leave', 'badges', 'templates', 'accessibility'].map(t => (
+        {['overview', 'change_password', 'badges', 'templates', 'accessibility'].map(t => (
           <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'overview' ? 'Overview' : t === 'change_password' ? 'Security' : t === 'leave' ? 'Leave' : t === 'badges' ? 'Badges' : t === 'templates' ? '📋 Templates' : 'Accessibility'}
+            {t === 'overview' ? 'Overview' : t === 'change_password' ? 'Security' : t === 'badges' ? 'Badges' : t === 'templates' ? '📋 Templates' : 'Accessibility'}
           </div>
         ))}
       </div>
@@ -271,60 +244,6 @@ export default function ProfilePage({ setPage, initialTab }: ProfilePageProps) {
         </div>
       )}
 
-      {tab === 'leave' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div className="card" style={{ maxWidth: 480 }}>
-            <div style={{ fontWeight: 700, marginBottom: 16 }}>Request Leave</div>
-            <form onSubmit={submitLeave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="form-group">
-                <label className="form-label">Leave Type</label>
-                <select className="form-select" value={leaveForm.type} onChange={e => setLeaveForm(f => ({ ...f, type: e.target.value }))}>
-                  {['Annual', 'Sick', 'Maternity', 'Paternity', 'Study', 'Emergency', 'Unpaid'].map(t => (
-                    <option key={t} value={t}>{t} Leave</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label">From</label>
-                  <input className="form-input" type="date" value={leaveForm.from} onChange={e => setLeaveForm(f => ({ ...f, from: e.target.value }))} required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">To</label>
-                  <input className="form-input" type="date" value={leaveForm.to} onChange={e => setLeaveForm(f => ({ ...f, to: e.target.value }))} required />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Reason (optional)</label>
-                <textarea className="form-textarea" value={leaveForm.reason} onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))} rows={2} />
-              </div>
-              <button className="btn btn-primary" type="submit">Submit Request</button>
-            </form>
-          </div>
-
-          {myLeaves.length > 0 && (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', fontWeight: 700, borderBottom: '1px solid var(--border)' }}>Leave History</div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th><th>Reason</th></tr></thead>
-                  <tbody>
-                    {myLeaves.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()).map(l => (
-                      <tr key={l.id}>
-                        <td><span className="badge badge-blue">{l.type}</span></td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{l.from}</td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{l.to}</td>
-                        <td><span className={`badge badge-${l.status === 'approved' ? 'green' : l.status === 'rejected' ? 'red' : 'yellow'}`}>{l.status}</span></td>
-                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{l.reason || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {tab === 'badges' && (
         <div className="grid-3">

@@ -204,12 +204,11 @@ export interface AppSettings {
         orgChart: boolean;
     };
     pointsConfig: {
+        earlySubmission: number;
         onTimeSubmission: number;
-        approvedEntry: number;
-        approvedWithNote: number;
-        perfectWeek: number;
-        hoursBonus: number;
-        streakBonus: number;
+        lateAddition: number;
+        outsideWindowPenalty: number;
+        earlySubmissionHours: number;
     };
     hourCaps: {
         defaultStaffCap: number;

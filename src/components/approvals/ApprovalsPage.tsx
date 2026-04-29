@@ -436,6 +436,11 @@ export default function ApprovalsPage() {
     if (!user) return
     const entry = entries.find(e => e.id === entryId)
     if (!entry) return
+    // A team lead cannot review their own submissions
+    if (!isAdmin && entry.staffId === user.id) {
+      toast.error('You cannot review your own submissions')
+      return
+    }
 
     // Validate rejection/clarification requires a note
     if ((action === 'reject' || action === 'clarify') && !note.trim()) {

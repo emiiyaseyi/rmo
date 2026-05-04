@@ -435,7 +435,7 @@ export default function StaffPage() {
       } catch {}
     }
     fetchSessions()
-    const interval = setInterval(fetchSessions, 30_000)
+    const interval = setInterval(fetchSessions, 60_000)
     return () => clearInterval(interval)
   }, [])
 

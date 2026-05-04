@@ -579,7 +579,8 @@ export default function TimesheetPage() {
   const targetUser = isAdmin && viewingStaffId ? staff.find(s => s.id === viewingStaffId) : user
   const effectiveUserId = targetUser?.id || ''
 
-  const leads = staff.filter(s => s.role === 'team_lead' || s.role === 'admin')
+  // A team lead cannot select themselves as their own reviewer
+  const leads = staff.filter(s => (s.role === 'team_lead' || s.role === 'admin') && s.id !== user?.id)
   const categories = settings?.categories || ['Client Work', 'Internal', 'Training', 'Admin']
 
   const { cap: weekCap, isHoliday, isCDS } = calculateWeekCap(targetUser, selectedWeek)

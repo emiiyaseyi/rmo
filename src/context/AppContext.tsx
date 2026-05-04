@@ -77,6 +77,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const userRef = useRef<Staff | null>(null)
   const pollNowRef = useRef<(() => void) | null>(null)
+  const lastSyncRef = useRef<string | null>(null)          // ISO timestamp of last successful poll
+  const lastAdminCheckRef = useRef<number>(0)              // epoch ms of last review-window/reminder check
 
   // ---------------------------------------------------------------------------
   // Initialisation (session restore, dark mode, idle listeners)
@@ -120,32 +122,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [idleCountdown])
 
   // ---------------------------------------------------------------------------
-  // 30-second polling — replaces all 15 onSnapshot listeners
+  // 60-second polling with delta sync — only fetches changed records after first load
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!user) return
 
     const fetchAll = async () => {
       try {
-        const res = await fetch(`/api/poll?userId=${user.id}&role=${user.role}`)
+        const syncedAt = new Date().toISOString()
+        const lastSync = lastSyncRef.current
+        const url = lastSync
+          ? `/api/poll?userId=${user.id}&role=${user.role}&lastSync=${encodeURIComponent(lastSync)}`
+          : `/api/poll?userId=${user.id}&role=${user.role}`
+
+        const res = await fetch(url)
         if (!res.ok) return
         const data = await res.json()
+        lastSyncRef.current = syncedAt
 
-        setStaff(data.staff ?? [])
-        setEntries(data.entries ?? [])
-        if (data.notifications) {
-          setNots(prev => {
-            const readIds = new Set(prev.filter(n => n.read).map(n => n.id))
-            return data.notifications.map((n: any) => readIds.has(n.id) ? { ...n, read: true } : n)
-          })
+        const isDelta = data.isDelta === true
+
+        if (isDelta) {
+          // Merge delta: patch changed records into existing state
+          if (data.staff?.length) {
+            setStaff(prev => {
+              const map = new Map(prev.map(s => [s.id, s]))
+              data.staff.forEach((s: any) => map.set(s.id, s))
+              return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+            })
+          }
+          if (data.entries?.length) {
+            setEntries(prev => {
+              const map = new Map(prev.map(e => [e.id, e]))
+              data.entries.forEach((e: any) => map.set(e.id, e))
+              return Array.from(map.values()).sort((a: any, b: any) =>
+                new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+              )
+            })
+          }
+          if (data.notifications?.length) {
+            setNots(prev => {
+              const readIds = new Set(prev.filter(n => n.read).map(n => n.id))
+              const map = new Map(prev.map(n => [n.id, n]))
+              data.notifications.forEach((n: any) => map.set(n.id, readIds.has(n.id) ? { ...n, read: true } : n))
+              return Array.from(map.values()).sort((a: any, b: any) =>
+                new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+              )
+            })
+          }
+        } else {
+          // Full load — replace all state
+          setStaff(data.staff ?? [])
+          setEntries(data.entries ?? [])
+          if (data.notifications) {
+            setNots(prev => {
+              const readIds = new Set(prev.filter(n => n.read).map(n => n.id))
+              return data.notifications.map((n: any) => readIds.has(n.id) ? { ...n, read: true } : n)
+            })
+          }
+          if (data.rewards?.length)       setRewards(data.rewards)
+          if (data.redeems?.length)       setRedeems(data.redeems)
+          if (data.announcements?.length) setAnnouncements(data.announcements)
+          if (data.publicHolidays?.length) setPublicHolidays(data.publicHolidays)
+          if (data.projects?.length)      setProjects(data.projects)
         }
+
+        // Always apply on every poll
         setApprovalDelegations(data.approvalDelegations ?? [])
-        setRewards(data.rewards ?? [])
-        setRedeems(data.redeems ?? [])
-        setAnnouncements(data.announcements ?? [])
-        setPublicHolidays(data.publicHolidays ?? [])
-        setAuditLogs((data.auditLogs ?? []).slice(0, 2000))
-        setProjects(data.projects ?? [])
         if (data.templates) setTemplates(data.templates)
 
         if (data.settings && Object.keys(data.settings).length) {
@@ -155,23 +198,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }))
         }
 
-        // Review window check (admin-only, triggers email + penalty logic server-side)
+        // Admin checks — throttled to once every 10 minutes
         if (user.role === 'admin' && data.settings) {
-          fetch('/api/review-window/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ settings: data.settings }),
-          }).catch(() => {})
-
-          // Submission reminder: email staff 30 min before window closes
-          fetch('/api/submission-reminder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ settings: data.settings }),
-          }).catch(() => {})
+          const now = Date.now()
+          if (now - lastAdminCheckRef.current > 10 * 60 * 1000) {
+            lastAdminCheckRef.current = now
+            fetch('/api/review-window/check', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ settings: data.settings }),
+            }).catch(() => {})
+            fetch('/api/submission-reminder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ settings: data.settings }),
+            }).catch(() => {})
+          }
         }
 
-        // Force-logout check (replaces security onSnapshot listener)
+        // Force-logout check
         if (data.forceLogout) {
           await fetch(`/api/staff/${user.id}`, {
             method: 'PUT',
@@ -187,8 +232,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     pollNowRef.current = fetchAll
+    lastSyncRef.current = null // reset on login/role change so first poll is always full
     fetchAll()
-    const interval = setInterval(fetchAll, 30_000)
+    const interval = setInterval(fetchAll, 60_000)
     return () => { clearInterval(interval); pollNowRef.current = null }
   }, [user?.id, user?.role])
 
@@ -210,7 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }).catch(e => console.error('Heartbeat failed', e))
 
     pulse()
-    const heartbeat = setInterval(pulse, 30_000)
+    const heartbeat = setInterval(pulse, 60_000)
     return () => {
       clearInterval(heartbeat)
       fetch('/api/auth/logout', {

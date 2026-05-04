@@ -3,7 +3,9 @@ import { rowToAnnouncement, announcementToRow, buildUpsert } from '../_helpers/m
 
 export async function GET() {
   const rows = await query('SELECT * FROM announcements ORDER BY created_at DESC')
-  return Response.json(rows.map(rowToAnnouncement))
+  return Response.json(rows.map(rowToAnnouncement), {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
+  })
 }
 
 export async function POST(req: Request) {

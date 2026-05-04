@@ -3,7 +3,9 @@ import { rowToReward, rewardToRow, buildUpsert } from '../_helpers/mappers'
 
 export async function GET() {
   const rows = await query('SELECT * FROM rewards ORDER BY name')
-  return Response.json(rows.map(rowToReward))
+  return Response.json(rows.map(rowToReward), {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
+  })
 }
 
 export async function POST(req: Request) {

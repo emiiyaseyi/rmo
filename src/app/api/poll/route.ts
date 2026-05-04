@@ -35,12 +35,10 @@ export async function GET(req: Request) {
       currentUser,
       templatesRows,
     ] = await Promise.all([
-      // Staff: delta for admins/leads; full list on first load
-      sinceValid
-        ? query(`SELECT * FROM staff WHERE updated_at > $1 ORDER BY name`, [since])
-        : query('SELECT * FROM staff ORDER BY name'),
+      // Staff: no updated_at column — always full load (small table, low cost)
+      query('SELECT * FROM staff ORDER BY name'),
 
-      // Entries: always delta-filtered when possible
+      // Entries: updated_at exists — delta filter when possible
       isAdmin
         ? sinceValid
           ? query('SELECT * FROM timesheet_entries WHERE deleted = false AND updated_at > $1 ORDER BY created_at DESC', [since])
@@ -72,7 +70,7 @@ export async function GET(req: Request) {
               ORDER BY te.created_at DESC
             `, [userId]),
 
-      // Notifications: delta when possible
+      // Notifications: no updated_at — use created_at for delta
       isAdmin
         ? sinceValid
           ? query('SELECT * FROM notifications WHERE created_at > $1 ORDER BY created_at DESC LIMIT 200', [since])

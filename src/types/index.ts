@@ -242,7 +242,7 @@ export interface AppSettings {
             pointsPerPeriod: number; // e.g., -5
             periodHours: number; // e.g., 12
         };
-        timezone: string; // e.g., 'Africa/Windhoek' for WAT
+        timezone: string; // e.g., 'Africa/Lagos' for WAT
     };
     categories: string[];
     utilizationThresholds?: {

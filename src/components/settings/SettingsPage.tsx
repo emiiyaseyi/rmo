@@ -36,7 +36,7 @@ export default function SettingsPage() {
     enabled: true,
     schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
     latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
-    timezone: 'Africa/Windhoek'
+    timezone: 'Africa/Lagos'
   })
   const [reviewWindowForm, setReviewWindowForm] = useState(settings?.reviewWindow || {
     enabled: true,

@@ -498,9 +498,6 @@ export default function ApprovalsPage() {
             approvedBy: user.id,
             approvedByName: user.name
           }
-          // Award points to staff
-          const pts = (settings?.points?.approved as number) || 5
-          awardPoints(entry.staffId, pts, 'Entry approved')
           notify(entry.staffId, `✅ Your entry "${entry.project}" was approved by ${user.name}`, 'approval')
           toast.success('Entry approved')
         }
@@ -536,7 +533,6 @@ export default function ApprovalsPage() {
             correctionNote: note,
             corrected: true
           }
-          awardPoints(entry.staffId, (settings?.points?.approved as number) || 5, 'Entry approved')
           notify(entry.staffId, `✏️ Entry approved with correction by ${user.name} (${correctedHours}h): ${note}`, 'approval')
           toast.success('Entry approved with correction')
         }
@@ -628,7 +624,6 @@ export default function ApprovalsPage() {
       }
 
       notify(e.staffId, `✅ Entry "${e.project}" was approved`, 'approval')
-      awardPoints(e.staffId, (settings?.points?.approved as number) || 5, 'Entry approved')
       return {
         ...e,
         status: 'approved' as const,
@@ -748,9 +743,6 @@ export default function ApprovalsPage() {
               action: 'approved',
               timestamp: now
             }
-
-            // Award points
-            awardPoints(e.staffId, 5, 'Submission Approved', e.weekKey)
 
             // Notify
             notify(e.staffId, `Your timesheet for ${e.project} has been approved`, 'approval', 'Timesheet Approved', e.id, 'entry')

@@ -143,11 +143,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const isDelta = data.isDelta === true
 
         if (isDelta) {
-          // Merge delta: patch changed records into existing state
+          // Merge delta: patch changed records into existing state.
+          // Staff always comes back as a full list (no updated_at column) — merge carefully
+          // so local optimistic updates (points, streak) aren't overwritten by a stale DB read.
           if (data.staff?.length) {
             setStaff(prev => {
               const map = new Map(prev.map(s => [s.id, s]))
-              data.staff.forEach((s: any) => map.set(s.id, s))
+              data.staff.forEach((incoming: any) => {
+                const existing = map.get(incoming.id)
+                if (existing) {
+                  // Keep the higher points/streak value in case local write hasn't persisted yet
+                  map.set(incoming.id, {
+                    ...incoming,
+                    points: Math.max(existing.points ?? 0, incoming.points ?? 0),
+                    currentWeekPoints: Math.max(existing.currentWeekPoints ?? 0, incoming.currentWeekPoints ?? 0),
+                    streak: Math.max(existing.streak ?? 0, incoming.streak ?? 0),
+                  })
+                } else {
+                  map.set(incoming.id, incoming)
+                }
+              })
               return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
             })
           }
@@ -807,26 +822,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let bonusDesc = ''
     let isLate = false
 
-    // Compute window open time for early-submission check
+    // Compute window open time for early-submission check (all arithmetic in WAT = UTC+1)
+    const WAT_MS = 60 * 60 * 1000
     let windowOpenTime: Date | null = null
     const subWin = settings?.submissionWindow
     if (subWin?.enabled && subWin.schedule) {
       const DAY_NUM: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
-      const currentDay = now.getDay()
+      const nowWat = new Date(now.getTime() + WAT_MS)
+      const currentDay = nowWat.getUTCDay()
       const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay
-      const monday = new Date(now)
-      monday.setDate(monday.getDate() + mondayOffset)
-      monday.setHours(0, 0, 0, 0)
+      const monday = new Date(nowWat)
+      monday.setUTCDate(monday.getUTCDate() + mondayOffset)
+      monday.setUTCHours(0, 0, 0, 0)
       const startDayOff = (DAY_NUM[subWin.schedule.startDay.toLowerCase()] || 1) - 1
-      windowOpenTime = new Date(monday)
-      windowOpenTime.setDate(windowOpenTime.getDate() + startDayOff)
+      const openWat = new Date(monday)
+      openWat.setUTCDate(openWat.getUTCDate() + startDayOff)
       const [sh, sm] = subWin.schedule.startTime.split(':').map(Number)
-      windowOpenTime.setHours(sh, sm, 0, 0)
+      openWat.setUTCHours(sh, sm, 0, 0)
+      // Convert WAT back to UTC for comparison with now (UTC)
+      windowOpenTime = new Date(openWat.getTime() - WAT_MS)
     }
 
-    if (windowStatus.isOpen) {
+    const windowEnabled = settings?.submissionWindow?.enabled === true
+
+    if (!windowEnabled) {
+      // No submission window configured — always on-time
+      totalAward = pConfig.onTimeSubmission ?? 2
+      bonusDesc = 'On-time submission'
+    } else if (windowStatus.isOpen) {
       const earlyHours = pConfig.earlySubmissionHours ?? 4
-      const isEarly = windowOpenTime && now.getTime() <= windowOpenTime.getTime() + earlyHours * 3600000
+      const isEarly = windowOpenTime !== null && now.getTime() <= windowOpenTime.getTime() + earlyHours * 3600000
       if (isEarly) {
         totalAward = pConfig.earlySubmission ?? 3
         bonusDesc = 'Early submission bonus'
@@ -835,13 +860,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bonusDesc = 'On-time submission'
       }
     } else if (windowStatus.isPastDeadline) {
+      // Window has closed without submission — late addition
       isLate = true
       totalAward = pConfig.lateAddition ?? 1
       bonusDesc = 'Late submission'
     } else {
-      isLate = true
-      totalAward = pConfig.outsideWindowPenalty ?? -1
-      bonusDesc = 'Outside submission window'
+      // Window hasn't opened yet — treat as on-time (submitted early in the week)
+      totalAward = pConfig.onTimeSubmission ?? 2
+      bonusDesc = 'On-time submission'
     }
 
     const submission: WeekSubmission = {
@@ -1001,7 +1027,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     enabled: true,
     schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
     latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
-    timezone: 'Africa/Windhoek'
+    timezone: 'Africa/Lagos'
   },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],
 }

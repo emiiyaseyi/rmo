@@ -44,12 +44,23 @@ export function logAudit(action: string, detail: string, userId: string, userNam
 
 export const genId = (): string => Date.now().toString(36) + Math.random().toString(36).slice(2)
 
+// WAT = UTC+1. All week/day calculations use WAT so they are consistent
+// between the browser (system tz) and Vercel (UTC).
+const WAT_OFFSET_MS = 1 * 60 * 60 * 1000
+
+function nowWAT(date: Date = new Date()): Date {
+  return new Date(date.getTime() + WAT_OFFSET_MS)
+}
+
 export function getWeekKey(date: Date = new Date()): string {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-  const mon = new Date(d.setDate(diff))
-  return mon.toISOString().slice(0, 10)
+  const wat = nowWAT(date)
+  const day = wat.getUTCDay()
+  const diff = wat.getUTCDate() - day + (day === 0 ? -6 : 1)
+  wat.setUTCDate(diff)
+  const yyyy = wat.getUTCFullYear()
+  const mm = String(wat.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(wat.getUTCDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 
 export function fmtDate(iso: string | Date | undefined): string {
@@ -96,9 +107,8 @@ export function isSubmissionOpen(submissionWindow?: {
   timezone: string;
 }): boolean {
   if (!submissionWindow) {
-    // Fallback to old hardcoded behavior if no settings provided
-    const now = new Date()
-    const wat = new Date(now.getTime() + 60 * 60 * 1000)
+    // Fallback: Mon 08:00–Tue 16:00 WAT (UTC+1)
+    const wat = nowWAT()
     const day = wat.getUTCDay()
     const hour = wat.getUTCHours()
     if (day === 1 && hour >= 8) return true
@@ -156,31 +166,32 @@ export function getSubmissionWindowStatus(
     }
   }
 
-  const now = new Date()
+  const nowUtc = new Date()
+  const now = nowWAT(nowUtc) // work entirely in WAT
   const { schedule, latePenalty } = submissionWindow
 
-  // Calculate this week's deadline
+  // Calculate this week's deadline (all in WAT via UTC methods)
   const startDayNum = DAY_MAP[schedule.startDay.toLowerCase()]
   const endDayNum = DAY_MAP[schedule.endDay.toLowerCase()]
 
-  // Get current week's Monday
-  const currentDay = now.getDay()
+  // Get current week's Monday (WAT)
+  const currentDay = now.getUTCDay()
   const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay
   const monday = new Date(now)
-  monday.setDate(monday.getDate() + mondayOffset)
-  monday.setHours(0, 0, 0, 0)
+  monday.setUTCDate(monday.getUTCDate() + mondayOffset)
+  monday.setUTCHours(0, 0, 0, 0)
 
-  // Calculate window start
+  // Calculate window start (WAT)
   const windowStart = new Date(monday)
-  windowStart.setDate(windowStart.getDate() + (startDayNum - 1))
+  windowStart.setUTCDate(windowStart.getUTCDate() + (startDayNum - 1))
   const [startHour, startMin] = schedule.startTime.split(':').map(Number)
-  windowStart.setHours(startHour, startMin, 0, 0)
+  windowStart.setUTCHours(startHour, startMin, 0, 0)
 
-  // Calculate window end (deadline)
+  // Calculate window end/deadline (WAT)
   const deadline = new Date(monday)
-  deadline.setDate(deadline.getDate() + (endDayNum - 1))
+  deadline.setUTCDate(deadline.getUTCDate() + (endDayNum - 1))
   const [endHour, endMin] = schedule.endTime.split(':').map(Number)
-  deadline.setHours(endHour, endMin, 0, 0)
+  deadline.setUTCHours(endHour, endMin, 0, 0)
 
   const isOpen = now >= windowStart && now <= deadline
   const isPastDeadline = now > deadline
@@ -205,7 +216,7 @@ export function getSubmissionWindowStatus(
   } else if (isPastDeadline) {
     // Next week
     nextOpens = new Date(windowStart)
-    nextOpens.setDate(nextOpens.getDate() + 7)
+    nextOpens.setUTCDate(nextOpens.getUTCDate() + 7)
   }
 
   return {

@@ -934,20 +934,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
       })
 
-      // Early streak bonus: 3 consecutive early submissions unlock +1 on subsequent early submissions
-      if (bonusDesc === 'Early submission bonus') {
-        const earlyWeeks = pointsHistory
-          .filter(h => h.action === 'Early submission bonus')
-          .map(h => h.weekId)
-          .filter((v, i, a) => a.indexOf(v) === i) // unique weeks
-          .sort()
-          .slice(-3)
-        if (earlyWeeks.length >= 3) {
-          totalAward += 1
-          bonusDesc = 'Early submission bonus (streak +1)'
+      // Only award points once per week — skip if the user already has submitted/approved entries
+      // for this week before the current submission (i.e., they're adding more draft entries later).
+      const alreadyEarnedThisWeek = entries.some(e =>
+        e.staffId === staffId && e.weekKey === weekKey &&
+        ['submitted', 'resubmitted', 'approved'].includes(e.status)
+      )
+
+      if (!alreadyEarnedThisWeek) {
+        // Early streak bonus: 3 consecutive early submissions unlock +1 on subsequent early submissions
+        if (bonusDesc === 'Early submission bonus') {
+          const earlyWeeks = pointsHistory
+            .filter(h => h.action === 'Early submission bonus')
+            .map(h => h.weekId)
+            .filter((v, i, a) => a.indexOf(v) === i) // unique weeks
+            .sort()
+            .slice(-3)
+          if (earlyWeeks.length >= 3) {
+            totalAward += 1
+            bonusDesc = 'Early submission bonus (streak +1)'
+          }
         }
+        if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
       }
-      if (totalAward !== 0) awardPoints(staffId, totalAward, bonusDesc, weekKey)
 
       const lastWeek = getWeekKey(subWeeks(new Date(weekKey), 1))
       const hasLastWeek = entries.some(e => e.staffId === staffId && e.weekKey === lastWeek && ['submitted', 'approved'].includes(e.status))

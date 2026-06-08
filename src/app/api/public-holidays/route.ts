@@ -4,7 +4,7 @@ import { rowToPublicHoliday, publicHolidayToRow, buildUpsert } from '../_helpers
 export async function GET() {
   const rows = await query('SELECT * FROM public_holidays ORDER BY date')
   return Response.json(rows.map(rowToPublicHoliday), {
-    headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' }
+    headers: { 'Cache-Control': 'no-store' }
   })
 }
 

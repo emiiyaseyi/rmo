@@ -390,8 +390,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function savePublicHolidays(data: PublicHoliday[]) {
-    setPublicHolidays(data)
+    const removed = publicHolidays.filter(h => !data.find(d => d.id === h.id))
+    removed.forEach(h => fetch(`/api/public-holidays/${h.id}`, { method: 'DELETE' }).catch(() => {}))
     data.forEach(h => apiUpsert('public-holidays', h))
+    setPublicHolidays(data)
   }
 
   function logAudit(action: string, targetId: string, metadata: any = {}) {

@@ -4,9 +4,23 @@ import { rowToPointsHistory, pointsHistoryToRow, buildUpsert } from '../_helpers
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const staffId = searchParams.get('staffId')
-  const rows = staffId
-    ? await query('SELECT * FROM points_history WHERE staff_id = $1 ORDER BY timestamp DESC', [staffId])
-    : await query('SELECT * FROM points_history ORDER BY timestamp DESC LIMIT 500')
+  const weekId  = searchParams.get('weekId')   // e.g. "2026-05-05"
+  const month   = searchParams.get('month')    // e.g. "2026-05"
+
+  let rows: any[]
+  if (staffId && weekId) {
+    rows = await query('SELECT * FROM points_history WHERE staff_id = $1 AND week_id = $2 ORDER BY timestamp DESC', [staffId, weekId])
+  } else if (staffId && month) {
+    rows = await query("SELECT * FROM points_history WHERE staff_id = $1 AND week_id LIKE $2 ORDER BY timestamp DESC", [staffId, `${month}%`])
+  } else if (staffId) {
+    rows = await query('SELECT * FROM points_history WHERE staff_id = $1 ORDER BY timestamp DESC', [staffId])
+  } else if (weekId) {
+    rows = await query('SELECT * FROM points_history WHERE week_id = $1 ORDER BY timestamp DESC', [weekId])
+  } else if (month) {
+    rows = await query("SELECT * FROM points_history WHERE week_id LIKE $1 ORDER BY timestamp DESC LIMIT 2000", [`${month}%`])
+  } else {
+    rows = await query('SELECT * FROM points_history ORDER BY timestamp DESC LIMIT 2000')
+  }
   return Response.json(rows.map(rowToPointsHistory))
 }
 

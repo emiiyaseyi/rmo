@@ -181,21 +181,23 @@ export function getSubmissionWindowStatus(
   monday.setUTCDate(monday.getUTCDate() + mondayOffset)
   monday.setUTCHours(0, 0, 0, 0)
 
-  // Calculate window start (WAT)
+  // Calculate window start: set WAT time on WAT-shifted date, then subtract WAT offset → UTC
   const windowStart = new Date(monday)
   windowStart.setUTCDate(windowStart.getUTCDate() + (startDayNum - 1))
   const [startHour, startMin] = schedule.startTime.split(':').map(Number)
   windowStart.setUTCHours(startHour, startMin, 0, 0)
+  const windowStartUtc = new Date(windowStart.getTime() - WAT_OFFSET_MS)
 
-  // Calculate window end/deadline (WAT)
+  // Calculate window end/deadline: same pattern
   const deadline = new Date(monday)
   deadline.setUTCDate(deadline.getUTCDate() + (endDayNum - 1))
   const [endHour, endMin] = schedule.endTime.split(':').map(Number)
   deadline.setUTCHours(endHour, endMin, 0, 0)
+  const deadlineUtc = new Date(deadline.getTime() - WAT_OFFSET_MS)
 
-  const isOpen = now >= windowStart && now <= deadline
-  const isPastDeadline = now > deadline
-  const isClosed = now < windowStart
+  const isOpen = nowUtc >= windowStartUtc && nowUtc <= deadlineUtc
+  const isPastDeadline = nowUtc > deadlineUtc
+  const isClosed = nowUtc < windowStartUtc
 
   // Calculate late penalty
   let hoursLate = 0
@@ -203,7 +205,7 @@ export function getSubmissionWindowStatus(
   let penalty = 0
 
   if (isPastDeadline && latePenalty.enabled) {
-    const msLate = now.getTime() - deadline.getTime()
+    const msLate = nowUtc.getTime() - deadlineUtc.getTime()
     hoursLate = msLate / (1000 * 60 * 60)
     periodsLate = Math.floor(hoursLate / latePenalty.periodHours)
     penalty = periodsLate * latePenalty.pointsPerPeriod
@@ -212,10 +214,10 @@ export function getSubmissionWindowStatus(
   // Calculate next window opening
   let nextOpens: Date | null = null
   if (isClosed) {
-    nextOpens = windowStart
+    nextOpens = windowStartUtc
   } else if (isPastDeadline) {
     // Next week
-    nextOpens = new Date(windowStart)
+    nextOpens = new Date(windowStartUtc)
     nextOpens.setUTCDate(nextOpens.getUTCDate() + 7)
   }
 
@@ -223,7 +225,7 @@ export function getSubmissionWindowStatus(
     isOpen,
     isClosed,
     isPastDeadline,
-    deadline,
+    deadline: deadlineUtc,
     hoursLate,
     periodsLate,
     penalty,

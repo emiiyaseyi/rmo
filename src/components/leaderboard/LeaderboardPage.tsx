@@ -1,8 +1,8 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BADGES, genId, exportCSV, exportPDF, avatarColor } from '../../lib/utils'
-import { Staff, HofEntry, Reward, Redemption } from '../../types'
+import { BADGES, genId, exportCSV, exportPDF, avatarColor, getWeekKey } from '../../lib/utils'
+import { Staff, HofEntry, Reward, Redemption, PointsHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
 
@@ -32,6 +32,54 @@ export default function LeaderboardPage() {
   const [deptFilter, setDeptFilter] = useState('')
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
+  // Period filter
+  type PeriodType = 'alltime' | 'week' | 'month'
+  const [periodType, setPeriodType] = useState<PeriodType>('alltime')
+  const [selectedWeek, setSelectedWeek] = useState<string>('')
+  const [selectedMonth, setSelectedMonth] = useState<string>('')
+  const [periodHistory, setPeriodHistory] = useState<PointsHistoryEntry[]>([])
+  const [periodLoading, setPeriodLoading] = useState(false)
+  const periodFetchKey = useRef('')
+
+  // Derive available weeks and months from entries weekKeys
+  const availableWeeks = useMemo(() => {
+    const weeks = Array.from(new Set(entries.map(e => e.weekKey).filter(Boolean))).sort().reverse()
+    return weeks
+  }, [entries])
+
+  const availableMonths = useMemo(() => {
+    const months = Array.from(new Set(availableWeeks.map(w => w.slice(0, 7)))).sort().reverse()
+    return months
+  }, [availableWeeks])
+
+  // Set sensible defaults when period type changes
+  useEffect(() => {
+    if (periodType === 'week' && !selectedWeek && availableWeeks.length > 0) {
+      setSelectedWeek(availableWeeks[0])
+    }
+    if (periodType === 'month' && !selectedMonth && availableMonths.length > 0) {
+      setSelectedMonth(availableMonths[0])
+    }
+  }, [periodType, availableWeeks, availableMonths])
+
+  // Fetch points history when period filter is active
+  useEffect(() => {
+    if (periodType === 'alltime') { setPeriodHistory([]); return }
+    const param = periodType === 'week' ? `weekId=${selectedWeek}` : `month=${selectedMonth}`
+    if (!param || param.includes('=')) {
+      const val = periodType === 'week' ? selectedWeek : selectedMonth
+      if (!val) return
+    }
+    const key = `${periodType}:${periodType === 'week' ? selectedWeek : selectedMonth}`
+    if (periodFetchKey.current === key) return
+    periodFetchKey.current = key
+    setPeriodLoading(true)
+    fetch(`/api/points-history?${param}`)
+      .then(r => r.json())
+      .then(data => { setPeriodHistory(Array.isArray(data) ? data : []); setPeriodLoading(false) })
+      .catch(() => { setPeriodHistory([]); setPeriodLoading(false) })
+  }, [periodType, selectedWeek, selectedMonth])
+
   const SUBMITTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_clarification', 'pending_2nd_approval']
 
   function calcSubmissionRate(s: Staff) {
@@ -41,18 +89,26 @@ export default function LeaderboardPage() {
     return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
   }
 
-  // Submission leaderboard — all staff, ranked by points
+  // Points for a staff member in the selected period
+  function getPeriodPoints(staffId: string): number {
+    if (periodType === 'alltime') return staff.find(s => s.id === staffId)?.points ?? 0
+    return periodHistory
+      .filter(h => h.staffId === staffId)
+      .reduce((sum, h) => sum + (h.points ?? 0), 0)
+  }
+
+  // Submission leaderboard — all staff, ranked by points (period-aware)
   const allRanked: RankedStaff[] = useMemo(() =>
     staff
       .filter(s => !s.suspended)
-      .map(s => ({ ...s, submissionRate: calcSubmissionRate(s) }))
+      .map(s => ({ ...s, submissionRate: calcSubmissionRate(s), points: getPeriodPoints(s.id) }))
       .filter(s => {
         const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
         const matchDept = !deptFilter || s.department === deptFilter
         return matchSearch && matchDept
       })
       .sort((a, b) => (b.points || 0) - (a.points || 0)),
-    [staff, entries, search, deptFilter]
+    [staff, entries, search, deptFilter, periodType, periodHistory]
   )
 
   const ranked = allRanked
@@ -325,22 +381,67 @@ export default function LeaderboardPage() {
 
       {tab === 'individual' && (
         <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
-          <div className="card flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex gap-3 flex-1 min-w-[300px]">
-              <input 
-                className="form-input flex-1" 
-                placeholder="Search staff..." 
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
-              />
-              <select className="form-select w-48" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
-                <option value="">All Departments</option>
-                {departments.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+          <div className="card flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex gap-3 flex-1 min-w-[300px]">
+                <input
+                  className="form-input flex-1"
+                  placeholder="Search staff..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <select className="form-select w-48" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+                  <option value="">All Departments</option>
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>💾 CSV</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>📕 PDF</button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>💾 CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>📕 PDF</button>
+            {/* Period filter row */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
+              {(['alltime', 'week', 'month'] as PeriodType[]).map(p => (
+                <button
+                  key={p}
+                  className={`btn btn-sm ${periodType === p ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setPeriodType(p)}
+                >
+                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : 'Month'}
+                </button>
+              ))}
+              {periodType === 'week' && (
+                <select
+                  className="form-select"
+                  style={{ width: 'auto', minWidth: 160 }}
+                  value={selectedWeek}
+                  onChange={e => { setSelectedWeek(e.target.value); periodFetchKey.current = '' }}
+                >
+                  {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              )}
+              {periodType === 'month' && (
+                <select
+                  className="form-select"
+                  style={{ width: 'auto', minWidth: 140 }}
+                  value={selectedMonth}
+                  onChange={e => { setSelectedMonth(e.target.value); periodFetchKey.current = '' }}
+                >
+                  {availableMonths.map(m => (
+                    <option key={m} value={m}>
+                      {new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {periodLoading && <span className="text-xs text-3 animate-pulse">Loading...</span>}
+              {periodType !== 'alltime' && !periodLoading && (
+                <span className="text-xs text-3">
+                  Showing points earned {periodType === 'week' ? `week of ${selectedWeek}` : `in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}
+                </span>
+              )}
             </div>
           </div>
           {/* Pinned My Rank Card (if not in top 25) */}

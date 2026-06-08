@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { exportCSV, genId } from '../../lib/utils'
 import { AppSettings, WeekLock, PublicHoliday } from '../../types'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../common/ConfirmModal'
 
 export default function SettingsPage() {
   const {
@@ -21,6 +22,8 @@ export default function SettingsPage() {
   } = useApp()
 
   const [tab, setTab] = useState<string>('points')
+  const [holidayConfirm, setHolidayConfirm] = useState<{ isOpen: boolean; action: () => void; message: string; title?: string }>({ isOpen: false, action: () => {}, message: '' })
+  const [pendingHoliday, setPendingHoliday] = useState<{ name: string; date: string } | null>(null)
 
   // Local form state
   const [pointsForm, setPointsForm] = useState({
@@ -632,14 +635,21 @@ export default function SettingsPage() {
                   const name = (document.getElementById('holiday-name') as HTMLInputElement).value
                   const date = (document.getElementById('holiday-date') as HTMLInputElement).value
                   if (!name || !date) return
-                  const newHoliday: PublicHoliday = {
-                    id: genId(),
-                    name,
-                    date,
-                    capReduction: 8
-                  }
-                  savePublicHolidays([...publicHolidays, newHoliday])
-                  toast.success('Holiday added')
+                  setHolidayConfirm({
+                    isOpen: true,
+                    title: 'Add Holiday',
+                    message: `Add "${name}" on ${new Date(date).toLocaleDateString()}?`,
+                    action: () => {
+                      const newHoliday: PublicHoliday = {
+                        id: genId(),
+                        name,
+                        date,
+                        capReduction: 8
+                      }
+                      savePublicHolidays([...publicHolidays, newHoliday])
+                      toast.success('Holiday added')
+                    }
+                  })
                 }}
               >Add Holiday</button>
             </div>
@@ -655,7 +665,15 @@ export default function SettingsPage() {
                   </div>
                   <button
                     className="btn btn-icon text-danger"
-                    onClick={() => savePublicHolidays(publicHolidays.filter(x => x.id !== h.id))}
+                    onClick={() => setHolidayConfirm({
+                      isOpen: true,
+                      title: 'Delete Holiday',
+                      message: `Delete "${h.name}"? This cannot be undone.`,
+                      action: () => {
+                        savePublicHolidays(publicHolidays.filter(x => x.id !== h.id))
+                        toast.success('Holiday deleted')
+                      }
+                    })}
                   >
                     🗑️
                   </button>
@@ -864,6 +882,13 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        isOpen={holidayConfirm.isOpen}
+        title={holidayConfirm.title}
+        message={holidayConfirm.message}
+        onConfirm={() => { holidayConfirm.action(); setHolidayConfirm({ isOpen: false, action: () => {}, message: '' }) }}
+        onCancel={() => setHolidayConfirm({ isOpen: false, action: () => {}, message: '' })}
+      />
     </div>
   )
 }

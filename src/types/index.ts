@@ -402,6 +402,7 @@ export interface StreakRecoveryRequest {
 
 export interface PointsHistoryEntry {
     id: string;
+    staffId?: string;
     weekId: string;
     action: string;
     points: number;

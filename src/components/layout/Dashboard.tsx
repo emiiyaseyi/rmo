@@ -162,7 +162,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, unreadCount, settings, approvalDelegations } = useApp()
+  const { user, entries, staff, pendingApprovals, unreadCount, settings, approvalDelegations, leaves } = useApp()
   const [showNotSubmittedModal, setShowNotSubmittedModal] = useState(false)
   const thisWeek = getWeekKey()
 
@@ -192,7 +192,20 @@ export default function Dashboard({ setPage }: DashboardProps) {
       : []
 
   // Exclude exempt staff from submission tracking
-  const trackableStaff = managedStaff.filter(s => !s.exemptFromTimesheet)
+  // Week range for this week (Mon → Sun) used to check leave overlap
+  const weekStartStr = thisWeek // weekKey is the Monday YYYY-MM-DD
+  const weekEndStr = (() => {
+    const d = new Date(thisWeek)
+    d.setDate(d.getDate() + 6)
+    return d.toISOString().slice(0, 10)
+  })()
+  // Staff on approved leave overlapping this week are exempt from compliance flags
+  const onLeaveThisWeek = (staffId: string) => (leaves || []).some((l: any) =>
+    l.staffId === staffId && l.status === 'approved' &&
+    l.fromDate <= weekEndStr && l.toDate >= weekStartStr
+  )
+
+  const trackableStaff = managedStaff.filter(s => !s.exemptFromTimesheet && !onLeaveThisWeek(s.id))
 
   const totalStaffCount = trackableStaff.length
   const managedStaffIds = trackableStaff.map(s => s.id)

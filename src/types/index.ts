@@ -271,6 +271,28 @@ export interface PublicHoliday {
     capReduction: number;
 }
 
+export type LeaveType = 'annual' | 'sick' | 'maternity' | 'paternity' | 'compassionate' | 'study' | 'unpaid' | 'other';
+
+export interface Leave {
+    id: string;
+    staffId: string;
+    staffName: string;
+    type: LeaveType | string;
+    fromDate: string;        // YYYY-MM-DD inclusive
+    toDate: string;          // YYYY-MM-DD inclusive
+    reason?: string;
+    status: 'pending' | 'lead_approved' | 'approved' | 'rejected';
+    approvedBy?: string;     // who logged/approved (admin/HR id or name)
+    approvedAt?: string;
+    rejectionReason?: string;
+    leadApprovedBy?: string;
+    leadApprovedAt?: string;
+    leadId?: string;
+    rejectedBy?: string;
+    rejectedAt?: string;
+    createdAt: string;
+}
+
 export interface Announcement {
     id: string;
     message: string;

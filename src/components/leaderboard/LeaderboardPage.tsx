@@ -22,7 +22,7 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify, settings } = useApp()
+  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify, settings, leaves } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
@@ -33,10 +33,12 @@ export default function LeaderboardPage() {
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
 
   // Period filter
-  type PeriodType = 'alltime' | 'week' | 'month'
+  type PeriodType = 'alltime' | 'week' | 'month' | 'custom'
   const [periodType, setPeriodType] = useState<PeriodType>('alltime')
   const [selectedWeek, setSelectedWeek] = useState<string>('')
   const [selectedMonth, setSelectedMonth] = useState<string>('')
+  const [customFrom, setCustomFrom] = useState<string>('')
+  const [customTo, setCustomTo] = useState<string>('')
   const [periodHistory, setPeriodHistory] = useState<PointsHistoryEntry[]>([])
   const [periodLoading, setPeriodLoading] = useState(false)
   const periodFetchKey = useRef('')
@@ -45,6 +47,8 @@ export default function LeaderboardPage() {
   const [reviewPeriodType, setReviewPeriodType] = useState<PeriodType>('alltime')
   const [reviewSelectedWeek, setReviewSelectedWeek] = useState<string>('')
   const [reviewSelectedMonth, setReviewSelectedMonth] = useState<string>('')
+  const [reviewCustomFrom, setReviewCustomFrom] = useState<string>('')
+  const [reviewCustomTo, setReviewCustomTo] = useState<string>('')
 
   // Derive available weeks and months from entries weekKeys
   const availableWeeks = useMemo(() => {
@@ -79,12 +83,18 @@ export default function LeaderboardPage() {
   // Fetch points history when period filter is active
   useEffect(() => {
     if (periodType === 'alltime') { setPeriodHistory([]); return }
-    const param = periodType === 'week' ? `weekId=${selectedWeek}` : `month=${selectedMonth}`
-    if (!param || param.includes('=')) {
-      const val = periodType === 'week' ? selectedWeek : selectedMonth
-      if (!val) return
+    let param = ''
+    let key = ''
+    if (periodType === 'week') {
+      if (!selectedWeek) return
+      param = `weekId=${selectedWeek}`; key = `week:${selectedWeek}`
+    } else if (periodType === 'month') {
+      if (!selectedMonth) return
+      param = `month=${selectedMonth}`; key = `month:${selectedMonth}`
+    } else if (periodType === 'custom') {
+      if (!customFrom || !customTo) return
+      param = `from=${customFrom}&to=${customTo}`; key = `custom:${customFrom}:${customTo}`
     }
-    const key = `${periodType}:${periodType === 'week' ? selectedWeek : selectedMonth}`
     if (periodFetchKey.current === key) return
     periodFetchKey.current = key
     setPeriodLoading(true)
@@ -92,13 +102,25 @@ export default function LeaderboardPage() {
       .then(r => r.json())
       .then(data => { setPeriodHistory(Array.isArray(data) ? data : []); setPeriodLoading(false) })
       .catch(() => { setPeriodHistory([]); setPeriodLoading(false) })
-  }, [periodType, selectedWeek, selectedMonth])
+  }, [periodType, selectedWeek, selectedMonth, customFrom, customTo])
 
   const SUBMITTED_STATUSES = ['submitted', 'approved', 'resubmitted', 'pending_clarification', 'pending_2nd_approval']
 
+  // A week (Monday YYYY-MM-DD) overlaps an approved leave for this staff member
+  function weekOnLeave(staffId: string, weekKey: string): boolean {
+    const weekEnd = new Date(weekKey)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    const weekEndStr = weekEnd.toISOString().slice(0, 10)
+    return (leaves || []).some((l: any) =>
+      l.staffId === staffId && l.status === 'approved' &&
+      l.fromDate <= weekEndStr && l.toDate >= weekKey
+    )
+  }
+
   function calcSubmissionRate(s: Staff) {
     const myEntries = entries.filter(e => e.staffId === s.id)
-    const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
+    // Exclude weeks the staff member was on approved leave — not counted as missed
+    const weeks = Array.from(new Set(myEntries.map(e => e.weekKey))).filter(w => !weekOnLeave(s.id, w))
     const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && SUBMITTED_STATUSES.includes(e.status)))
     return weeks.length > 0 ? Math.round((submitted.length / weeks.length) * 100) : 0
   }
@@ -181,6 +203,10 @@ export default function LeaderboardPage() {
             const entryDate = new Date(d)
             return entryDate >= weekStart && entryDate <= weekEnd
           }
+          if (reviewPeriodType === 'custom') {
+            if (!reviewCustomFrom || !reviewCustomTo) return true
+            return d >= reviewCustomFrom && d <= reviewCustomTo
+          }
           return true
         })
     const reviewers = staff.filter(s => !s.suspended && (s.role === 'team_lead' || s.role === 'admin'))
@@ -205,7 +231,7 @@ export default function LeaderboardPage() {
       return matchSearch && matchDept
     })
     .sort((a, b) => b.avgScore - a.avgScore || b.totalReviewed - a.totalReviewed)
-  }, [staff, entries, search, deptFilter, settings, reviewPeriodType, reviewSelectedWeek, reviewSelectedMonth])
+  }, [staff, entries, search, deptFilter, settings, reviewPeriodType, reviewSelectedWeek, reviewSelectedMonth, reviewCustomFrom, reviewCustomTo])
 
   // Department leaderboard
   const deptRanked: DeptRank[] = useMemo(() => {
@@ -457,13 +483,13 @@ export default function LeaderboardPage() {
             {/* Period filter row */}
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
-              {(['alltime', 'week', 'month'] as PeriodType[]).map(p => (
+              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
                 <button
                   key={p}
                   className={`btn btn-sm ${periodType === p ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setPeriodType(p)}
                 >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : 'Month'}
+                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
                 </button>
               ))}
               {periodType === 'week' && (
@@ -490,10 +516,37 @@ export default function LeaderboardPage() {
                   ))}
                 </select>
               )}
+              {periodType === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={customFrom}
+                    max={customTo || undefined}
+                    onChange={e => { setCustomFrom(e.target.value); periodFetchKey.current = '' }}
+                  />
+                  <span className="text-xs text-3">to</span>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={customTo}
+                    min={customFrom || undefined}
+                    onChange={e => { setCustomTo(e.target.value); periodFetchKey.current = '' }}
+                  />
+                </div>
+              )}
               {periodLoading && <span className="text-xs text-3 animate-pulse">Loading...</span>}
               {periodType !== 'alltime' && !periodLoading && (
                 <span className="text-xs text-3">
-                  Showing points earned {periodType === 'week' ? `week of ${selectedWeek}` : `in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}
+                  {periodType === 'week'
+                    ? `Showing points earned week of ${selectedWeek}`
+                    : periodType === 'month'
+                      ? `Showing points earned in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+                      : customFrom && customTo
+                        ? `Showing points earned ${customFrom} → ${customTo}`
+                        : 'Pick a start and end date'}
                 </span>
               )}
             </div>
@@ -605,13 +658,13 @@ export default function LeaderboardPage() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 flex-1 flex-wrap">
               <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
-              {(['alltime', 'week', 'month'] as PeriodType[]).map(p => (
+              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
                 <button
                   key={p}
                   className={`btn btn-sm ${reviewPeriodType === p ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setReviewPeriodType(p)}
                 >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : 'Month'}
+                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
                 </button>
               ))}
               {reviewPeriodType === 'week' && (
@@ -638,9 +691,36 @@ export default function LeaderboardPage() {
                   ))}
                 </select>
               )}
+              {reviewPeriodType === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={reviewCustomFrom}
+                    max={reviewCustomTo || undefined}
+                    onChange={e => setReviewCustomFrom(e.target.value)}
+                  />
+                  <span className="text-xs text-3">to</span>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={reviewCustomTo}
+                    min={reviewCustomFrom || undefined}
+                    onChange={e => setReviewCustomTo(e.target.value)}
+                  />
+                </div>
+              )}
               {reviewPeriodType !== 'alltime' && (
                 <span className="text-xs text-3">
-                  Showing reviews {reviewPeriodType === 'week' ? `week of ${reviewSelectedWeek}` : `in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}
+                  {reviewPeriodType === 'week'
+                    ? `Showing reviews week of ${reviewSelectedWeek}`
+                    : reviewPeriodType === 'month'
+                      ? `Showing reviews in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+                      : reviewCustomFrom && reviewCustomTo
+                        ? `Showing reviews ${reviewCustomFrom} → ${reviewCustomTo}`
+                        : 'Pick a start and end date'}
                 </span>
               )}
             </div>

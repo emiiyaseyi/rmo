@@ -47,7 +47,7 @@ next-env.d.ts
 .codacy/
 codacy.yaml
 
-
+#others
 service-account.json*
 scripts/service-account.json
 scripts/sync-prod-to-local.sh

@@ -8,7 +8,7 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# testing and cov
 /coverage
 
 # next.js

@@ -340,6 +340,7 @@ export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterDept, setFilterDept] = useState<string>('')
   const [filterWeek, setFilterWeek] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [showDelegationModal, setShowDelegationModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
   const [reviewTimeLeft, setReviewTimeLeft] = useState('')
@@ -427,6 +428,12 @@ export default function ApprovalsPage() {
         const s = staff.find(m => m.id === e.staffId)
         if (filterDept && s?.department !== filterDept) return false
         if (filterWeek && e.weekKey !== filterWeek) return false
+        const q = searchQuery.trim().toLowerCase()
+        const matchSearch = !q ||
+          (e.staffName || '').toLowerCase().includes(q) ||
+          (e.project || '').toLowerCase().includes(q) ||
+          (s?.department || '').toLowerCase().includes(q)
+        if (!matchSearch) return false
         return true
       })
       .sort((a, b) => new Date(b.submittedAt || b.createdAt || '').getTime() - new Date(a.submittedAt || a.createdAt || '').getTime())
@@ -937,6 +944,13 @@ export default function ApprovalsPage() {
         <>
           {/* Filters + bulk approve */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              className="form-input"
+              placeholder="Search name, project, or department..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ minWidth: 240 }}
+            />
             <select className="form-select" style={{ width: 'auto' }} value={filterDept} onChange={e => setFilterDept(e.target.value)}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d} value={d}>{d}</option>)}

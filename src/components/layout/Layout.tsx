@@ -22,6 +22,7 @@ function getNavItems(role: string): NavItem[] {
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'timesheet', label: 'Timesheet', icon: '📋', roles: ['staff', 'admin', 'team_lead'] },
     { id: 'approvals', label: 'Approvals', icon: '✅', roles: ['admin', 'team_lead', 'staff'], badge: 'approvals' },
+    { id: 'leave', label: 'Leave & Absence', icon: '🌴', roles: ['staff', 'team_lead', 'admin'] },
 
     { id: 'team_header', label: 'TEAM', icon: '', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'projects', label: 'Projects', icon: '💼', roles: ['admin'] },

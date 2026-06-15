@@ -19,6 +19,7 @@ import HelpPage from '@/components/help/HelpPage'
 import OrgChartPage from '@/components/orgchart/OrgChartPage'
 import AuditPage from '@/components/audit/AuditPage'
 import ProjectsPage from '@/components/admin/ProjectsPage'
+import LeavePage from '@/components/leave/LeavePage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   dashboard: ['staff', 'team_lead', 'admin'],
@@ -26,6 +27,7 @@ const PAGE_ROLES: Record<string, string[]> = {
   approvals: ['staff', 'team_lead', 'admin'],
   delegation: ['team_lead', 'admin'],
   leaderboard: ['staff', 'team_lead', 'admin'],
+  leave: ['staff', 'team_lead', 'admin'],
   projects: ['admin'],
   analytics: ['team_lead', 'admin'],
   staff: ['admin'],
@@ -183,6 +185,7 @@ export default function Home() {
       case 'approvals': return <ApprovalsPage />
       case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
+      case 'leave': return <LeavePage />
       case 'projects': return <ProjectsPage />
       case 'analytics': return <AnalyticsPage />
       case 'staff': return <StaffPage />

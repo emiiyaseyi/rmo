@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import toast from 'react-hot-toast'
 import { local, genId, DEFAULT_POINTS, BADGES, getWeekKey, registerSession, removeSession, sendEmailNotification } from '../lib/utils'
 import { format, subWeeks } from 'date-fns'
-import { Staff, Entry, AppSettings, AppContextType, AppNotification, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation } from '../types'
+import { Staff, Entry, AppSettings, AppContextType, AppNotification, Redemption, Reward, HofEntry, OverrideLog, WeekSubmission, ApprovalDelegation, ProjectBudget, BulkImportLog, BulkStaffImportLog, StreakRecoveryRequest, PointsHistoryEntry, PasswordResetRequest, Announcement, WeekLock, AuditLog, PublicHoliday, Delegation, Leave } from '../types'
 
 const AppCtx = createContext<AppContextType | null>(null)
 export const useApp = () => useContext(AppCtx) as AppContextType
@@ -69,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bulkStaffImportLogs, setBulkStaffImportLogs] = useState<BulkStaffImportLog[]>([])
   const [streakRecoveries, setStreakRecoveries] = useState<StreakRecoveryRequest[]>([])
   const [pointsHistory, setPointsHistory] = useState<PointsHistoryEntry[]>([])
+  const [leaves, setLeaves] = useState<Leave[]>([])
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null)
   const [showPasswordChange, setShowPasswordChange] = useState(false)
   const [prefillTemplate, setPrefillTemplate] = useState<any>(null)
@@ -120,6 +121,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
   }, [idleCountdown])
+
+  // Load leave/absence records when a user is set (admin gets all, staff gets own)
+  useEffect(() => {
+    if (!user) return
+    const url = user.role === 'admin'
+      ? '/api/leaves?role=admin'
+      : `/api/leaves?role=staff&staffId=${user.id}`
+    fetch(url)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setLeaves(data) })
+      .catch(() => {})
+  }, [user?.id, user?.role])
 
   // ---------------------------------------------------------------------------
   // 60-second polling with delta sync — only fetches changed records after first load
@@ -489,6 +502,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function savePointsHistory(data: PointsHistoryEntry[]) {
     setPointsHistory(data)
     apiPost('points-history', data)
+  }
+
+  // Leave / absence records. Admin (HR) sees all; staff sees own.
+  function saveLeave(leave: Leave) {
+    setLeaves(prev => {
+      const exists = prev.find(l => l.id === leave.id)
+      return exists ? prev.map(l => l.id === leave.id ? leave : l) : [leave, ...prev]
+    })
+    apiUpsert('leaves', leave)
+  }
+
+  function deleteLeave(id: string) {
+    setLeaves(prev => prev.filter(l => l.id !== id))
+    fetch(`/api/leaves/${id}`, { method: 'DELETE' }).catch(() => {})
+  }
+
+  function reloadLeaves() {
+    const u = userRef.current
+    if (!u) return
+    const url = u.role === 'admin'
+      ? '/api/leaves?role=admin'
+      : `/api/leaves?role=staff&staffId=${u.id}`
+    fetch(url)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setLeaves(data) })
+      .catch(() => {})
   }
 
   function savePasswordResetRequests(data: PasswordResetRequest[]) {
@@ -977,12 +1016,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unreadCount, settings, darkMode, online, features, redeems,
     rewards, hof, projects, delegations, approvalDelegations, lockedWeeks, budgets, templates,
     projectBudgets, bulkImportLogs, bulkStaffImportLogs, streakRecoveries, pointsHistory,
+    leaves,
     login, logout, updateUser, toggleDark,
     saveStaff, saveEntries, saveNotifications: saveNots,
     saveRedeems, saveRewards, saveHof,
     saveDelegations, saveApprovalDelegations, saveLockedWeeks, saveFeatures, saveSettings, saveProjects,
     saveBudgets, saveTemplates, saveProjectBudgets, saveBulkImportLogs, saveBulkStaffImportLogs,
     saveStreakRecoveries, savePointsHistory,
+    saveLeave, deleteLeave, reloadLeaves,
     notify, markRead, markAllRead,
     awardPoints, grantBadge,
     pendingApprovals, canApproveTimesheets,

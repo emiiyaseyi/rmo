@@ -6,9 +6,16 @@ export async function GET(req: Request) {
   const staffId = searchParams.get('staffId')
   const weekId  = searchParams.get('weekId')   // e.g. "2026-05-05"
   const month   = searchParams.get('month')    // e.g. "2026-05"
+  const from    = searchParams.get('from')      // e.g. "2026-05-01" (inclusive, by week_id)
+  const to      = searchParams.get('to')        // e.g. "2026-06-30" (inclusive, by week_id)
 
   let rows: any[]
-  if (staffId && weekId) {
+  // Custom date range: filter by week_id between from and to (week_id is YYYY-MM-DD, lexically sortable)
+  if (from && to) {
+    rows = staffId
+      ? await query('SELECT * FROM points_history WHERE staff_id = $1 AND week_id >= $2 AND week_id <= $3 ORDER BY timestamp DESC', [staffId, from, to])
+      : await query('SELECT * FROM points_history WHERE week_id >= $1 AND week_id <= $2 ORDER BY timestamp DESC LIMIT 5000', [from, to])
+  } else if (staffId && weekId) {
     rows = await query('SELECT * FROM points_history WHERE staff_id = $1 AND week_id = $2 ORDER BY timestamp DESC', [staffId, weekId])
   } else if (staffId && month) {
     rows = await query("SELECT * FROM points_history WHERE staff_id = $1 AND week_id LIKE $2 ORDER BY timestamp DESC", [staffId, `${month}%`])

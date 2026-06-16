@@ -711,6 +711,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(staffId, `🏆 You earned the "${badge?.name}" badge!`, 'badge')
   }
 
+  // Compute which badges a staff member has earned from available data and grant
+  // any missing ones. grantBadge no-ops if already present, so this is idempotent.
+  function evaluateBadges(staffId: string) {
+    const s = staff.find(x => x.id === staffId)
+    if (!s) return
+
+    const earned = new Set<string>()
+
+    // century_club — 100+ points
+    if ((s.points || 0) >= 100) earned.add('century_club')
+
+    // consistent / dedicated — streak thresholds
+    if ((s.streak || 0) >= 3) earned.add('consistent')
+    if ((s.streak || 0) >= 8) earned.add('dedicated')
+
+    // top_performer / mvp — ranking among non-suspended staff by points
+    const ranked = staff
+      .filter(x => !x.suspended)
+      .slice()
+      .sort((a, b) => (b.points || 0) - (a.points || 0))
+    const rank = ranked.findIndex(x => x.id === staffId) // 0-based
+    if (rank > -1 && rank < 5) earned.add('top_performer')
+    if (rank === 0 && (s.points || 0) > 0) earned.add('mvp')
+
+    // Per-week status analysis for this staff member
+    const myEntries = entries.filter(e => e.staffId === staffId && !e.deleted && e.weekKey)
+    const weekMap = new Map<string, { total: number; approved: number; rejected: number; submitted: number }>()
+    myEntries.forEach(e => {
+      const w = e.weekKey as string
+      const agg = weekMap.get(w) || { total: 0, approved: 0, rejected: 0, submitted: 0 }
+      agg.total++
+      if (e.status === 'approved') agg.approved++
+      if (e.status === 'rejected') agg.rejected++
+      if (['submitted', 'resubmitted', 'approved', 'pending_clarification', 'pending_2nd_approval'].includes(e.status)) agg.submitted++
+      weekMap.set(w, agg)
+    })
+
+    // perfect_week / zero_defect — weeks where all entries approved, none rejected, >=1 entry
+    let perfectWeeks = 0
+    weekMap.forEach(agg => {
+      if (agg.total >= 1 && agg.approved === agg.total && agg.rejected === 0) perfectWeeks++
+    })
+    if (perfectWeeks >= 1) earned.add('perfect_week')
+    if (perfectWeeks >= 3) earned.add('zero_defect')
+
+    // comeback — non-contiguous submitted weeks (a gap > 1 week between consecutive submissions)
+    const submittedWeeks = Array.from(weekMap.entries())
+      .filter(([, agg]) => agg.submitted >= 1)
+      .map(([w]) => w)
+      .filter(w => /^\d{4}-\d{2}-\d{2}$/.test(w))
+      .sort()
+    for (let i = 1; i < submittedWeeks.length; i++) {
+      const prev = Date.parse(submittedWeeks[i - 1])
+      const cur = Date.parse(submittedWeeks[i])
+      if (!isNaN(prev) && !isNaN(cur)) {
+        const weeksApart = Math.round((cur - prev) / (7 * 86400000))
+        if (weeksApart > 1) { earned.add('comeback'); break }
+      }
+    }
+
+    // early_bird / speed_logger — any early-submission record for this staff in points history.
+    // pointsHistory lacks a staffId field in some records; only match when present.
+    const hasEarly = pointsHistory.some(h =>
+      (h as any).staffId === staffId && typeof h.action === 'string' && h.action.includes('Early submission')
+    )
+    if (hasEarly) { earned.add('early_bird'); earned.add('speed_logger') }
+
+    // Grant only missing ones (grantBadge already no-ops if present)
+    const current = new Set(s.badges || [])
+    earned.forEach(b => { if (!current.has(b)) grantBadge(staffId, b) })
+  }
+
   // ---------------------------------------------------------------------------
   // Approval helpers
   // ---------------------------------------------------------------------------
@@ -1007,6 +1079,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const updatedStaff = staff.map(s => s.id === staffId ? { ...s, streak: newStreak, lastSubmittedWeek: weekKey } : s)
       saveStaff(updatedStaff)
       if (staffId === user?.id) updateUser({ streak: newStreak, lastSubmittedWeek: weekKey })
+
+      // Re-evaluate badge eligibility for the submitting staff
+      evaluateBadges(staffId)
     } catch (e) { console.error('Week submission failed', e) }
   }
 
@@ -1027,7 +1102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStreakRecoveries, savePointsHistory,
     saveLeave, deleteLeave, reloadLeaves,
     notify, markRead, markAllRead,
-    awardPoints, grantBadge,
+    awardPoints, grantBadge, evaluateBadges,
     pendingApprovals, canApproveTimesheets,
     loadAll, checkReminders,
     idleCountdown, resetIdle, showPasswordChange, setShowPasswordChange,

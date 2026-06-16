@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
-import { Plus, Search, Download, Trash2, Edit2, X } from 'lucide-react'
+import { Plus, Search, Download, Trash2, Pencil, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
 
@@ -292,112 +292,141 @@ export default function ProjectsPage() {
         </label>
       )}
 
-      {/* Project card grid */}
+      {/* Project list / table */}
       {projectStats.length === 0 ? (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 40, textAlign: 'center', color: 'var(--ink-3)', boxShadow: 'var(--sh-sm)' }}>
           No projects found
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {projectStats.map((p: any) => {
-            const budget = Number(p.budget) || 0
-            const hasBudget = budget > 0
-            const pct = hasBudget ? Math.round((p.totalHours / budget) * 100) : 0
-            const over = hasBudget && p.totalHours > budget
-            // status: inactive -> warn; over budget -> danger; otherwise on-track
-            const status = !p.active
-              ? { label: 'Inactive', bg: 'var(--warn-tint)', color: 'var(--warn)' }
-              : over
-                ? { label: 'Over budget', bg: 'var(--danger-tint)', color: 'var(--danger)' }
-                : { label: 'On track', bg: 'var(--tint)', color: 'var(--brand-2)' }
-            const barColor = over ? 'var(--danger)' : pct >= 80 ? 'var(--warn)' : 'var(--brand)'
-            const contributors: string[] = p.contributors || []
-            const isSel = selected.has(p.id)
-            return (
-              <div
-                key={p.id}
-                style={{
-                  background: 'var(--surface)',
-                  border: isSel ? '1px solid var(--brand)' : '1px solid var(--line)',
-                  borderRadius: 'var(--r-lg)',
-                  padding: 20,
-                  boxShadow: 'var(--sh-sm)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 14,
-                  position: 'relative',
-                }}
-              >
-                {/* Top row */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
-                    <input type="checkbox" checked={isSel} onChange={() => toggleSelect(p.id)} style={{ marginTop: 3 }} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              {(() => {
+                const thStyle: React.CSSProperties = {
+                  textAlign: 'left',
+                  padding: '11px 16px',
+                  color: 'var(--ink-4)',
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: '.06em',
+                  textTransform: 'uppercase',
+                  borderBottom: '1px solid var(--line-2)',
+                  whiteSpace: 'nowrap',
+                }
+                return (
+                  <tr>
+                    <th style={{ ...thStyle, width: 40, paddingRight: 0 }}>
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                    </th>
+                    <th style={thStyle}>Project</th>
+                    <th style={thStyle}>Contributors</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Budget used</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Hours</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                )
+              })()}
+            </thead>
+            <tbody>
+              {projectStats.map((p: any) => {
+                const budget = Number(p.budget) || 0
+                const hasBudget = budget > 0
+                const pct = hasBudget ? Math.round((p.totalHours / budget) * 100) : 0
+                const over = hasBudget && p.totalHours > budget
+                // status: inactive -> warn; over budget -> danger; otherwise on-track
+                const status = !p.active
+                  ? { label: 'Inactive', bg: 'var(--warn-tint)', color: 'var(--warn)' }
+                  : over
+                    ? { label: 'Over budget', bg: 'var(--danger-tint)', color: 'var(--danger)' }
+                    : { label: 'On track', bg: 'var(--tint)', color: 'var(--brand-2)' }
+                const barColor = over ? 'var(--danger)' : pct >= 80 ? 'var(--warn)' : 'var(--brand)'
+                const contributors: string[] = p.contributors || []
+                const isSel = selected.has(p.id)
+                const tdStyle: React.CSSProperties = {
+                  padding: '12px 16px',
+                  borderBottom: '1px solid var(--line-2)',
+                  verticalAlign: 'middle',
+                }
+                return (
+                  <tr
+                    key={p.id}
+                    style={{ background: isSel ? 'var(--tint)' : undefined, transition: 'background .12s' }}
+                    onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--canvas)' }}
+                    onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLTableRowElement).style.background = '' }}
+                  >
+                    <td style={{ ...tdStyle, paddingRight: 0 }}>
+                      <input type="checkbox" checked={isSel} onChange={() => toggleSelect(p.id)} />
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{p.name}</div>
                       <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
                         {p.tasks?.length > 0 ? `${p.tasks.length} approved task${p.tasks.length !== 1 ? 's' : ''}` : 'No approved tasks'}
                       </div>
-                    </div>
-                  </div>
-                  <span style={{ flexShrink: 0, background: status.bg, color: status.color, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {status.label}
-                  </span>
-                </div>
-
-                {/* Budget */}
-                {hasBudget && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Budget used</span>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{pct}%</span>
-                    </div>
-                    <div style={{ height: 6, borderRadius: 999, background: 'var(--line-2)', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: barColor, borderRadius: 999 }} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: '1px solid var(--line-2)', paddingTop: 12, marginTop: 'auto' }}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    {contributors.slice(0, 4).map((name, i) => (
-                      <div
-                        key={name}
-                        title={name}
-                        style={{
-                          width: 26, height: 26, borderRadius: '50%',
-                          background: avatarColor(name), color: '#fff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 700,
-                          border: '2px solid var(--surface)',
-                          marginLeft: i === 0 ? 0 : -8,
-                        }}
-                      >
-                        {initials(name)}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {contributors.slice(0, 4).map((name, i) => (
+                          <div
+                            key={name}
+                            title={name}
+                            style={{
+                              width: 26, height: 26, borderRadius: '50%',
+                              background: avatarColor(name), color: '#fff',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 10, fontWeight: 700,
+                              border: '2px solid var(--surface)',
+                              marginLeft: i === 0 ? 0 : -8,
+                            }}
+                          >
+                            {initials(name)}
+                          </div>
+                        ))}
+                        {contributors.length > 4 && (
+                          <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--elev)', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, border: '2px solid var(--surface)', marginLeft: -8 }}>
+                            +{contributors.length - 4}
+                          </div>
+                        )}
+                        {contributors.length === 0 && (
+                          <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>—</span>
+                        )}
                       </div>
-                    ))}
-                    {contributors.length > 4 && (
-                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--elev)', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, border: '2px solid var(--surface)', marginLeft: -8 }}>
-                        +{contributors.length - 4}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{ display: 'inline-block', background: status.bg, color: status.color, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {status.label}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {hasBudget ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
+                          <div style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--line-2)', overflow: 'hidden', minWidth: 60 }}>
+                            <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: barColor, borderRadius: 999 }} />
+                          </div>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{pct}%</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{p.totalHours.toLocaleString()}h</span>
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0, tasks: p.tasks || [] }); setTaskInput(''); setShowAdd(true) }}>
+                          <Pencil size={12} />
+                        </button>
+                        <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
+                          <Trash2 size={12} />
+                        </button>
                       </div>
-                    )}
-                    {contributors.length === 0 && (
-                      <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>No contributors</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{p.totalHours.toLocaleString()}h logged</span>
-                    <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0, tasks: p.tasks || [] }); setTaskInput(''); setShowAdd(true) }}>
-                      <Edit2 size={12} />
-                    </button>
-                    <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

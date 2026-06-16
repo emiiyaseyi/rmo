@@ -1,11 +1,11 @@
 'use client'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BADGES, genId, exportCSV, exportPDF, avatarColor, initials, getWeekKey } from '../../lib/utils'
-import { Staff, HofEntry, Reward, Redemption, PointsHistoryEntry } from '../../types'
+import { BADGES, genId, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
+import { Staff, Reward, Redemption, PointsHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
-import { Trophy, Flame, Medal, Download, ShoppingBag, Crown, Award } from 'lucide-react'
+import { Trophy, Flame, Medal, Download, ShoppingBag, Award } from 'lucide-react'
 
 const RANK_COLORS = ['var(--gold)', '#9CA3AF', '#B45309']
 
@@ -25,12 +25,11 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify, settings, leaves } = useApp()
+  const { staff, user, entries, rewards, saveRewards, redeems, saveRedeems, awardPoints, notify, settings, leaves, evaluateBadges } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
   const [rewardForm, setRewardForm] = useState({ name: '', desc: '', cost: '', icon: '🎁' })
-  const [recoveryForm, setRecoveryForm] = useState({ weekId: '', reason: '' })
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
@@ -82,6 +81,11 @@ export default function LeaderboardPage() {
       setReviewSelectedMonth(availableMonths[0])
     }
   }, [reviewPeriodType, availableWeeks, availableMonths])
+
+  // Refresh the current user's badges when the Badges tab is opened
+  useEffect(() => {
+    if (tab === 'badges' && user?.id) evaluateBadges(user.id)
+  }, [tab, user?.id])
 
   // Fetch points history when period filter is active
   useEffect(() => {
@@ -260,12 +264,6 @@ export default function LeaderboardPage() {
     })).sort((a, b) => b.avgPts - a.avgPts)
   }, [staff, entries])
 
-  function saveHofNow() {
-    const top3: HofEntry[] = ranked.slice(0, 3).map((s, i) => ({ ...s, rank: i + 1, savedAt: new Date().toISOString() }))
-    saveHof(top3)
-    toast.success('Hall of Fame updated!')
-  }
-
   function addReward() {
     if (!rewardForm.name || !rewardForm.cost) { toast.error('Name and cost required'); return }
     const r: Reward = {
@@ -314,42 +312,6 @@ export default function LeaderboardPage() {
       message: `Redeem "${reward.name}" for ${reward.cost} pts?`,
       title: 'Confirm Redemption'
     })
-  }
-
-  function handleRecoveryRequest() {
-    if (!recoveryForm.weekId || !recoveryForm.reason) { toast.error('Week and reason required'); return }
-    const req = {
-      id: genId(),
-      staffId: user!.id,
-      staffName: user!.name,
-      weekId: recoveryForm.weekId,
-      reason: recoveryForm.reason,
-      status: 'pending' as const,
-      createdAt: new Date().toISOString()
-    }
-    saveStreakRecoveries([...streakRecoveries, req])
-    setRecoveryForm({ weekId: '', reason: '' })
-    toast.success('Recovery request submitted')
-  }
-
-  function resolveRecovery(reqId: string, status: 'approved' | 'rejected') {
-    const req = streakRecoveries.find(r => r.id === reqId)
-    if (!req) return
-    
-    const updated = streakRecoveries.map(r => r.id === reqId ? { ...r, status, reviewedBy: user?.name, reviewedAt: new Date().toISOString() } : r)
-    saveStreakRecoveries(updated)
-    notify(req.staffId, `Your streak recovery request was ${status}.`, status === 'approved' ? 'streak_recovery_approved' : 'streak_recovery_declined', `Streak Recovery ${status === 'approved' ? 'Approved' : 'Declined'}`, reqId, 'message')
-    
-    if (status === 'approved') {
-      const sIdx = staff.findIndex(s => s.id === req.staffId)
-      if (sIdx > -1) {
-        const updatedStaff = [...staff]
-        updatedStaff[sIdx] = { ...updatedStaff[sIdx], streak: (updatedStaff[sIdx].streak || 0) + 1 }
-        saveStaff(updatedStaff)
-        awardPoints(req.staffId, 5, 'Streak Recovery Bonus', req.weekId)
-      }
-    }
-    toast.success(`Request ${status}`)
   }
 
   function fulfillRedeem(id: string) {
@@ -428,9 +390,6 @@ export default function LeaderboardPage() {
           <button className="btn btn-secondary" onClick={() => setShowShop(!showShop)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <ShoppingBag size={16} /> Points Shop
           </button>
-          {user?.role === 'admin' && (
-            <button className="btn btn-secondary btn-sm" onClick={saveHofNow}>Save Hall of Fame</button>
-          )}
         </div>
       </div>
 
@@ -467,10 +426,10 @@ export default function LeaderboardPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 2 }}>
-        {(['individual', 'reviewal', 'department', 'badges', 'hof', 'recovery'] as const).map(t => {
+        {(['individual', 'reviewal', 'department', 'badges'] as const).map(t => {
           const active = tab === t
-          const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : t === 'badges' ? 'Badges' : t === 'hof' ? 'Hall of Fame' : 'Recovery'
-          const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : t === 'badges' ? Award : t === 'hof' ? Crown : Flame
+          const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : 'Badges'
+          const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : Award
           return (
             <button
               key={t}
@@ -935,151 +894,6 @@ export default function LeaderboardPage() {
               </div>
             )
           })}
-        </div>
-      )}
-
-      {tab === 'hof' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {hof.length === 0 ? (
-            <div className="empty-state card col-span-full">
-              <div className="empty-state-icon">🏛️</div>
-              <div className="empty-state-title">Hall of Fame is empty</div>
-              <p className="text-4 text-xs mt-2">Admins can save a snapshot of the current Top 3.</p>
-            </div>
-          ) : (
-            hof.map((s, i) => (
-              <div key={s.id} className="text-center relative overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 20 }}>
-                <div style={{ position: 'absolute', top: 0, right: 0, padding: 8, opacity: 0.08, fontWeight: 800, fontSize: 40, fontFamily: 'var(--font-sora)' }}>#{s.rank}</div>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)', border: `3px solid ${RANK_COLORS[s.rank - 1] || 'var(--line)'}` }}>
-                    {initials(s.name)}
-                  </div>
-                </div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: RANK_COLORS[s.rank - 1] || 'var(--ink-3)', fontWeight: 700, marginBottom: 4 }}>
-                  <Crown size={16} /> #{s.rank}
-                </div>
-                <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ink)' }}>{s.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-4)', marginBottom: 8 }}>{s.department}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()} <span style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6 }}>pts</span></div>
-                {s.savedAt && <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 12, fontStyle: 'italic' }}>Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {tab === 'recovery' && (
-        <div className="flex flex-col gap-6">
-          {user?.role !== 'admin' && (
-            <div className="w-full" style={{ maxWidth: 700, margin: '0 auto', padding: 24, borderRadius: 'var(--r-lg)', background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: 'var(--sh-sm)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
-                <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--warn-tint)', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--gold)' }}>
-                  <Flame size={32} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--ink)', letterSpacing: '-0.02em' }}>Request Streak Recovery</h3>
-                  <p style={{ fontSize: 14, color: 'var(--ink-3)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
-                    Missed a timesheet submission? Request a recovery to keep your streak alive.<br/>
-                    <strong style={{ color: 'var(--warning)' }}>Limit: Once per month.</strong>
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ background: 'var(--elev)', borderRadius: 'var(--r-lg)', padding: '24px 28px', border: '1px solid var(--line)' }}>
-                <div className="grid-2" style={{ marginBottom: 20 }}>
-                  <div className="form-group">
-                    <label className="form-label">Week ID</label>
-                    <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: 18 }}>📅</span>
-                      <input 
-                        className="form-input" 
-                        value={recoveryForm.weekId} 
-                        onChange={e => setRecoveryForm({ ...recoveryForm, weekId: e.target.value })} 
-                        placeholder="YYYY-WXX" 
-                        style={{ paddingLeft: 46, height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Current Streak</label>
-                    <div style={{ height: 48, padding: '0 20px', background: 'var(--surface)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink)', fontWeight: 700, fontSize: 15, border: '1px solid var(--line)' }}>
-                      <Flame size={16} style={{ color: 'var(--gold)' }} /> {user?.streak || 0} {user?.streak === 1 ? 'Week' : 'Weeks'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 24 }}>
-                  <label className="form-label">Reason for Request</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 16, top: 16, color: 'var(--ink-3)', fontSize: 18 }}>✍️</span>
-                    <textarea 
-                      className="form-textarea" 
-                      value={recoveryForm.reason} 
-                      onChange={e => setRecoveryForm({ ...recoveryForm, reason: e.target.value })} 
-                      placeholder="Please concisely explain why you missed your submission..." 
-                      style={{ paddingLeft: 46, minHeight: 120, paddingTop: 16, fontSize: 14, borderRadius: 12 }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex' }}>
-                  <button 
-                    className="btn btn-primary w-full" 
-                    onClick={handleRecoveryRequest}
-                    disabled={!recoveryForm.weekId || !recoveryForm.reason}
-                    style={{ height: 52, fontSize: 16, borderRadius: 12, boxShadow: '0 4px 16px rgba(7, 108, 4, 0.25)' }}
-                  >
-                    <span style={{ marginRight: 8, fontSize: 18 }}>✨</span> Submit Recovery Request
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="w-full mx-auto" style={{ maxWidth: 700, padding: 0, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--line)', background: 'var(--elev)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 20 }}>📜</span>
-              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Recovery Requests'}</h3>
-            </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Staff</th>
-                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Week</th>
-                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reason</th>
-                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Status</th>
-                    {user?.role === 'admin' && <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Action</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(streakRecoveries || [])
-                    .filter(r => user?.role === 'admin' || r.staffId === user?.id)
-                    .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
-                    .map(r => (
-                      <tr key={r.id}>
-                        <td>{r.staffName}</td>
-                        <td className="font-mono">{r.weekId}</td>
-                        <td className="max-w-xs truncate" title={r.reason}>{r.reason}</td>
-                        <td>
-                          <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
-                            {r.status.toUpperCase()}
-                          </span>
-                        </td>
-                        {user?.role === 'admin' && r.status === 'pending' && (
-                          <td className="flex gap-2">
-                            <button className="btn btn-xs btn-green" onClick={() => resolveRecovery(r.id, 'approved')}>Approve</button>
-                            <button className="btn btn-xs btn-red" onClick={() => resolveRecovery(r.id, 'rejected')}>Reject</button>
-                          </td>
-                        )}
-                        {user?.role === 'admin' && r.status !== 'pending' && <td className="text-4 text-xs">Reviewed by {r.reviewedBy}</td>}
-                      </tr>
-                  ))}
-                  {(streakRecoveries || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-4">No requests found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 

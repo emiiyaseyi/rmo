@@ -4,7 +4,7 @@ import {
   FileText, LogIn, LogOut, CheckCircle2, XCircle, Send, PlusCircle,
   Pencil, Trash2, ShieldAlert, UserPlus, UserCog, UserMinus, Users,
   Unlock, FolderPlus, FolderCog, FolderMinus, Settings, Upload, Activity,
-  ChevronDown, Download, Search, Clock
+  Download, Search
 } from 'lucide-react'
 import { exportCSV, avatarColor, initials } from '../../lib/utils'
 import { useApp } from '../../context/AppContext'
@@ -118,6 +118,46 @@ function iconForAction(action: string): React.ComponentType<any> {
   return CAT_META[categoryOf(action)].Icon
 }
 
+// Token-based pill colors per category (bg / fg using design tokens)
+const CAT_PILL: Record<Category, { bg: string; fg: string }> = {
+  approve: { bg: 'var(--tint)', fg: 'var(--brand)' },
+  reject: { bg: 'var(--danger-tint)', fg: 'var(--danger)' },
+  delete: { bg: 'var(--danger-tint)', fg: 'var(--danger)' },
+  submit: { bg: 'var(--info-tint)', fg: 'var(--info)' },
+  create: { bg: 'var(--info-tint)', fg: 'var(--info)' },
+  edit: { bg: 'var(--warn-tint)', fg: 'var(--warn)' },
+  auth: { bg: 'var(--elev)', fg: 'var(--ink-2)' },
+  settings: { bg: 'var(--warn-tint)', fg: 'var(--warn)' },
+  import: { bg: 'var(--elev)', fg: 'var(--ink-2)' },
+  other: { bg: 'var(--elev)', fg: 'var(--ink-2)' },
+}
+
+// Build a compact inline metadata summary from the most useful fields.
+function metaSummary(log: AuditLog): string {
+  const meta = log.metadata || {}
+  const parts: string[] = []
+  const push = (k: string, v: any) => {
+    if (v === undefined || v === null || v === '') return
+    parts.push(`${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+  }
+  // Preferred fields, in a sensible order
+  push('week', meta.weekKey ?? meta.week)
+  push('hours', meta.hours ?? meta.totalHours)
+  push('reason', meta.reason ?? meta.note ?? log.detail)
+  push('status', meta.status)
+  push('project', meta.project ?? meta.projectName)
+  push('count', meta.count)
+  // Fill with any other primitive metadata fields we haven't covered yet
+  const seen = new Set(['weekKey', 'week', 'hours', 'totalHours', 'reason', 'note', 'status', 'project', 'projectName', 'count', 'targetName', 'name', 'staffId'])
+  for (const [k, v] of Object.entries(meta)) {
+    if (seen.has(k)) continue
+    if (v && typeof v === 'object') continue
+    push(k, v)
+    if (parts.length >= 6) break
+  }
+  return parts.join(' · ')
+}
+
 export default function AuditPage() {
   const { staff, entries } = useApp()
   const [logs, setLogs] = useState<AuditLog[]>([])
@@ -127,7 +167,6 @@ export default function AuditPage() {
   const [search, setSearch] = useState('')
   const [filterAction, setFilterAction] = useState('')
   const [filterDate, setFilterDate] = useState('')
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const fetchLogs = useCallback(async (off: number) => {
     setLoading(true)
@@ -253,105 +292,137 @@ export default function AuditPage() {
           <div style={{ marginTop: 8, fontWeight: 700, color: 'var(--ink-2)' }}>No audit logs match</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filtered.map((l, i) => {
-            const cat = categoryOf(l.action)
-            const { color } = CAT_META[cat]
-            const Icon = iconForAction(l.action)
-            const who = performerOf(l)
-            const target = resolveTarget(l)
-            const meta = l.metadata || {}
-            const key = l.id || String(i)
-            const isOpen = !!expanded[key]
-            const ts = l.timestamp ? new Date(l.timestamp) : null
-            const hasDetail = !!(l.device || l.ipAddress || (meta && Object.keys(meta).length))
+        <div style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          borderRadius: 'var(--r-lg)',
+          boxShadow: 'var(--sh-sm)',
+          overflow: 'hidden',
+        }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: 130 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 190 }} />
+                <col style={{ width: 180 }} />
+                <col />
+                <col style={{ width: 170 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  {['Time', 'User', 'Action', 'Target', 'Details', 'Device'].map(h => (
+                    <th key={h} style={{
+                      textAlign: 'left', padding: '10px 14px',
+                      fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                      textTransform: 'uppercase', color: 'var(--ink-4)',
+                      borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((l, i) => {
+                  const cat = categoryOf(l.action)
+                  const pill = CAT_PILL[cat]
+                  const Icon = iconForAction(l.action)
+                  const who = performerOf(l)
+                  const target = resolveTarget(l)
+                  const meta = l.metadata || {}
+                  const key = l.id || String(i)
+                  const ts = l.timestamp ? new Date(l.timestamp) : null
+                  const targetResolved = !!(meta.targetName || meta.name ||
+                    (l.targetId && staff.some(s => s.id === l.targetId)) ||
+                    (l.targetId && entries.some(e => e.id === l.targetId)) ||
+                    (meta.staffId && staff.some(s => s.id === meta.staffId)))
+                  const summary = metaSummary(l)
+                  const deviceStr = [l.device, l.ipAddress].filter(Boolean).join(' · ')
+                  const fullMeta = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
 
-            return (
-              <div key={key} style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--line)',
-                borderRadius: 'var(--r-lg)',
-                boxShadow: 'var(--sh-sm)',
-                padding: '12px 14px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  {/* Action category icon */}
-                  <div style={{
-                    flexShrink: 0, width: 32, height: 32, borderRadius: 8,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: `color-mix(in srgb, ${color} 14%, transparent)`,
-                    color,
-                  }}>
-                    <Icon size={17} />
-                  </div>
+                  return (
+                    <tr
+                      key={key}
+                      style={{ borderBottom: '1px solid var(--line-2)', transition: 'background .12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--canvas)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      {/* TIME */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top', fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                        {ts ? (
+                          <>
+                            <div>{ts.toLocaleDateString()}</div>
+                            <div style={{ color: 'var(--ink-4)', fontSize: 11 }}>{ts.toLocaleTimeString()}</div>
+                          </>
+                        ) : '—'}
+                      </td>
 
-                  {/* Sentence */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                      {/* Performer avatar chip */}
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        verticalAlign: 'middle', marginRight: 2,
-                      }}>
+                      {/* USER */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                          <span style={{
+                            width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                            background: avatarColor(who), color: '#fff',
+                            fontSize: 9.5, fontWeight: 800,
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          }}>{initials(who)}</span>
+                          <span style={{ color: 'var(--ink)', fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</span>
+                        </span>
+                      </td>
+
+                      {/* ACTION */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
                         <span style={{
-                          width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                          background: avatarColor(who), color: '#fff',
-                          fontSize: 9, fontWeight: 800,
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        }}>{initials(who)}</span>
-                        <strong style={{ color: 'var(--ink)', fontWeight: 700 }}>{who}</strong>
-                      </span>
-                      {' '}{prettyAction(l.action)}
-                      {target && (
-                        <>
-                          {' '}<span style={{ color: 'var(--ink-4)' }}>·</span>{' '}
-                          <strong style={{ color: 'var(--brand)', fontWeight: 700 }}>{target}</strong>
-                        </>
-                      )}
-                    </div>
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 8px', borderRadius: 'var(--r-sm)',
+                          background: pill.bg, color: pill.fg,
+                          fontSize: 12, fontWeight: 600, maxWidth: '100%',
+                        }} title={l.action}>
+                          <Icon size={13} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyAction(l.action)}</span>
+                        </span>
+                      </td>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
-                        <Clock size={11} /> {ts ? ts.toLocaleString() : '—'}
-                      </span>
-                      <span style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>{l.action}</span>
-                      {hasDetail && (
-                        <button
-                          onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            fontSize: 11, color: 'var(--ink-3)', padding: 0,
-                          }}
-                        >
-                          <ChevronDown size={12} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
-                          {isOpen ? 'Hide details' : 'Details'}
-                        </button>
-                      )}
-                    </div>
+                      {/* TARGET */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top', fontSize: 13 }}>
+                        {target ? (
+                          <span style={{
+                            color: targetResolved ? 'var(--ink-2)' : 'var(--ink-4)',
+                            fontFamily: targetResolved ? undefined : 'var(--mono)',
+                            fontSize: targetResolved ? 13 : 11.5,
+                            display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }} title={target}>{target}</span>
+                        ) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                      </td>
 
-                    {isOpen && hasDetail && (
-                      <div style={{
-                        marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--line)',
-                        fontSize: 11.5, color: 'var(--ink-3)', display: 'flex', flexDirection: 'column', gap: 4,
-                      }}>
-                        {l.device && <div><span style={{ color: 'var(--ink-4)' }}>Device:</span> {l.device}</div>}
-                        {l.ipAddress && <div><span style={{ color: 'var(--ink-4)' }}>IP:</span> {l.ipAddress}</div>}
-                        {l.detail && <div><span style={{ color: 'var(--ink-4)' }}>Note:</span> {l.detail}</div>}
-                        {meta && Object.keys(meta).length > 0 && (
-                          <pre style={{
-                            margin: 0, fontFamily: 'var(--mono)', fontSize: 10.5,
-                            color: 'var(--ink-3)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                            background: 'var(--bg-subtle, transparent)',
-                          }}>{JSON.stringify(meta, null, 2)}</pre>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+                      {/* DETAILS */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                        {summary ? (
+                          <span
+                            title={fullMeta || summary}
+                            style={{
+                              color: 'var(--ink-3)', fontSize: 12,
+                              display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              cursor: fullMeta ? 'help' : 'default',
+                            }}
+                          >{summary}</span>
+                        ) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                      </td>
+
+                      {/* DEVICE */}
+                      <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                        {deviceStr ? (
+                          <span style={{
+                            color: 'var(--ink-4)', fontSize: 11,
+                            display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }} title={deviceStr}>{deviceStr}</span>
+                        ) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

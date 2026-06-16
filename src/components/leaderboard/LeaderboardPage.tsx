@@ -1,10 +1,13 @@
 'use client'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BADGES, genId, exportCSV, exportPDF, avatarColor, getWeekKey } from '../../lib/utils'
+import { BADGES, genId, exportCSV, exportPDF, avatarColor, initials, getWeekKey } from '../../lib/utils'
 import { Staff, HofEntry, Reward, Redemption, PointsHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
+import { Trophy, Flame, Medal, Download, ShoppingBag, Crown, Award } from 'lucide-react'
+
+const RANK_COLORS = ['var(--gold)', '#9CA3AF', '#B45309']
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
@@ -416,12 +419,14 @@ export default function LeaderboardPage() {
       {/* ... rest of the UI ... */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>🏆 Leaderboard</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Rankings, badges & rewards</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trophy size={22} style={{ color: 'var(--brand)' }} /> Leaderboard
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>Rankings, badges &amp; rewards</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" onClick={() => setShowShop(!showShop)}>
-            🛍️ Points Shop
+          <button className="btn btn-secondary" onClick={() => setShowShop(!showShop)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShoppingBag size={16} /> Points Shop
           </button>
           {user?.role === 'admin' && (
             <button className="btn btn-secondary btn-sm" onClick={saveHofNow}>Save Hall of Fame</button>
@@ -430,15 +435,24 @@ export default function LeaderboardPage() {
       </div>
 
       <div style={{
-        background: 'linear-gradient(135deg, var(--accent), #7C3AED)',
-        borderRadius: 14, padding: 20, color: 'white',
-        display: 'flex', alignItems: 'center', gap: 16
+        background: 'linear-gradient(150deg, var(--brand-2), var(--brand))',
+        borderRadius: 'var(--r-lg)', padding: 24, color: 'white',
+        display: 'flex', alignItems: 'center', gap: 18, boxShadow: 'var(--sh-sm)'
       }}>
-        <div style={{ fontSize: 40 }}>{myRank > 0 && myRank <= 3 ? MEDAL[myRank - 1] : `#${myRank || '-'}`}</div>
+        <div style={{
+          width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
+          background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)'
+        }}>
+          {myRank > 0 && myRank <= 3 ? <Medal size={30} /> : `#${myRank || '-'}`}
+        </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>#{myRank || '-'} of {ranked.length}</div>
-          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{user?.points || 0} points · {user?.streak || 0} week streak</div>
+          <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRank || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {ranked.length}</span></div>
+          <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+            <span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak
+          </div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>Badges</div>
@@ -452,17 +466,34 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      <div className="tabs">
-        {['individual', 'reviewal', 'department', 'badges', 'hof', 'recovery'].map(t => (
-          <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '📋 Submission' : t === 'reviewal' ? '✅ Reviewal' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
-          </div>
-        ))}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 2 }}>
+        {(['individual', 'reviewal', 'department', 'badges', 'hof', 'recovery'] as const).map(t => {
+          const active = tab === t
+          const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : t === 'badges' ? 'Badges' : t === 'hof' ? 'Hall of Fame' : 'Recovery'
+          const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : t === 'badges' ? Award : t === 'hof' ? Crown : Flame
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 'var(--r-md, 8px) var(--r-md, 8px) 0 0',
+                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                background: active ? 'var(--tint)' : 'transparent',
+                color: active ? 'var(--brand)' : 'var(--ink-3)',
+                borderBottom: active ? '2px solid var(--brand)' : '2px solid transparent',
+                marginBottom: -2, transition: 'all .15s'
+              }}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'individual' && (
         <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
-          <div className="card flex flex-col gap-3">
+          <div className="flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16 }}>
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex gap-3 flex-1 min-w-[300px]">
                 <input
@@ -477,18 +508,24 @@ export default function LeaderboardPage() {
                 </select>
               </div>
               <div className="flex gap-2">
-                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>💾 CSV</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>📕 PDF</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
               </div>
             </div>
             {/* Period filter row */}
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period:</span>
               {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
                 <button
                   key={p}
-                  className={`btn btn-sm ${periodType === p ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setPeriodType(p)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    background: periodType === p ? 'var(--brand)' : 'var(--elev)',
+                    color: periodType === p ? '#fff' : 'var(--ink-2)',
+                    borderColor: periodType === p ? 'var(--brand)' : 'var(--line)',
+                  }}
                 >
                   {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
                 </button>
@@ -552,80 +589,108 @@ export default function LeaderboardPage() {
               )}
             </div>
           </div>
+          {/* Podium — top 3 */}
+          {ranked.length >= 1 && (() => {
+            const top3 = ranked.slice(0, 3)
+            // visual order: rank2 (left), rank1 (center), rank3 (right)
+            const order = [top3[1], top3[0], top3[2]].filter(Boolean) as RankedStaff[]
+            return (
+              <div style={{
+                background: 'linear-gradient(150deg, var(--brand-2), var(--brand))',
+                borderRadius: 'var(--r-lg)', padding: 30,
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 24,
+                boxShadow: 'var(--sh-sm)', flexWrap: 'wrap'
+              }}>
+                {order.map(s => {
+                  const rank = ranked.findIndex(r => r.id === s.id) + 1
+                  const isFirst = rank === 1
+                  const size = isFirst ? 88 : 70
+                  const isMe = s.id === user?.id
+                  return (
+                    <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 90 }}>
+                      <div style={{
+                        width: size, height: size, borderRadius: '50%',
+                        background: avatarColor(s.name), color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: isFirst ? 30 : 24, fontWeight: 800, fontFamily: 'var(--font-sora)',
+                        border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)',
+                        boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15), var(--sh-sm)' : 'var(--sh-sm)'
+                      }}>
+                        {initials(s.name)}
+                      </div>
+                      <span style={{
+                        padding: '2px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800,
+                        background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)',
+                        color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)'
+                      }}>#{rank}</span>
+                      <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 15 : 13, textAlign: 'center' }}>
+                        {s.name}{isMe ? ' (You)' : ''}
+                      </span>
+                      <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12, fontFamily: 'var(--mono)' }}>
+                        {(s.points || 0).toLocaleString()} pts
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
+
           {/* Pinned My Rank Card (if not in top 25) */}
           {(myRank > 25 || myRank === 0) && (
-            <div className="card border-accent bg-accent-subtle relative overflow-hidden">
+            <div style={{ background: 'var(--tint)', border: '1px solid var(--brand)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16, position: 'relative', overflow: 'hidden' }}>
               <div className="flex items-center gap-4">
-                <div className="text-3xl font-bold opacity-50">#{myRank || '?'}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--brand)', fontFamily: 'var(--font-sora)', opacity: 0.7 }}>#{myRank || '?'}</div>
                 <div className="flex-1">
-                  <div className="font-bold text-1">{user?.name} (You)</div>
-                  <div className="text-xs text-3">{user?.points || 0} points · {user?.streak || 0}w streak</div>
+                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{user?.name} (You)</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · {user?.streak || 0}w streak</div>
                 </div>
                 {myRank > 25 && (
                   <div className="text-right">
-                    <div className="text-xs text-4">To enter Top 25</div>
-                    <div className="font-bold text-accent">+{ (ranked[24]?.points || 0) - (user?.points || 0) + 1 } pts</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>To enter Top 25</div>
+                    <div style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>+{ (ranked[24]?.points || 0) - (user?.points || 0) + 1 } pts</div>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Name</th>
-                    <th>Points</th>
-                    <th>Performance</th>
-                    <th>Streak</th>
-                    <th>Badges</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Member</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Department</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Streak</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Points</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ranked.slice(0, 25).map((s, i) => {
                     const isMe = s.id === user?.id
-                    const relWidth = Math.max(5, Math.round(((s.points || 0) / (ranked[0]?.points || 1)) * 100))
+                    const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
                     return (
-                      <tr key={s.id} className={isMe ? 'bg-accent-subtle' : ''}>
-                        <td className="font-bold text-lg">
-                          {i < 3 ? MEDAL[i] : (i < 25 ? `🏅 #${i + 1}` : `#${i + 1}`)}
+                      <tr key={s.id} style={isMe ? { background: 'var(--tint)' } : undefined}>
+                        <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: rankColor }}>
+                          {i + 1}
                         </td>
                         <td>
                           <div className="flex items-center gap-2">
-                             <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>
-                                {s.name?.[0]}
+                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                                {initials(s.name)}
                              </div>
-                            <span className="font-bold">{s.name}{isMe ? ' (You)' : ''}</span>
-                          </div>
-                          <div className="text-4 text-xs">{s.department}</div>
-                        </td>
-                        <td className="font-bold text-accent">{(s.points || 0).toLocaleString()}</td>
-                        <td style={{ minWidth: 140 }}>
-                          <div className="flex flex-col gap-1">
-                            <div className="progress h-1.5 w-full bg-border rounded-full overflow-hidden">
-                                <div className="progress-bar h-full bg-accent" style={{ width: `${relWidth}%` }} />
-                            </div>
-                            <div className="flex justify-between text-[10px] text-4">
-                                <span>{s.submissionRate}% rate</span>
-                                <span>{relWidth}% of top</span>
-                            </div>
+                            <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{s.name}{isMe ? <span style={{ color: 'var(--brand)' }}> (You)</span> : ''}</span>
                           </div>
                         </td>
+                        <td style={{ color: 'var(--ink-3)', fontSize: 13 }}>{s.department || '—'}</td>
                         <td>
-                          {s.streak ? <span className="badge badge-yellow">🔥 {s.streak}</span> : <span className="text-4">—</span>}
+                          {s.streak
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--gold)', fontWeight: 600 }}><Flame size={14} /> {s.streak}</span>
+                            : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                         </td>
-                        <td>
-                          <div className="flex gap-1">
-                            {(s.badges || []).slice(0, 3).map(b => {
-                              const badge = BADGES.find(x => x.id === b)
-                              return badge ? <span key={b} title={badge.name}>{badge.icon}</span> : null
-                            })}
-                            {(s.badges || []).length > 3 && <span className="text-4 text-xs">+{s.badges!.length - 3}</span>}
-                          </div>
-                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--brand)' }}>{(s.points || 0).toLocaleString()}</td>
                       </tr>
                     )
                   })}
@@ -633,11 +698,11 @@ export default function LeaderboardPage() {
               </table>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
             {[
               { score: 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +4 after 3 consecutive early weeks`, color: 'var(--success)' },
-              { score: 2, label: 'On-time (within submission window)', color: 'var(--accent)' },
+              { score: 2, label: 'On-time (within submission window)', color: 'var(--brand)' },
               { score: 1, label: 'Late addition (after window closes)', color: 'var(--warning)' },
               { score: -1, label: 'Outside window', color: 'var(--danger)' },
             ].map(({ score, label, color }, i, arr) => (
@@ -655,15 +720,21 @@ export default function LeaderboardPage() {
 
       {tab === 'reviewal' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="card flex flex-col gap-3">
+        <div className="flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16 }}>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 flex-1 flex-wrap">
-              <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period:</span>
               {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
                 <button
                   key={p}
-                  className={`btn btn-sm ${reviewPeriodType === p ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setReviewPeriodType(p)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    background: reviewPeriodType === p ? 'var(--brand)' : 'var(--elev)',
+                    color: reviewPeriodType === p ? '#fff' : 'var(--ink-2)',
+                    borderColor: reviewPeriodType === p ? 'var(--brand)' : 'var(--line)',
+                  }}
                 >
                   {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
                 </button>
@@ -726,51 +797,52 @@ export default function LeaderboardPage() {
               )}
             </div>
             <div className="flex gap-2">
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')}>💾 CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')}>📕 PDF</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
             </div>
           </div>
         </div>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Reviewer</th>
-                  <th>Reviewed</th>
-                  <th title="Avg score based on review speed: 100 within submission window, 80 within 2h after, 60 within 24h, 0 after 24h">Avg Score</th>
-                  <th>Performance</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reviewer</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reviewed</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }} title="Avg score based on review speed: 100 within submission window, 80 within 2h after, 60 within 24h, 0 after 24h">Avg Score</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Performance</th>
                 </tr>
               </thead>
               <tbody>
                 {reviewalRanked.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No review data yet</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-3)' }}>No review data yet</td></tr>
                 )}
                 {reviewalRanked.map((s, i) => {
-                  const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--text-3)'
+                  const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--ink-3)'
                   const scoreLabel = s.avgScore === 100 ? 'Excellent' : s.avgScore >= 80 ? 'Great' : s.avgScore >= 60 ? 'Good' : s.avgScore >= 40 ? 'Fair' : s.avgScore > 0 ? 'Slow' : '—'
+                  const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
                   return (
-                    <tr key={s.id} className={s.id === user?.id ? 'bg-accent-subtle' : ''}>
-                      <td className="font-bold text-lg">{i < 3 ? MEDAL[i] : `#${i + 1}`}</td>
+                    <tr key={s.id} style={s.id === user?.id ? { background: 'var(--tint)' } : undefined}>
+                      <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: rankColor }}>{i + 1}</td>
                       <td>
                         <div className="flex items-center gap-2">
-                          <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>{s.name?.[0]}</div>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials(s.name)}</div>
                           <div>
-                            <span className="font-bold">{s.name}{s.id === user?.id ? ' (You)' : ''}</span>
-                            <div className="text-xs text-3">{s.department} · {s.role.replace('_', ' ')}</div>
+                            <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{s.name}{s.id === user?.id ? <span style={{ color: 'var(--brand)' }}> (You)</span> : ''}</span>
+                            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.department} · {s.role.replace('_', ' ')}</div>
                           </div>
                         </div>
                       </td>
-                      <td style={{ fontWeight: 700 }}>{s.totalReviewed}</td>
+                      <td style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--ink)' }}>{s.totalReviewed}</td>
                       <td>
                         {s.totalReviewed === 0
-                          ? <span className="text-4">—</span>
+                          ? <span style={{ color: 'var(--ink-4)' }}>—</span>
                           : <span style={{ fontWeight: 800, color: scoreColor, fontFamily: 'var(--mono)', fontSize: 16 }}>{s.avgScore}</span>
                         }
                       </td>
                       <td>
-                        {s.totalReviewed === 0 ? <span className="text-4">—</span> : (
+                        {s.totalReviewed === 0 ? <span style={{ color: 'var(--ink-4)' }}>—</span> : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div className="progress" style={{ width: 80 }}>
                               <div className="progress-bar" style={{ width: `${s.avgScore}%`, background: scoreColor }} />
@@ -786,11 +858,11 @@ export default function LeaderboardPage() {
             </table>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
           {[
             { score: 100, label: 'Within submission window', color: 'var(--success)' },
-            { score: 80, label: '≤ 2h after window closes', color: 'var(--accent)' },
+            { score: 80, label: '≤ 2h after window closes', color: 'var(--brand)' },
             { score: 60, label: '≤ 24h after window closes', color: 'var(--warning)' },
             { score: 0, label: 'After 24h', color: 'var(--danger)' },
           ].map(({ score, label, color }, i, arr) => (
@@ -807,25 +879,25 @@ export default function LeaderboardPage() {
       )}
 
       {tab === 'department' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Department</th>
-                  <th>Members</th>
-                  <th>Avg Points</th>
-                  <th>Avg Submit Rate</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Department</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Members</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Avg Points</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Avg Submit Rate</th>
                 </tr>
               </thead>
               <tbody>
                 {deptRanked.map((d, i) => (
                   <tr key={d.dept}>
-                    <td style={{ fontWeight: 700, fontSize: 18 }}>{i < 3 ? MEDAL[i] : `#${i + 1}`}</td>
-                    <td style={{ fontWeight: 600 }}>{d.dept}</td>
-                    <td>{d.members}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--gold)', fontFamily: 'var(--mono)' }}>{d.avgPts}</td>
+                    <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: i < 3 ? RANK_COLORS[i] : 'var(--ink-3)' }}>{i + 1}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{d.dept}</td>
+                    <td style={{ color: 'var(--ink-2)' }}>{d.members}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>{d.avgPts}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div className="progress" style={{ width: 80 }}>
@@ -847,14 +919,19 @@ export default function LeaderboardPage() {
           {BADGES.map(badge => {
             const earned = (user?.badges || []).includes(badge.id)
             return (
-              <div key={badge.id} className={`card flex items-center gap-4 ${earned ? 'border-accent bg-accent-subtle' : 'opacity-50 grayscale'}`}>
+              <div key={badge.id} className="flex items-center gap-4" style={{
+                background: earned ? 'var(--tint)' : 'var(--surface)',
+                border: earned ? '1px solid var(--brand)' : '1px solid var(--line)',
+                borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16,
+                opacity: earned ? 1 : 0.55, filter: earned ? 'none' : 'grayscale(1)'
+              }}>
                 <div className="text-4xl">{badge.icon}</div>
                 <div className="flex-1">
-                  <div className="font-bold">{badge.name}</div>
-                  <div className="text-xs text-3">{badge.desc}</div>
-                  {!earned && <div className="text-[10px] text-accent mt-1 uppercase font-bold tracking-wider">Earn: {badge.id.replace(/_/g, ' ')}...</div>}
+                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{badge.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{badge.desc}</div>
+                  {!earned && <div style={{ fontSize: 10, color: 'var(--brand)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Earn: {badge.id.replace(/_/g, ' ')}...</div>}
                 </div>
-                {earned && <div className="text-accent">✓</div>}
+                {earned && <div style={{ color: 'var(--brand)', fontWeight: 800 }}>✓</div>}
               </div>
             )
           })}
@@ -871,13 +948,20 @@ export default function LeaderboardPage() {
             </div>
           ) : (
             hof.map((s, i) => (
-              <div key={s.id} className="card text-center relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-2 opacity-10 font-bold text-4xl">#{s.rank}</div>
-                <div className="text-5xl mb-4">{MEDAL[s.rank - 1]}</div>
-                <div className="font-bold text-lg">{s.name}</div>
-                <div className="text-xs text-4 mb-3">{s.department}</div>
-                <div className="text-2xl font-bold text-accent">{(s.points || 0).toLocaleString()} <span className="text-xs uppercase opacity-60">pts</span></div>
-                {s.savedAt && <div className="text-[10px] text-4 mt-4 italic">Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
+              <div key={s.id} className="text-center relative overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 20 }}>
+                <div style={{ position: 'absolute', top: 0, right: 0, padding: 8, opacity: 0.08, fontWeight: 800, fontSize: 40, fontFamily: 'var(--font-sora)' }}>#{s.rank}</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)', border: `3px solid ${RANK_COLORS[s.rank - 1] || 'var(--line)'}` }}>
+                    {initials(s.name)}
+                  </div>
+                </div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: RANK_COLORS[s.rank - 1] || 'var(--ink-3)', fontWeight: 700, marginBottom: 4 }}>
+                  <Crown size={16} /> #{s.rank}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ink)' }}>{s.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-4)', marginBottom: 8 }}>{s.department}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()} <span style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6 }}>pts</span></div>
+                {s.savedAt && <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 12, fontStyle: 'italic' }}>Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
               </div>
             ))
           )}
@@ -887,26 +971,26 @@ export default function LeaderboardPage() {
       {tab === 'recovery' && (
         <div className="flex flex-col gap-6">
           {user?.role !== 'admin' && (
-            <div className="card w-full" style={{ maxWidth: 700, margin: '0 auto', border: 'none', background: 'linear-gradient(145deg, var(--bg-card), var(--bg-hover))', boxShadow: 'var(--shadow)' }}>
+            <div className="w-full" style={{ maxWidth: 700, margin: '0 auto', padding: 24, borderRadius: 'var(--r-lg)', background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: 'var(--sh-sm)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
-                <div style={{ width: 64, height: 64, borderRadius: '20px', background: 'var(--warning-bg)', border: '1px solid rgba(234, 179, 8, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0, boxShadow: '0 8px 16px rgba(234, 179, 8, 0.15)' }}>
-                  🔥
+                <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--warn-tint)', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--gold)' }}>
+                  <Flame size={32} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>Request Streak Recovery</h3>
-                  <p style={{ fontSize: 14, color: 'var(--text-3)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+                  <h3 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--ink)', letterSpacing: '-0.02em' }}>Request Streak Recovery</h3>
+                  <p style={{ fontSize: 14, color: 'var(--ink-3)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
                     Missed a timesheet submission? Request a recovery to keep your streak alive.<br/>
                     <strong style={{ color: 'var(--warning)' }}>Limit: Once per month.</strong>
                   </p>
                 </div>
               </div>
-              
-              <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: '24px 28px', border: '1px solid var(--border)', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+
+              <div style={{ background: 'var(--elev)', borderRadius: 'var(--r-lg)', padding: '24px 28px', border: '1px solid var(--line)' }}>
                 <div className="grid-2" style={{ marginBottom: 20 }}>
                   <div className="form-group">
                     <label className="form-label">Week ID</label>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 18 }}>📅</span>
+                      <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: 18 }}>📅</span>
                       <input 
                         className="form-input" 
                         value={recoveryForm.weekId} 
@@ -918,16 +1002,16 @@ export default function LeaderboardPage() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Current Streak</label>
-                    <div style={{ height: 48, padding: '0 20px', background: 'var(--bg-elevated)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-1)', fontWeight: 700, fontSize: 15, border: '1px solid var(--border)' }}>
-                      <span style={{ color: 'var(--warning)' }}>🔥</span> {user?.streak || 0} {user?.streak === 1 ? 'Week' : 'Weeks'}
+                    <div style={{ height: 48, padding: '0 20px', background: 'var(--surface)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink)', fontWeight: 700, fontSize: 15, border: '1px solid var(--line)' }}>
+                      <Flame size={16} style={{ color: 'var(--gold)' }} /> {user?.streak || 0} {user?.streak === 1 ? 'Week' : 'Weeks'}
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="form-group" style={{ marginBottom: 24 }}>
                   <label className="form-label">Reason for Request</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 16, top: 16, color: 'var(--text-3)', fontSize: 18 }}>✍️</span>
+                    <span style={{ position: 'absolute', left: 16, top: 16, color: 'var(--ink-3)', fontSize: 18 }}>✍️</span>
                     <textarea 
                       className="form-textarea" 
                       value={recoveryForm.reason} 
@@ -952,20 +1036,20 @@ export default function LeaderboardPage() {
             </div>
           )}
 
-          <div className="card w-full mx-auto" style={{ maxWidth: 700, padding: 0, overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="w-full mx-auto" style={{ maxWidth: 700, padding: 0, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--line)', background: 'var(--elev)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 20 }}>📜</span>
-              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Recovery Requests'}</h3>
+              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Recovery Requests'}</h3>
             </div>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Staff</th>
-                    <th>Week</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    {user?.role === 'admin' && <th>Action</th>}
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Staff</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Week</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reason</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Status</th>
+                    {user?.role === 'admin' && <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1003,7 +1087,7 @@ export default function LeaderboardPage() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowShop(false)}>
           <div className="modal modal-lg">
             <div className="modal-header">
-              <span className="modal-title">🛍️ Points Shop</span>
+              <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><ShoppingBag size={18} /> Points Shop</span>
               <button className="btn btn-icon btn-secondary btn-sm" onClick={() => setShowShop(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>

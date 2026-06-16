@@ -1,21 +1,125 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
-import { exportCSV } from '../../lib/utils'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  FileText, LogIn, LogOut, CheckCircle2, XCircle, Send, PlusCircle,
+  Pencil, Trash2, ShieldAlert, UserPlus, UserCog, UserMinus, Users,
+  Unlock, FolderPlus, FolderCog, FolderMinus, Settings, Upload, Activity,
+  ChevronDown, Download, Search, Clock
+} from 'lucide-react'
+import { exportCSV, avatarColor, initials } from '../../lib/utils'
+import { useApp } from '../../context/AppContext'
 
 interface AuditLog {
   id: string;
   action: string;
-  detail: string;
-  userId: string;
-  userName: string;
+  detail?: string;
+  userId?: string;
+  userName?: string;
+  performedBy?: string;
+  targetId?: string;
   device?: string;
+  ipAddress?: string;
   timestamp: string;
   metadata?: any;
 }
 
 const PAGE_SIZE = 50
 
+// Raw action code -> readable phrase (verb + object)
+const ACTION_LABELS: Record<string, string> = {
+  submit: 'submitted a timesheet',
+  login: 'signed in',
+  logout: 'signed out',
+  approve: 'approved an entry',
+  reject: 'rejected an entry',
+  override: 'overrode an entry',
+  import: 'imported data',
+  password_reset: 'reset a password',
+  force_logout: 'forced a sign-out',
+  settings_change: 'updated system settings',
+  delete: 'deleted a record',
+  restore: 'restored a record',
+  // Legacy / extended action codes
+  APPROVAL_APPROVED: 'approved a timesheet entry',
+  APPROVAL_REJECTED: 'rejected a timesheet entry',
+  ADD_ENTRY: 'added a timesheet entry',
+  EDIT_ENTRY: 'edited a timesheet entry',
+  DELETE_ENTRY: 'deleted a timesheet entry',
+  ADMIN_OVERRIDE: 'overrode a timesheet entry',
+  ADD_STAFF: 'added a staff member',
+  EDIT_STAFF: 'edited a staff member',
+  DELETE_STAFF: 'deleted staff member(s)',
+  BULK_SUSPEND: 'suspended staff member(s)',
+  BULK_UNSUSPEND: 'unsuspended staff member(s)',
+  BULK_EDIT_STAFF: 'bulk edited staff member(s)',
+  ACCOUNT_UNLOCK: 'unlocked an account',
+  FORCE_LOGOUT: 'forced a sign-out',
+  BULK_IMPORT_ENTRIES: 'bulk imported timesheet entries',
+  create_staff: 'added a staff member',
+  update_staff: 'edited a staff member',
+  delete_staff: 'deleted a staff member',
+  update_entry: 'edited a timesheet entry',
+  create_entry: 'added a timesheet entry',
+  delete_entry: 'deleted a timesheet entry',
+  project_create: 'created a project',
+  project_update: 'updated a project',
+  project_delete: 'deleted a project',
+  project_bulk_import: 'bulk imported projects',
+}
+
+function prettyAction(action: string): string {
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action]
+  return (action || 'performed an action').replace(/[_-]+/g, ' ').toLowerCase()
+}
+
+type Category = 'approve' | 'reject' | 'delete' | 'submit' | 'create' | 'edit' | 'auth' | 'settings' | 'import' | 'other'
+
+function categoryOf(action: string): Category {
+  const a = (action || '').toLowerCase()
+  if (a.includes('login')) return 'auth'
+  if (a.includes('logout')) return 'auth'
+  if (a.includes('approv')) return 'approve'
+  if (a.includes('reject')) return 'reject'
+  if (a.includes('delete') || a.includes('suspend')) return 'delete'
+  if (a.includes('submit')) return 'submit'
+  if (a.includes('create') || a.includes('add')) return 'create'
+  if (a.includes('edit') || a.includes('update') || a.includes('override')) return 'edit'
+  if (a.includes('setting')) return 'settings'
+  if (a.includes('import')) return 'import'
+  return 'other'
+}
+
+const CAT_META: Record<Category, { color: string; Icon: React.ComponentType<any> }> = {
+  approve: { color: '#10B981', Icon: CheckCircle2 },
+  reject: { color: '#EF4444', Icon: XCircle },
+  delete: { color: '#EF4444', Icon: Trash2 },
+  submit: { color: '#3B82F6', Icon: Send },
+  create: { color: '#10B981', Icon: PlusCircle },
+  edit: { color: '#F59E0B', Icon: Pencil },
+  auth: { color: '#06B6D4', Icon: LogIn },
+  settings: { color: '#8B5CF6', Icon: Settings },
+  import: { color: '#8B5CF6', Icon: Upload },
+  other: { color: 'var(--ink-3)', Icon: Activity },
+}
+
+function iconForAction(action: string): React.ComponentType<any> {
+  const a = (action || '').toLowerCase()
+  if (a.includes('login')) return LogIn
+  if (a.includes('logout')) return LogOut
+  if (a.includes('staff') && (a.includes('add') || a.includes('create'))) return UserPlus
+  if (a.includes('staff') && (a.includes('edit') || a.includes('update'))) return UserCog
+  if (a.includes('staff') && a.includes('delete')) return UserMinus
+  if (a.includes('suspend') || a.includes('bulk')) return Users
+  if (a.includes('unlock')) return Unlock
+  if (a.includes('override')) return ShieldAlert
+  if (a.includes('project') && a.includes('create')) return FolderPlus
+  if (a.includes('project') && a.includes('update')) return FolderCog
+  if (a.includes('project') && a.includes('delete')) return FolderMinus
+  return CAT_META[categoryOf(action)].Icon
+}
+
 export default function AuditPage() {
+  const { staff, entries } = useApp()
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -23,6 +127,7 @@ export default function AuditPage() {
   const [search, setSearch] = useState('')
   const [filterAction, setFilterAction] = useState('')
   const [filterDate, setFilterDate] = useState('')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const fetchLogs = useCallback(async (off: number) => {
     setLoading(true)
@@ -39,146 +144,221 @@ export default function AuditPage() {
 
   useEffect(() => { fetchLogs(0) }, [fetchLogs])
 
-  const businessLogs = logs.filter(l => l.action !== 'login' && l.action !== 'logout')
+  // Resolve a targetId to a human-readable name: staff member, or the staff
+  // who owns a timesheet entry, or a name carried in metadata, else the raw id.
+  const resolveTarget = useCallback((log: AuditLog): string => {
+    const meta = log.metadata || {}
+    if (meta.targetName) return meta.targetName
+    if (meta.name) return meta.name
+    const id = log.targetId
+    if (!id || id === 'unknown') return ''
+    const s = staff.find(x => x.id === id)
+    if (s) return s.name
+    const e = entries.find(x => x.id === id)
+    if (e) return e.staffName || (staff.find(x => x.id === e.staffId)?.name ?? '')
+    if (meta.staffId) {
+      const ms = staff.find(x => x.id === meta.staffId)
+      if (ms) return ms.name
+    }
+    return id
+  }, [staff, entries])
 
-  const filtered = businessLogs.filter(l => {
-    if (search && !l.userName?.toLowerCase().includes(search.toLowerCase()) && !l.action?.toLowerCase().includes(search.toLowerCase())) return false
-    if (filterAction && !l.action?.includes(filterAction)) return false
+  const performerOf = (log: AuditLog) => log.performedBy || log.userName || 'System'
+
+  const businessLogs = useMemo(
+    () => logs.filter(l => l.action !== 'login' && l.action !== 'logout'),
+    [logs]
+  )
+
+  const filtered = useMemo(() => businessLogs.filter(l => {
+    if (search) {
+      const q = search.toLowerCase()
+      const who = performerOf(l).toLowerCase()
+      const act = `${l.action ?? ''} ${prettyAction(l.action)}`.toLowerCase()
+      const target = resolveTarget(l).toLowerCase()
+      if (!who.includes(q) && !act.includes(q) && !target.includes(q)) return false
+    }
+    if (filterAction && categoryOf(l.action) !== filterAction) return false
     if (filterDate && !l.timestamp?.startsWith(filterDate)) return false
     return true
-  })
+  }), [businessLogs, search, filterAction, filterDate, resolveTarget])
 
-  const actionTypes = Array.from(new Set(businessLogs.map(l => l.action?.split('_')[0]).filter(Boolean))) as string[]
+  const actionCategories = useMemo(
+    () => Array.from(new Set(businessLogs.map(l => categoryOf(l.action)))) as Category[],
+    [businessLogs]
+  )
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1
 
-  function formatDetail(log: AuditLog): string {
-    const meta = log.metadata || {}
-    const userName = log.userName || 'User'
-
-    switch (log.action) {
-      case 'submit':
-        return `${userName} submitted timesheet for week ${meta.weekKey} (${meta.totalHours}h)`
-      case 'APPROVAL_APPROVED':
-        return `${userName} approved timesheet entry by ${log.detail?.split('approved entry by ')[1]?.split(' for')[0] || 'staff'}`
-      case 'APPROVAL_REJECTED':
-        return `${userName} rejected timesheet entry by ${log.detail?.split('rejected entry by ')[1]?.split(' for')[0] || 'staff'}`
-      case 'ADD_ENTRY':
-        return `${userName} added timesheet entry`
-      case 'EDIT_ENTRY':
-        return `${userName} edited timesheet entry`
-      case 'DELETE_ENTRY':
-        return `${userName} deleted timesheet entry`
-      case 'ADMIN_OVERRIDE':
-        return `${userName} overrode timesheet entry`
-      case 'ADD_STAFF':
-        return `${userName} added staff member: ${meta.name || log.detail?.split('added ')[1] || 'N/A'}`
-      case 'EDIT_STAFF':
-        return `${userName} edited staff member: ${meta.name || log.detail?.split('edited ')[1] || 'N/A'}`
-      case 'DELETE_STAFF':
-        return `${userName} deleted ${meta.count || log.detail?.match(/\d+/)?.[0] || '1'} staff member(s)`
-      case 'BULK_SUSPEND':
-        return `${userName} suspended ${meta.count || log.detail?.match(/\d+/)?.[0] || 'multiple'} staff member(s)`
-      case 'BULK_UNSUSPEND':
-        return `${userName} unsuspended ${meta.count || log.detail?.match(/\d+/)?.[0] || 'multiple'} staff member(s)`
-      case 'BULK_EDIT_STAFF':
-        return `${userName} bulk edited ${meta.count || log.detail?.match(/\d+/)?.[0] || 'multiple'} staff member(s)`
-      case 'ACCOUNT_UNLOCK':
-        return `${userName} unlocked account for ${log.detail?.split('unlocked account for ')[1] || 'staff'}`
-      case 'FORCE_LOGOUT':
-        return `${userName} force logged out ${log.detail?.split('force logged out ')[1] || 'user'}`
-      case 'project_create':
-        return `${userName} created project: ${meta.name || 'N/A'}`
-      case 'project_update':
-        return `${userName} updated project: ${meta.name || 'N/A'}`
-      case 'project_delete':
-        return `${userName} deleted project: ${meta.name || 'N/A'}`
-      case 'project_bulk_import':
-        return `${userName} bulk imported ${meta.count || 0} projects`
-      case 'settings_change':
-        return `${userName} updated system settings`
-      case 'BULK_IMPORT_ENTRIES':
-        return log.detail || `${userName} bulk imported timesheet entries`
-      default:
-        return log.detail || `${userName} performed ${log.action}`
-    }
-  }
-
   async function handleExport() {
-    // Fetch all for export
     const res = await fetch(`/api/audit-logs?limit=200&offset=0`)
     const data = await res.json()
     const allLogs: AuditLog[] = data.logs ?? []
-    exportCSV(allLogs.map(l => ({ Time: l.timestamp, User: l.userName, Action: l.action, Detail: formatDetail(l) })), 'audit_trail.csv')
+    exportCSV(allLogs.map(l => ({
+      Time: l.timestamp,
+      User: performerOf(l),
+      Action: prettyAction(l.action),
+      Target: resolveTarget(l),
+      Device: l.device ?? '',
+    })), 'audit_trail.csv')
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>📝 Audit Trail</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{total} business events logged (login/logout excluded)</p>
+          <h1 style={{ fontSize: 20, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink)' }}>
+            <FileText size={20} style={{ color: 'var(--brand)' }} /> Audit Trail
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>
+            Who did what, to whom, and when. {total} business events logged (sign-in/out excluded).
+          </p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={handleExport}>⬇ Export CSV</button>
+        <button className="btn btn-secondary btn-sm" onClick={handleExport} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={14} /> Export CSV
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <input className="form-input" placeholder="Search by user or action…" value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+          <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-4)' }} />
+          <input
+            className="form-input"
+            placeholder="Search by user, action, or target…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', paddingLeft: 32 }}
+          />
+        </div>
         <select className="form-select" style={{ width: 'auto' }} value={filterAction} onChange={e => setFilterAction(e.target.value)}>
           <option value="">All Actions</option>
-          {actionTypes.map(a => <option key={a} value={a}>{a}</option>)}
+          {actionCategories.map(a => <option key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</option>)}
         </select>
         <input className="form-input" type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={{ width: 'auto' }} />
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)' }}>Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state" style={{ padding: 40 }}>
-            <div className="empty-state-icon">📝</div>
-            <div className="empty-state-title">No audit logs yet</div>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Action</th>
-                  <th>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((l, i) => (
-                  <tr key={l.id || i}>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: 11, whiteSpace: 'nowrap', color: 'var(--text-3)' }}>
-                      {l.timestamp ? new Date(l.timestamp).toLocaleString() : '—'}
-                    </td>
-                    <td>
-                      <span className={`badge badge-${
-                        l.action?.includes('approval') || l.action?.includes('APPROVE') ? 'green' :
-                        l.action?.includes('rejection') || l.action?.includes('REJECT') ? 'red' :
-                        l.action?.includes('delete') || l.action?.includes('DELETE') ? 'red' :
-                        l.action?.includes('request') || l.action?.includes('submit') ? 'blue' :
-                        l.action?.includes('create') || l.action?.includes('ADD') ? 'green' :
-                        l.action?.includes('edit') || l.action?.includes('EDIT') || l.action?.includes('update') ? 'yellow' :
-                        'gray'
-                      }`}>{l.action}</span>
-                    </td>
-                    <td style={{ fontSize: 13, color: 'var(--text-2)' }}>{formatDetail(l)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {loading ? (
+        <div style={{
+          padding: 40, textAlign: 'center', color: 'var(--ink-3)',
+          background: 'var(--surface)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)'
+        }}>Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{
+          padding: 48, textAlign: 'center',
+          background: 'var(--surface)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)'
+        }}>
+          <FileText size={32} style={{ color: 'var(--ink-4)' }} />
+          <div style={{ marginTop: 8, fontWeight: 700, color: 'var(--ink-2)' }}>No audit logs match</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filtered.map((l, i) => {
+            const cat = categoryOf(l.action)
+            const { color } = CAT_META[cat]
+            const Icon = iconForAction(l.action)
+            const who = performerOf(l)
+            const target = resolveTarget(l)
+            const meta = l.metadata || {}
+            const key = l.id || String(i)
+            const isOpen = !!expanded[key]
+            const ts = l.timestamp ? new Date(l.timestamp) : null
+            const hasDetail = !!(l.device || l.ipAddress || (meta && Object.keys(meta).length))
+
+            return (
+              <div key={key} style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-lg)',
+                boxShadow: 'var(--sh-sm)',
+                padding: '12px 14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  {/* Action category icon */}
+                  <div style={{
+                    flexShrink: 0, width: 32, height: 32, borderRadius: 8,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: `color-mix(in srgb, ${color} 14%, transparent)`,
+                    color,
+                  }}>
+                    <Icon size={17} />
+                  </div>
+
+                  {/* Sentence */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+                      {/* Performer avatar chip */}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        verticalAlign: 'middle', marginRight: 2,
+                      }}>
+                        <span style={{
+                          width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                          background: avatarColor(who), color: '#fff',
+                          fontSize: 9, fontWeight: 800,
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        }}>{initials(who)}</span>
+                        <strong style={{ color: 'var(--ink)', fontWeight: 700 }}>{who}</strong>
+                      </span>
+                      {' '}{prettyAction(l.action)}
+                      {target && (
+                        <>
+                          {' '}<span style={{ color: 'var(--ink-4)' }}>·</span>{' '}
+                          <strong style={{ color: 'var(--brand)', fontWeight: 700 }}>{target}</strong>
+                        </>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
+                        <Clock size={11} /> {ts ? ts.toLocaleString() : '—'}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>{l.action}</span>
+                      {hasDetail && (
+                        <button
+                          onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: 11, color: 'var(--ink-3)', padding: 0,
+                          }}
+                        >
+                          <ChevronDown size={12} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                          {isOpen ? 'Hide details' : 'Details'}
+                        </button>
+                      )}
+                    </div>
+
+                    {isOpen && hasDetail && (
+                      <div style={{
+                        marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--line)',
+                        fontSize: 11.5, color: 'var(--ink-3)', display: 'flex', flexDirection: 'column', gap: 4,
+                      }}>
+                        {l.device && <div><span style={{ color: 'var(--ink-4)' }}>Device:</span> {l.device}</div>}
+                        {l.ipAddress && <div><span style={{ color: 'var(--ink-4)' }}>IP:</span> {l.ipAddress}</div>}
+                        {l.detail && <div><span style={{ color: 'var(--ink-4)' }}>Note:</span> {l.detail}</div>}
+                        {meta && Object.keys(meta).length > 0 && (
+                          <pre style={{
+                            margin: 0, fontFamily: 'var(--mono)', fontSize: 10.5,
+                            color: 'var(--ink-3)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            background: 'var(--bg-subtle, transparent)',
+                          }}>{JSON.stringify(meta, null, 2)}</pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => fetchLogs(Math.max(0, offset - PAGE_SIZE))}>← Prev</button>
-          <span style={{ fontSize: 13, color: 'var(--text-3)' }}>Page {currentPage} of {totalPages}</span>
+          <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>Page {currentPage} of {totalPages}</span>
           <button className="btn btn-secondary btn-sm" disabled={offset + PAGE_SIZE >= total} onClick={() => fetchLogs(offset + PAGE_SIZE)}>Next →</button>
         </div>
       )}

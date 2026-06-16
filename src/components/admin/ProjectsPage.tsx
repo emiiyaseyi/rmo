@@ -1,14 +1,15 @@
 'use client'
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
-import { genId, exportCSV, exportPDF } from '../../lib/utils'
-import { Briefcase, Plus, Search, Download, Trash2, Edit2, X } from 'lucide-react'
+import { genId, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
+import { Plus, Search, Download, Trash2, Edit2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
 
 export default function ProjectsPage() {
   const { projects, saveProjects, entries, settings, saveSettings, logAudit } = useApp()
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<{ name: string; active: boolean; budget: number; tasks: string[] }>({ name: '', active: true, budget: 0, tasks: [] })
@@ -23,16 +24,31 @@ export default function ProjectsPage() {
     logAudit('settings_change', 'system', { updates: Object.keys(updates) })
   }
 
-  const projectStats = useMemo(() => {
+  // Search-filtered list (used for filter-pill counts)
+  const searchedStats = useMemo(() => {
     return projects.map((p: any) => {
       const pEntries = entries.filter(e => e.project === p.name && !e.deleted)
       const totalHours = pEntries.reduce((sum, e) => sum + (e.hours || 0), 0)
       const staffCount = new Set(pEntries.map(e => e.staffId)).size
-      return { ...p, totalHours, staffCount }
-    }).filter((p: any) => 
+      const contributors = Array.from(new Set(pEntries.map(e => e.staffName).filter(Boolean)))
+      return { ...p, totalHours, staffCount, contributors }
+    }).filter((p: any) =>
       !search || p.name.toLowerCase().includes(search.toLowerCase())
     )
   }, [projects, entries, search])
+
+  const filterCounts = useMemo(() => ({
+    all: searchedStats.length,
+    active: searchedStats.filter((p: any) => p.active).length,
+    inactive: searchedStats.filter((p: any) => !p.active).length,
+  }), [searchedStats])
+
+  // Status-filtered list (the projects actually shown / exported)
+  const projectStats = useMemo(() => {
+    if (statusFilter === 'active') return searchedStats.filter((p: any) => p.active)
+    if (statusFilter === 'inactive') return searchedStats.filter((p: any) => !p.active)
+    return searchedStats
+  }, [searchedStats, statusFilter])
 
   const handleSave = () => {
     if (!form.name.trim()) {
@@ -181,12 +197,43 @@ export default function ProjectsPage() {
     input.click()
   }
 
+  const filterPills: { key: 'all' | 'active' | 'inactive'; label: string }[] = [
+    { key: 'all', label: `All · ${filterCounts.all}` },
+    { key: 'active', label: `Active · ${filterCounts.active}` },
+    { key: 'inactive', label: `Inactive · ${filterCounts.inactive}` },
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h1 style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-sora)', color: 'var(--ink)' }}>Project Management</h1>
+        <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>Manage projects, import/export data and configure categories</p>
+      </div>
+
+      {/* Toolbar: filter pills + actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>💼 Project Management</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Manage projects, import/export data and configure categories</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {filterPills.map(pill => {
+            const active = statusFilter === pill.key
+            return (
+              <button
+                key={pill.key}
+                onClick={() => setStatusFilter(pill.key)}
+                style={{
+                  background: active ? 'var(--brand)' : 'var(--elev)',
+                  color: active ? '#fff' : 'var(--ink-2)',
+                  border: 'none',
+                  borderRadius: 999,
+                  padding: '6px 13px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {pill.label}
+              </button>
+            )
+          })}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {selected.size > 0 && (
@@ -210,81 +257,149 @@ export default function ProjectsPage() {
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>
             <Download size={14} /> Report PDF
           </button>
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-            <Plus size={14} /> Add Project
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--brand)', color: '#fff', border: 'none',
+              borderRadius: 'var(--r-sm)', padding: '9px 15px',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              boxShadow: '0 3px 10px rgba(12,122,55,.25)',
+            }}
+          >
+            <Plus size={15} /> New project
           </button>
         </div>
       </div>
 
-      <div className="card" style={{ padding: '16px', display: 'flex', gap: 12 }}>
-         <div style={{ position: 'relative', flex: 1 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
-            <input 
-              className="form-input" 
-              placeholder="Filter projects..." 
-              style={{ paddingLeft: 34 }} 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-         </div>
+      {/* Search */}
+      <div style={{ position: 'relative', maxWidth: 360 }}>
+        <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-4)' }} />
+        <input
+          className="form-input"
+          placeholder="Search projects…"
+          style={{ paddingLeft: 34 }}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 36 }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-                </th>
-                <th>Project Name</th>
-                <th>Status</th>
-                <th>Approved Tasks</th>
-                <th>Total Hours</th>
-                <th>Staff Contributors</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projectStats.map((p: any) => (
-                <tr key={p.id} style={{ background: selected.has(p.id) ? 'var(--accent-subtle)' : undefined }}>
-                  <td>
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
-                  </td>
-                  <td style={{ fontWeight: 700 }}>{p.name}</td>
-                  <td>
-                    <span className={`badge badge-${p.active ? 'green' : 'gray'}`}>
-                      {p.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    {p.tasks?.length > 0
-                      ? <span className="badge badge-blue">{p.tasks.length} task{p.tasks.length !== 1 ? 's' : ''}</span>
-                      : <span style={{ fontSize: 12, color: 'var(--text-3)' }}>—</span>}
-                  </td>
-                  <td style={{ fontWeight: 800, color: 'var(--accent)' }}>{p.totalHours.toLocaleString()}h</td>
-                  <td>{p.staffCount}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0, tasks: p.tasks || [] }); setTaskInput(''); setShowAdd(true) }}>
-                        <Edit2 size={12} />
-                      </button>
-                      <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {projectStats.length === 0 && (
-                <tr>
-                   <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No projects found</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* Select-all helper */}
+      {projectStats.length > 0 && (
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+          Select all ({projectStats.length})
+        </label>
+      )}
+
+      {/* Project card grid */}
+      {projectStats.length === 0 ? (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 40, textAlign: 'center', color: 'var(--ink-3)', boxShadow: 'var(--sh-sm)' }}>
+          No projects found
         </div>
-      </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          {projectStats.map((p: any) => {
+            const budget = Number(p.budget) || 0
+            const hasBudget = budget > 0
+            const pct = hasBudget ? Math.round((p.totalHours / budget) * 100) : 0
+            const over = hasBudget && p.totalHours > budget
+            // status: inactive -> warn; over budget -> danger; otherwise on-track
+            const status = !p.active
+              ? { label: 'Inactive', bg: 'var(--warn-tint)', color: 'var(--warn)' }
+              : over
+                ? { label: 'Over budget', bg: 'var(--danger-tint)', color: 'var(--danger)' }
+                : { label: 'On track', bg: 'var(--tint)', color: 'var(--brand-2)' }
+            const barColor = over ? 'var(--danger)' : pct >= 80 ? 'var(--warn)' : 'var(--brand)'
+            const contributors: string[] = p.contributors || []
+            const isSel = selected.has(p.id)
+            return (
+              <div
+                key={p.id}
+                style={{
+                  background: 'var(--surface)',
+                  border: isSel ? '1px solid var(--brand)' : '1px solid var(--line)',
+                  borderRadius: 'var(--r-lg)',
+                  padding: 20,
+                  boxShadow: 'var(--sh-sm)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 14,
+                  position: 'relative',
+                }}
+              >
+                {/* Top row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
+                    <input type="checkbox" checked={isSel} onChange={() => toggleSelect(p.id)} style={{ marginTop: 3 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+                        {p.tasks?.length > 0 ? `${p.tasks.length} approved task${p.tasks.length !== 1 ? 's' : ''}` : 'No approved tasks'}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ flexShrink: 0, background: status.bg, color: status.color, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {status.label}
+                  </span>
+                </div>
+
+                {/* Budget */}
+                {hasBudget && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Budget used</span>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{pct}%</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 999, background: 'var(--line-2)', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: barColor, borderRadius: 999 }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: '1px solid var(--line-2)', paddingTop: 12, marginTop: 'auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {contributors.slice(0, 4).map((name, i) => (
+                      <div
+                        key={name}
+                        title={name}
+                        style={{
+                          width: 26, height: 26, borderRadius: '50%',
+                          background: avatarColor(name), color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 10, fontWeight: 700,
+                          border: '2px solid var(--surface)',
+                          marginLeft: i === 0 ? 0 : -8,
+                        }}
+                      >
+                        {initials(name)}
+                      </div>
+                    ))}
+                    {contributors.length > 4 && (
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--elev)', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, border: '2px solid var(--surface)', marginLeft: -8 }}>
+                        +{contributors.length - 4}
+                      </div>
+                    )}
+                    {contributors.length === 0 && (
+                      <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>No contributors</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{p.totalHours.toLocaleString()}h logged</span>
+                    <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditing(p); setForm({ name: p.name, active: p.active, budget: p.budget || 0, tasks: p.tasks || [] }); setTaskInput(''); setShowAdd(true) }}>
+                      <Edit2 size={12} />
+                    </button>
+                    <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => handleDelete(p.id)}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="card flex flex-col gap-4">
         <h3 className="font-bold">🏷️ Entry Categories</h3>

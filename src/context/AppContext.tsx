@@ -410,6 +410,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function logAudit(action: string, targetId: string, metadata: any = {}) {
+    // Enrich with a human-readable target name when easily derivable, so the
+    // audit trail can show "who did what to whom" without re-resolving later.
+    let targetName = metadata?.targetName || metadata?.name
+    if (!targetName && targetId && targetId !== 'unknown') {
+      const s = staff.find(x => x.id === targetId)
+      if (s) targetName = s.name
+    }
+    const enrichedMeta = targetName ? { ...metadata, targetName } : metadata
     const entry: AuditLog = {
       id: genId(),
       action: action as any,
@@ -418,7 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       device: `${navigator.platform} (${navigator.language}) | ${navigator.userAgent.slice(0, 40)}`,
       ipAddress: 'Local Browser',
       timestamp: new Date().toISOString(),
-      metadata
+      metadata: enrichedMeta
     }
     const updated = [entry, ...auditLogs].slice(0, 1000)
     saveAuditLogs(updated)
@@ -741,12 +749,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function canApproveTimesheets() {
     if (!user) return false
     if (['admin', 'team_lead'].includes(user.role)) return true
-    const now = new Date()
-    const hasActiveDelegation = approvalDelegations.some(d =>
-      d.delegateId === user.id && d.isActive &&
-      new Date(d.startDate) <= now && new Date(d.endDate) >= now
-    )
-    if (hasActiveDelegation) return true
     if (pendingApprovals().length > 0) return true
     const normalizedUserName = (user.name || '').trim().toLowerCase()
     return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))

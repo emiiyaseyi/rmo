@@ -6,7 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   Bell, Menu, Sun, Moon, Search, X, LogOut, Settings,
   Home, CalendarDays, CheckSquare, Zap, Briefcase, BarChart3,
-  ArrowLeftRight, Trophy, Users, Network, ScrollText, HelpCircle,
+  Trophy, Users, Network, ScrollText, HelpCircle,
 } from 'lucide-react'
 import PasswordChangeModal from '../auth/PasswordChangeModal'
 import IdleWarningOverlay from '../auth/IdleWarningOverlay'
@@ -33,7 +33,6 @@ function getNavItems(role: string): NavItem[] {
     { id: 'team_header', label: 'TEAM', roles: ['staff', 'team_lead', 'admin'], isHeader: true },
     { id: 'projects', label: 'Projects', Icon: Briefcase, roles: ['admin'] },
     { id: 'analytics', label: 'Analytics', Icon: BarChart3, roles: ['admin', 'team_lead'] },
-    { id: 'delegation', label: 'Delegation', Icon: ArrowLeftRight, roles: ['admin', 'team_lead'] },
     { id: 'leaderboard', label: 'Leaderboard', Icon: Trophy, roles: ['staff', 'admin', 'team_lead'] },
     { id: 'staff', label: 'Staff Management', Icon: Users, roles: ['admin'] },
     { id: 'org_chart', label: 'Organogram', Icon: Network, roles: ['admin'] },
@@ -52,7 +51,6 @@ const PAGE_SUB: Record<string, string> = {
   leave: 'Log leave and absences',
   projects: 'Projects and budgets',
   analytics: 'Reports and insights',
-  delegation: 'Delegate approvals',
   leaderboard: 'Rankings, badges & rewards',
   staff: 'Manage staff accounts',
   org_chart: 'Organisation structure',
@@ -61,6 +59,7 @@ const PAGE_SUB: Record<string, string> = {
   settings: 'Platform configuration',
   profile: 'Your account',
 }
+// (delegation removed)
 
 interface LayoutProps {
   page: string;
@@ -112,7 +111,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       { id: 'analytics', label: 'Department Report', keywords: ['department', 'report', 'dept', 'team stats'], type: 'page' as const },
       { id: 'analytics', label: 'Projects Report', keywords: ['projects', 'report', 'project hours'], type: 'page' as const },
       { id: 'analytics', label: 'Utilisation Report', keywords: ['utilisation', 'utilization', 'efficiency', 'productivity'], type: 'page' as const },
-      { id: 'delegation', label: 'Approval Delegation', keywords: ['delegation', 'delegate', 'approval delegation', 'substitute'], type: 'page' as const },
     ]
     return items.filter(item => !item.label.includes('undefined'))
   }, [user?.role])

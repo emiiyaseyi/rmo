@@ -95,7 +95,7 @@ const BADGE_ICONS: Record<string, string> = {
 interface DashboardProps { setPage: (page: string) => void }
 
 export default function Dashboard({ setPage }: DashboardProps) {
-  const { user, entries, staff, pendingApprovals, settings, approvalDelegations, leaves } = useApp()
+  const { user, entries, staff, pendingApprovals, settings, leaves } = useApp()
   const [showNotSubmittedModal, setShowNotSubmittedModal] = useState(false)
   const thisWeek = getWeekKey()
 
@@ -106,9 +106,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
   const pendingCount = pendingApprovals().length
 
   const now = new Date()
-  const hasActiveDelegation = approvalDelegations.some(d =>
-    d.delegateId === user?.id && d.isActive && new Date(d.startDate) <= now && new Date(d.endDate) >= now)
-  const isAdmin = ['admin', 'team_lead'].includes(user?.role || '') || hasActiveDelegation
+  const isAdmin = ['admin', 'team_lead'].includes(user?.role || '')
   const isTeamLead = user?.role === 'team_lead'
   const isHigherAdmin = user?.role === 'admin'
 

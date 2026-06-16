@@ -775,51 +775,87 @@ export default function StaffPage() {
 
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'var(--font-sora)' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>👥 Staff Management</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-0.02em' }}>Staff</h1>
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>
             {staff.length} members · {staff.filter(s => !s.suspended).length} active · {activeSessions.length} online now
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative' }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => exportStaff(selected.size > 0 ? selected : null)}>
-              <Download size={13} /> {selected.size > 0 ? `Export ${selected.size}` : 'Export All'}
-            </button>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={downloadStaffTemplate}>
-            <Download size={13} /> CSV Template
+          <button
+            onClick={() => exportStaff(selected.size > 0 ? selected : null)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, background: 'var(--surface)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <Download size={14} /> {selected.size > 0 ? `Export ${selected.size}` : 'Export All'}
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={openStaffImport}>
-            <Upload size={13} /> Bulk Import
+          <button
+            onClick={downloadStaffTemplate}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, background: 'var(--surface)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <Download size={14} /> CSV Template
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={exportStaffPDF}>PDF</button>
-          <button className="btn btn-primary" onClick={() => { setEditStaff(null); setShowModal(true) }}>
-            <Plus size={14} /> Add Staff
+          <button
+            onClick={openStaffImport}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, background: 'var(--surface)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <Upload size={14} /> Bulk Import
+          </button>
+          <button
+            onClick={exportStaffPDF}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, background: 'var(--surface)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            PDF
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="tabs">
-        <div className={'tab' + (tab === 'staff' ? ' active' : '')} onClick={() => setTab('staff')}>Staff List</div>
-        <div className={'tab' + (tab === 'sessions' ? ' active' : '')} onClick={() => setTab('sessions')}>
-          Active Sessions <span className="badge badge-green" style={{ marginLeft: 6 }}>{activeSessions.length}</span>
-        </div>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)' }}>
+        {[
+          { id: 'staff', label: 'Staff List' },
+          { id: 'sessions', label: 'Active Sessions' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '0 16px', height: 40,
+              background: 'none', border: 'none', cursor: 'pointer', fontSize: 14,
+              fontWeight: tab === t.id ? 700 : 500,
+              color: tab === t.id ? 'var(--brand)' : 'var(--ink-3)',
+              borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
+              marginBottom: -1,
+            }}>
+            {t.label}
+            {t.id === 'sessions' && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand)', background: 'var(--tint)', borderRadius: 999, padding: '2px 8px' }}>{activeSessions.length}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── STAFF LIST TAB ── */}
       {tab === 'staff' && (
         <>
+          {/* Search + Add staff */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+              <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', pointerEvents: 'none' }} />
+              <input
+                placeholder="Search staff…"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setSelected(new Set()) }}
+                style={{ width: '100%', height: 40, paddingLeft: 38, paddingRight: 12, border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 14, outline: 'none', fontFamily: 'var(--font-sora)' }}
+              />
+            </div>
+            <button
+              onClick={() => { setEditStaff(null); setShowModal(true) }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 18px', height: 40, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 3px 10px rgba(12,122,55,.25)', fontFamily: 'var(--font-sora)' }}>
+              <Plus size={16} /> Add staff
+            </button>
+          </div>
+
           {/* Filters */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)' }} />
-              <input className="form-input" placeholder="Search name, email, department…" value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} style={{ paddingLeft: 34 }} />
-            </div>
             <select className="form-select" style={{ width: 'auto' }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d} value={d}>{d}</option>)}
@@ -844,82 +880,97 @@ export default function StaffPage() {
 
           {/* Bulk action bar */}
           {selected.size > 0 && (
-            <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent)', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>{selected.size} selected</span>
-              <div style={{ height: 16, width: 1, background: 'var(--border)' }} />
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulkEdit(true)}>✏️ Bulk Edit</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => bulkSuspend(true)}>🚫 Suspend All</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => bulkSuspend(false)}>✅ Unsuspend All</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportStaff(selected)}>⬇ Export Selected</button>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(selected)}>🗑 Delete Selected</button>
+            <div style={{ background: 'var(--tint)', border: '1px solid var(--brand)', borderRadius: 'var(--r)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{selected.size} selected</span>
+              <div style={{ height: 16, width: 1, background: 'var(--line)' }} />
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulkEdit(true)}>Bulk Edit</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => bulkSuspend(true)}>Suspend All</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => bulkSuspend(false)}>Unsuspend All</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportStaff(selected)}>Export Selected</button>
+              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(selected)}>Delete Selected</button>
               <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>Clear</button>
             </div>
           )}
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
             <div className="table-wrap">
-              <table>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sora)' }}>
                 <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>
-                      <button onClick={toggleAll} style={{ background: 'none', border: 'none', cursor: 'pointer', color: allSelectedOnPage ? 'var(--accent)' : 'var(--text-3)' }}>
-                        {allSelectedOnPage ? <CheckSquare size={16} /> : <Square size={16} />}
-                      </button>
-                    </th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Department</th>
-                    <th>Role</th>
-                    <th>Lead</th>
-                    <th>Cap</th>
-                    <th>Points</th>
-                    <th>Status</th>
-                    <th>Online</th>
-                    <th>Actions</th>
+                  <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                    {(() => {
+                      const th = { textAlign: 'left' as const, padding: '12px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: 'var(--ink-3)', background: 'var(--elev)' }
+                      return (
+                        <>
+                          <th style={{ ...th, width: 40 }}>
+                            <button onClick={toggleAll} style={{ background: 'none', border: 'none', cursor: 'pointer', color: allSelectedOnPage ? 'var(--brand)' : 'var(--ink-3)', display: 'flex' }}>
+                              {allSelectedOnPage ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                          </th>
+                          <th style={th}>Member</th>
+                          <th style={th}>Department</th>
+                          <th style={th}>Role</th>
+                          <th style={th}>This week</th>
+                          <th style={th}>Status</th>
+                          <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+                        </>
+                      )
+                    })()}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(s => {
                     const isOnline = activeSessions.some(sess => sess.userId === s.id)
-                    const cap = s.weekly_cap || settings?.weekly_cap || 45
+                    const cap = Number(s.weekly_cap || settings?.weekly_cap || 45)
+                    const hrs = (s as any).weekHours || 0
+                    const pct = cap > 0 ? Math.min(100, Math.round((hrs / cap) * 100)) : 0
+                    const rolePill = s.role === 'admin'
+                      ? { bg: 'var(--violet-tint)', fg: 'var(--violet)' }
+                      : s.role === 'team_lead'
+                      ? { bg: 'var(--info-tint)', fg: 'var(--info)' }
+                      : { bg: 'var(--elev)', fg: 'var(--ink-2)' }
+                    const statusColor = s.suspended ? 'var(--danger)' : 'var(--brand)'
+                    const td = { padding: '12px 16px', borderBottom: '1px solid var(--line-2)', verticalAlign: 'middle' as const }
                     return (
-                      <tr key={s.id} style={{ background: selected.has(s.id) ? 'var(--accent-subtle)' : '' }}>
-                        <td>
-                          <button onClick={() => toggleOne(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: selected.has(s.id) ? 'var(--accent)' : 'var(--text-3)' }}>
+                      <tr key={s.id} style={{ background: selected.has(s.id) ? 'var(--tint)' : 'transparent' }}>
+                        <td style={td}>
+                          <button onClick={() => toggleOne(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: selected.has(s.id) ? 'var(--brand)' : 'var(--ink-3)', display: 'flex' }}>
                             {selected.has(s.id) ? <CheckSquare size={15} /> : <Square size={15} />}
                           </button>
                         </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 10, position: 'relative' }}>
+                        <td style={td}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
                               {initials(s.name)}
-                              {isOnline && <div style={{ position: 'absolute', bottom: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', border: '1.5px solid var(--bg-card)' }} />}
+                              {isOnline && <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: 'var(--brand)', border: '2px solid var(--surface)' }} />}
                             </div>
-                            <span style={{ fontWeight: 600 }}>{s.name}</span>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: 14 }}>{s.name}</div>
+                              <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.email}</div>
+                            </div>
                           </div>
                         </td>
-                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.email}</td>
-                        <td style={{ fontSize: 12 }}>{s.department || '—'}</td>
-                        <td>
-                          <span className={'badge badge-' + (
- 
-                            s.role === 'admin' ? 'orange' : 
-                            s.role === 'team_lead' ? 'purple' : 'blue'
-                          )}>
+                        <td style={{ ...td, fontSize: 13, color: 'var(--ink-2)' }}>{s.department || '—'}</td>
+                        <td style={td}>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, background: rolePill.bg, color: rolePill.fg, textTransform: 'capitalize' }}>
                             {s.role.replace('_', ' ')}
                           </span>
                         </td>
-                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{s.leadName || '—'}</td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{cap}h</td>
-                        <td style={{ fontWeight: 700, color: 'var(--gold)' }}>{s.points || 0}</td>
-                        <td><span className={'badge badge-' + (s.suspended ? 'red' : 'green')}>{s.suspended ? 'Suspended' : 'Active'}</span></td>
-                        <td>
-                          {isOnline
-                            ? <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>● Online</span>
-                            : <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>}
+                        <td style={td}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 130 }}>
+                            <div style={{ flex: 1, height: 6, background: 'var(--elev)', borderRadius: 999, overflow: 'hidden', maxWidth: 80 }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: 'var(--brand)', borderRadius: 999 }} />
+                            </div>
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{hrs}h</span>
+                          </div>
                         </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <td style={td}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+                            {s.suspended ? 'Suspended' : 'Active'}
+                          </span>
+                        </td>
+                        <td style={{ ...td, textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditStaff(s); setShowModal(true) }}><Edit2 size={12} /></button>
                             <button className="btn btn-icon btn-secondary btn-sm" title="Reset Password" onClick={() => resetPassword(s)}><Key size={12} /></button>
                             {s.lockout_until && new Date(s.lockout_until) > new Date() && (
@@ -942,13 +993,12 @@ export default function StaffPage() {
             </div>
             {filtered.length === 0 && (
               <div className="empty-state" style={{ padding: 40 }}>
-                <div className="empty-state-icon">👥</div>
                 <div className="empty-state-title">No staff found</div>
               </div>
             )}
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
             Showing {filtered.length} of {staff.length} staff
             {selected.size > 0 && ` · ${selected.size} selected`}
           </div>
@@ -958,46 +1008,54 @@ export default function StaffPage() {
       {/* ── ACTIVE SESSIONS TAB ── */}
       {tab === 'sessions' && (
         <div>
-          <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-3)' }}>
+          <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--ink-3)' }}>
             Sessions inactive for more than 5 minutes are automatically removed.
           </div>
           {activeSessions.length === 0 ? (
-            <div className="empty-state card">
-              <div className="empty-state-icon">💤</div>
+            <div className="empty-state" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 40 }}>
               <div className="empty-state-title">No active sessions</div>
               <div className="empty-state-desc">No one is currently logged in</div>
             </div>
           ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
               <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Staff</th><th>Department</th><th>Role</th><th>Logged In</th><th>Last Seen</th><th>Action</th></tr></thead>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sora)' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                      {(() => {
+                        const th = { textAlign: 'left' as const, padding: '12px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: 'var(--ink-3)', background: 'var(--elev)' }
+                        return <><th style={th}>Staff</th><th style={th}>Department</th><th style={th}>Role</th><th style={th}>Logged In</th><th style={th}>Last Seen</th><th style={th}>Action</th></>
+                      })()}
+                    </tr>
+                  </thead>
                   <tbody>
                     {activeSessions.map(sess => {
                       const s = staff.find(m => m.id === sess.userId)
                       if (!s) return null
+                      const rolePill = s.role === 'admin'
+                        ? { bg: 'var(--violet-tint)', fg: 'var(--violet)' }
+                        : s.role === 'team_lead'
+                        ? { bg: 'var(--info-tint)', fg: 'var(--info)' }
+                        : { bg: 'var(--elev)', fg: 'var(--ink-2)' }
+                      const td = { padding: '12px 16px', borderBottom: '1px solid var(--line-2)', verticalAlign: 'middle' as const }
                       return (
                         <tr key={sess.userId}>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
-                              <div className="avatar avatar-sm" style={{ background: avatarColor(s.name), fontSize: 10 }}>{initials(s.name)}</div>
-                              <span style={{ fontWeight: 600 }}>{s.name}</span>
+                          <td style={td}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--brand)', flexShrink: 0 }} />
+                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(s.name)}</div>
+                              <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{s.name}</span>
                             </div>
                           </td>
-                          <td style={{ color: 'var(--text-3)' }}>{s.department || '—'}</td>
-                          <td>
-                            <span className={'badge badge-' + (
-   
-                              s.role === 'admin' ? 'orange' : 
-                              s.role === 'team_lead' ? 'purple' : 'blue'
-                            )}>
+                          <td style={{ ...td, fontSize: 13, color: 'var(--ink-2)' }}>{s.department || '—'}</td>
+                          <td style={td}>
+                            <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, background: rolePill.bg, color: rolePill.fg, textTransform: 'capitalize' }}>
                               {s.role.replace('_', ' ')}
                             </span>
                           </td>
-                          <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date(sess.loginAt).toLocaleTimeString()}</td>
-                          <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date(sess.lastSeen).toLocaleTimeString()}</td>
-                          <td><button className="btn btn-danger btn-sm" onClick={() => forceLogout(s)}>Force Logout</button></td>
+                          <td style={{ ...td, fontSize: 12, color: 'var(--ink-3)' }}>{new Date(sess.loginAt).toLocaleTimeString()}</td>
+                          <td style={{ ...td, fontSize: 12, color: 'var(--ink-3)' }}>{new Date(sess.lastSeen).toLocaleTimeString()}</td>
+                          <td style={td}><button className="btn btn-danger btn-sm" onClick={() => forceLogout(s)}>Force Logout</button></td>
                         </tr>
                       )
                     })}

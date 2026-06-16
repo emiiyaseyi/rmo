@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF } from '../../lib/utils'
-import { Staff, Entry, ApprovalDelegation, ApprovalHistoryEntry } from '../../types'
+import { Staff, Entry, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
-import { Plus, X, CheckSquare, Square, Trash2 } from 'lucide-react'
+import { X, CheckSquare, Square, Trash2 } from 'lucide-react'
 import PageHeader from '../common/PageHeader'
 import ConfirmModal from '../common/ConfirmModal'
 
@@ -146,116 +146,6 @@ function ApprovalModal({ entry, staff, onClose, onAction }: ApprovalModalProps) 
   )
 }
 
-interface DelegationModalProps {
-  onSave: (delegation: Partial<ApprovalDelegation>) => void;
-  onClose: () => void;
-  taskOwners: Staff[];
-  projects: any[];
-}
-
-function DelegationModal({ onSave, onClose, taskOwners, projects }: DelegationModalProps) {
-  const [form, setForm] = useState({
-    delegateId: '',
-    startDate: '',
-    endDate: '',
-    reason: '',
-    scope: 'all' as 'all' | 'project' | 'projects',
-    projectId: '',
-    projectIds: [] as string[]
-  })
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">Create Approval Delegation</span>
-          <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="form-label">Delegate To *</label>
-            <select className="form-select" value={form.delegateId} onChange={e => setForm({ ...form, delegateId: e.target.value })}>
-              <option value="">Select a team lead or admin...</option>
-              {taskOwners.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Delegation Scope *</label>
-            <select className="form-select" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value as 'all' | 'project' | 'projects', projectId: '', projectIds: [] })}>
-              <option value="all">All Approvals</option>
-              <option value="project">Single Project Only</option>
-              <option value="projects">Multiple Projects</option>
-            </select>
-            <span className="form-hint">Choose whether to delegate all your approvals or specific projects</span>
-          </div>
-
-          {form.scope === 'project' && (
-            <div className="form-group">
-              <label className="form-label">Project/Task *</label>
-              <select className="form-select" value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
-                <option value="">Select a project...</option>
-                {projects.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {form.scope === 'projects' && (
-            <div className="form-group">
-              <label className="form-label">Projects/Tasks *</label>
-              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '12px', maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-card)' }}>
-                {projects.filter(p => p.active).map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
-                    <input
-                      type="checkbox"
-                      id={`modal-project-${p.id}`}
-                      checked={form.projectIds.includes(p.id)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          setForm({ ...form, projectIds: [...form.projectIds, p.id] })
-                        } else {
-                          setForm({ ...form, projectIds: form.projectIds.filter(id => id !== p.id) })
-                        }
-                      }}
-                    />
-                    <label htmlFor={`modal-project-${p.id}`} style={{ fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>{p.name}</label>
-                  </div>
-                ))}
-              </div>
-              <span className="form-hint">{form.projectIds.length} project(s) selected</span>
-            </div>
-          )}
-
-          <div className="grid-2">
-            <div className="form-group">
-              <label className="form-label">From Date *</label>
-              <input className="form-input" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Until Date *</label>
-              <input className="form-input" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Reason (optional)</label>
-            <input className="form-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="e.g. Annual leave" />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!form.delegateId || !form.startDate || !form.endDate || (form.scope === 'project' && !form.projectId) || (form.scope === 'projects' && form.projectIds.length === 0)}
-            onClick={() => onSave(form)}
-          >
-            Create Delegation
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function MultiSelectDropdown({
   label, filterKey, items, selected, onToggle, onToggleAll, countMap,
 }: {
@@ -334,14 +224,13 @@ function MultiSelectDropdown({
 }
 
 export default function ApprovalsPage() {
-  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, approvalDelegations, saveApprovalDelegations, projects, pendingApprovals } = useApp()
-  const [tab, setTab] = useState<string>('pending') // pending, history, delegations, outstanding
+  const { user, entries, staff, saveEntries, saveNotifications, notify, awardPoints, settings, pendingApprovals } = useApp()
+  const [tab, setTab] = useState<string>('pending') // pending, history, outstanding
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterDept, setFilterDept] = useState<string>('')
   const [filterWeek, setFilterWeek] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [showDelegationModal, setShowDelegationModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
   const [reviewTimeLeft, setReviewTimeLeft] = useState('')
   const [historyEntry, setHistoryEntry] = useState<Entry | null>(null)
@@ -373,16 +262,7 @@ export default function ApprovalsPage() {
   const isAdmin = user?.role === 'admin'
   const normalizedUserName = (user?.name || '').trim().toLowerCase()
 
-  // Active delegations for current user
-  const now = new Date()
-  const myActiveDelegations = approvalDelegations.filter(d =>
-    d.taskOwnerId === user?.id &&
-    d.isActive &&
-    new Date(d.startDate) <= now &&
-    new Date(d.endDate) >= now
-  )
-
-  // Get staff IDs this user can approve (direct reports + delegated)
+  // Get staff IDs this user can approve (direct reports + project-owned)
   const approvableStaffIds = useMemo(() => {
     if (!user) return []
     if (isAdmin) return staff.map(s => s.id)
@@ -394,20 +274,8 @@ export default function ApprovalsPage() {
         .map(e => e.staffId)
     ))
 
-    // Add delegated staff
-    const activeDelegations = approvalDelegations.filter(d =>
-      d.delegateId === user.id &&
-      d.isActive &&
-      new Date(d.startDate) <= now &&
-      new Date(d.endDate) >= now
-    )
-
-    const delegatedOwnerIds = activeDelegations.map(d => d.taskOwnerId)
-    const delegatedStaff = staff.filter(s => delegatedOwnerIds.includes(s.leadId || '')).map(s => s.id)
-
-    return Array.from(new Set([...myStaff, ...delegatedStaff, ...projectOwnedStaff]))
-  }, [user, staff, approvalDelegations, isAdmin, now, entries, normalizedUserName])
-  const isTaskOwner = isAdmin || user?.role === 'team_lead' || approvableStaffIds.length > 0
+    return Array.from(new Set([...myStaff, ...projectOwnedStaff]))
+  }, [user, staff, isAdmin, entries, normalizedUserName])
 
   // Use the shared pendingApprovals() from context — same source as dashboard badge and menu count
   const pending = pendingApprovals()
@@ -661,76 +529,7 @@ export default function ApprovalsPage() {
     })
   }
 
-  function createDelegation(form: Partial<ApprovalDelegation>) {
-    if (!user || !form.delegateId || !form.startDate || !form.endDate) return
-
-    const delegate = staff.find(s => s.id === form.delegateId)
-    if (!delegate) return
-
-    let projectName = undefined
-    let projectNames: string[] = []
-
-    if (form.scope === 'project' && form.projectId && projects) {
-      const project = projects.find((p: any) => p.id === form.projectId)
-      projectName = project?.name
-    }
-
-    if (form.scope === 'projects' && form.projectIds && form.projectIds.length > 0 && projects) {
-      projectNames = form.projectIds.map(id => {
-        const project = projects.find((p: any) => p.id === id)
-        return project?.name || ''
-      }).filter(Boolean)
-    }
-
-    const delegation: ApprovalDelegation = {
-      id: genId(),
-      taskOwnerId: user.id,
-      taskOwnerName: user.name || '',
-      delegateId: form.delegateId,
-      delegateName: delegate.name,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      reason: form.reason,
-      scope: form.scope || 'all',
-      projectId: form.projectId,
-      projectName,
-      projectIds: form.scope === 'projects' ? form.projectIds : undefined,
-      projectNames: form.scope === 'projects' ? projectNames : undefined
-    }
-
-    saveApprovalDelegations([...approvalDelegations, delegation])
-
-    let scopeText = ''
-    if (form.scope === 'project' && projectName) {
-      scopeText = ` for ${projectName}`
-    } else if (form.scope === 'projects' && projectNames.length > 0) {
-      scopeText = ` for ${projectNames.length} project${projectNames.length > 1 ? 's' : ''}: ${projectNames.join(', ')}`
-    }
-
-    notify(form.delegateId, `📋 ${user.name} has delegated approval duties${scopeText} to you from ${form.startDate} to ${form.endDate}`, 'delegation_assigned', 'Delegation Assigned', delegation.id, 'message')
-    toast.success('Delegation created')
-    setShowDelegationModal(false)
-  }
-
-  function revokeDelegation(id: string) {
-    setConfirmAction({
-      isOpen: true,
-      action: () => {
-        const updated = approvalDelegations.map(d =>
-          d.id === id ? { ...d, isActive: false, revokedAt: new Date().toISOString() } : d
-        )
-        saveApprovalDelegations(updated)
-        toast.success('Delegation revoked')
-      },
-      message: 'Revoke this delegation?',
-      title: 'Revoke Delegation'
-    })
-  }
-
   const displayPending = getFilteredPending()
-  const taskOwners = staff.filter(s => s.status === 'active' && !s.suspended && s.id !== user?.id)
 
   function handleBulkApprove() {
     if (selectedIds.length === 0) return
@@ -910,33 +709,12 @@ export default function ApprovalsPage() {
         </div>
       </div>
 
-      {/* Delegations Banner */}
-      {myActiveDelegations.length > 0 && (
-        <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 8, padding: '12px 16px' }}>
-          <div style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, marginBottom: 4 }}>
-            📋 Active Delegations ({myActiveDelegations.length})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {myActiveDelegations.map(d => (
-              <div key={d.id} style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>
-                  Delegated to <strong>{d.delegateName}</strong> ({fmtDate(d.startDate)} - {fmtDate(d.endDate)})
-                  {d.reason && <span style={{ color: 'var(--text-3)' }}> - {d.reason}</span>}
-                </span>
-                <button className="btn btn-danger btn-sm" onClick={() => revokeDelegation(d.id)}>Revoke</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 20 }}>
         <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending ({displayPending.length})</button>
         {isAdmin && <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>}
         <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
         {isAdmin && <button className={`tab ${tab === '2nd_level' ? 'active' : ''}`} onClick={() => setTab('2nd_level')}>2nd-Level Review ({secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})</button>}
-        {isTaskOwner && <button className={`tab ${tab === 'delegations' ? 'active' : ''}`} onClick={() => setTab('delegations')}>Delegations</button>}
         {isAdmin && <button className={`tab ${tab === 'export' ? 'active' : ''}`} onClick={() => setTab('export')}>Export</button>}
       </div>
 
@@ -1236,90 +1014,6 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {tab === 'delegations' && isTaskOwner && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ fontSize: 13, color: 'var(--text-3)' }}>
-              Delegate your approval duties to another Task Owner while you're away
-            </p>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowDelegationModal(true)}>
-              <Plus size={14} /> Create Delegation
-            </button>
-          </div>
-
-          {approvalDelegations.filter(d => d.taskOwnerId === user?.id).length === 0 ? (
-            <div className="empty-state card">
-              <div className="empty-state-icon">📋</div>
-              <div className="empty-state-title">No delegations yet</div>
-              <div className="empty-state-desc">Create a delegation to assign approval duties to another Task Owner</div>
-            </div>
-          ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Delegate</th>
-                      <th>Scope</th>
-                      <th>Start Date</th>
-                      <th>End Date</th>
-                      <th>Reason</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvalDelegations
-                      .filter(d => d.taskOwnerId === user?.id)
-                      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
-                      .map(d => {
-                        const isActive = d.isActive && new Date(d.startDate) <= now && new Date(d.endDate) >= now
-                        const isFuture = new Date(d.startDate) > now
-                        const isPast = new Date(d.endDate) < now
-
-                        return (
-                          <tr key={d.id}>
-                            <td style={{ fontWeight: 600 }}>{d.delegateName}</td>
-                            <td style={{ fontSize: 12 }}>
-                              {d.scope === 'project' && d.projectName ? (
-                                <span className="badge badge-blue">{d.projectName}</span>
-                              ) : d.scope === 'projects' && d.projectNames && d.projectNames.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                  <span className="badge badge-blue">{d.projectNames.length} projects</span>
-                                  <span style={{ fontSize: 10, color: 'var(--text-3)' }} title={d.projectNames.join(', ')}>
-                                    {d.projectNames.slice(0, 2).join(', ')}{d.projectNames.length > 2 ? ` +${d.projectNames.length - 2}` : ''}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span style={{ color: 'var(--text-3)' }}>All Approvals</span>
-                              )}
-                            </td>
-                            <td style={{ fontSize: 12 }}>{fmtDate(d.startDate)}</td>
-                            <td style={{ fontSize: 12 }}>{fmtDate(d.endDate)}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{d.reason || '—'}</td>
-                            <td>
-                              <span className={`badge badge-${isActive ? 'green' : isFuture ? 'blue' : 'gray'}`}>
-                                {isActive ? 'Active' : isFuture ? 'Scheduled' : isPast ? 'Expired' : 'Revoked'}
-                              </span>
-                            </td>
-                            <td>
-                              {(isActive || isFuture) && (
-                                <button className="btn btn-danger btn-sm" onClick={() => revokeDelegation(d.id)}>
-                                  Revoke
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {tab === 'export' && isAdmin && (() => {
         const allWeeks = Array.from(new Set(entries.filter(e => !e.deleted).map(e => e.weekKey))).sort().reverse()
         const allStatuses = [
@@ -1493,15 +1187,6 @@ export default function ApprovalsPage() {
           staff={staff}
           onClose={() => setSelectedEntry(null)}
           onAction={handleAction}
-        />
-      )}
-
-      {showDelegationModal && (
-        <DelegationModal
-          onSave={createDelegation}
-          onClose={() => setShowDelegationModal(false)}
-          taskOwners={taskOwners}
-          projects={projects || []}
         />
       )}
 

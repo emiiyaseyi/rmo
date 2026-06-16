@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
 import TimeReport from './TimeReport'
 
-const COLORS = ['#076C04', '#22C55E', '#EAB308', '#D8001A', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
+const COLORS = ['#0C7A37', '#0C7A37', '#E0A12B', '#D8473F', '#7C5CD6', '#06B6D4', '#EC4899', '#84CC16']
 const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-1)' }
 
 type PeriodType = 'week' | 'month' | 'custom'

@@ -160,41 +160,42 @@ export default function LeaderboardPage() {
   function reviewSpeedScore(submittedAt: string | undefined, reviewedAt: string | undefined, weekKey: string): number {
     if (!submittedAt || !reviewedAt) return 0
     const subWin = settings?.submissionWindow
-    // Derive the submission deadline for this entry's week from weekKey (e.g. "2026-W17")
-    let deadline: Date | null = null
-    if (subWin?.enabled && subWin.schedule) {
-      const [year, weekPart] = weekKey.split('-W')
-      const weekNum = parseInt(weekPart, 10)
-      if (!isNaN(weekNum)) {
-        // ISO week: Jan 4 is always in W1
-        const jan4 = new Date(parseInt(year), 0, 4)
-        const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay()
-        const monday = new Date(jan4)
-        monday.setDate(jan4.getDate() - (jan4Day - 1) + (weekNum - 1) * 7)
+    // weekKey = Monday of the week, format "YYYY-MM-DD" (WAT). Derive submission
+    // deadline from it: Monday + endDay offset + endTime, all in WAT (UTC+1).
+    let deadlineMs: number | null = null
+    if (subWin?.enabled && subWin.schedule && /^\d{4}-\d{2}-\d{2}$/.test(weekKey)) {
+      const mondayUtcMidnight = Date.parse(weekKey + 'T00:00:00Z')
+      if (!isNaN(mondayUtcMidnight)) {
+        const WAT_MS = 60 * 60 * 1000
+        // WAT Monday 00:00 expressed in UTC ms
+        const watMondayUtc = mondayUtcMidnight - WAT_MS
         const DAY: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
         const endDayOff = (DAY[subWin.schedule.endDay.toLowerCase()] || 2) - 1
-        deadline = new Date(monday)
-        deadline.setDate(deadline.getDate() + endDayOff)
         const [h, m] = subWin.schedule.endTime.split(':').map(Number)
-        deadline.setHours(h, m, 0, 0)
+        deadlineMs = watMondayUtc + endDayOff * 86400000 + (h * 3600000 + m * 60000)
       }
     }
     const reviewedMs = new Date(reviewedAt).getTime()
-    if (deadline && reviewedMs <= deadline.getTime()) return 100
+    if (deadlineMs !== null && reviewedMs <= deadlineMs) return 100
     // Hours after deadline (or after submission if no deadline config)
-    const baseMs = deadline ? deadline.getTime() : new Date(submittedAt).getTime()
+    const baseMs = deadlineMs !== null ? deadlineMs : new Date(submittedAt).getTime()
     const hoursAfter = (reviewedMs - baseMs) / (1000 * 60 * 60)
     if (hoursAfter <= 2) return 80
     if (hoursAfter <= 24) return 60
     return 0
   }
 
+  // Best timestamp for when an entry was reviewed: approval/rejection time, else last update
+  const reviewDateOf = (e: any): string | undefined =>
+    (e.status === 'approved' ? e.approvedAt : e.status === 'rejected' ? e.rejectedAt : undefined) || e.updatedAt
+
   const reviewalRanked: ReviewerStat[] = useMemo(() => {
     const filteredForReview = reviewPeriodType === 'alltime'
       ? entries
       : entries.filter(e => {
-          if (!e.updatedAt) return false
-          const d = e.updatedAt.slice(0, 10)
+          const rd = reviewDateOf(e)
+          if (!rd) return false
+          const d = rd.slice(0, 10)
           if (reviewPeriodType === 'month') return d.startsWith(reviewSelectedMonth)
           if (reviewPeriodType === 'week') {
             const weekStart = new Date(reviewSelectedWeek)
@@ -213,13 +214,13 @@ export default function LeaderboardPage() {
     return reviewers.map(s => {
       const reviewed = filteredForReview.filter(e =>
         !e.deleted && (
-          (e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved' ||
-          (e.rejectedBy === s.id) && e.status === 'rejected'
+          ((e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved') ||
+          (e.rejectedBy === s.id && e.status === 'rejected')
         )
       )
       const scores = reviewed
-        .filter(e => e.submittedAt && e.updatedAt && e.weekKey)
-        .map(e => reviewSpeedScore(e.submittedAt, e.updatedAt, e.weekKey))
+        .filter(e => e.submittedAt && reviewDateOf(e) && e.weekKey)
+        .map(e => reviewSpeedScore(e.submittedAt, reviewDateOf(e), e.weekKey))
       const avgScore = scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
         : 0

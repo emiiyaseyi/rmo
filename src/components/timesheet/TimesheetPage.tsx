@@ -1124,7 +1124,7 @@ export default function TimesheetPage() {
           </div>
         )}
         {isCDS && (
-          <div style={{ flex: 1, background: 'rgba(139, 92, 246, 0.1)', border: '1px solid #8B5CF6', color: '#8B5CF6', padding: '10px 14px', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, background: 'rgba(139, 92, 246, 0.1)', border: '1px solid #7C5CD6', color: '#7C5CD6', padding: '10px 14px', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
             🎓 <strong>Intern CDS:</strong> 8h deduction applied to your weekly cap.
           </div>
         )}

@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save, CheckSquare, Square, ChevronLeft, ChevronRight, Pencil, Info } from 'lucide-react'
+import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save, CheckSquare, Square, ChevronLeft, ChevronRight, Pencil, Info, FileText } from 'lucide-react'
 import { Entry, Staff } from '../../types'
 import PageHeader from '../common/PageHeader'
 import ConfirmModal from '../common/ConfirmModal'
@@ -1165,135 +1165,13 @@ export default function TimesheetPage() {
     return Object.entries(groups).sort((a, b) => a[0] < b[0] ? -1 : 1)
   }, [weekEntries, selectedWeek])
 
+  // Token-styled small toolbar button + label/control styles
+  const tbBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', borderRadius: 'var(--r-sm)', padding: '7px 11px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+  const tbLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em' }
+  const tbControl: React.CSSProperties = { border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 'var(--r-sm)', padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit' }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div className="card" style={{ padding: 20 }}>
-        {/* Top Row: Title, Status Badge, and Primary Action */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 24 }}>📋</div>
-            <div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Timesheet</h1>
-              {viewingStaffId && (
-                <p style={{ fontSize: 13, color: 'var(--text-3)', margin: 0 }}>
-                  Viewing: <strong>{targetUser?.name}</strong>
-                </p>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
-            {canAddEntry && (
-              <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true) }}>
-                <Plus size={14} /> Log Hours
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Second Row: Week Selector + Admin Search/View Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>Week:</span>
-            <select className="form-select text-xs" style={{ width: 'auto', minWidth: 180 }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
-              {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
-            </select>
-          </div>
-
-          {isAdmin && (
-            <>
-              <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 300, position: 'relative' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>View Staff:</span>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input
-                    className="form-input text-xs"
-                    style={{ width: '100%', maxWidth: 220 }}
-                    placeholder="🔍 Search staff..."
-                    value={staffSearch}
-                    onChange={e => {
-                      setStaffSearch(e.target.value)
-                      setShowStaffSuggestions(true)
-                      setSelectedSuggestionIndex(0)
-                    }}
-                    onKeyDown={handleSearchKeyDown}
-                    onFocus={() => setShowStaffSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowStaffSuggestions(false), 200)}
-                  />
-                  {showStaffSuggestions && searchStaff.length > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: 4,
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      maxHeight: 320,
-                      overflowY: 'auto',
-                      zIndex: 1000
-                    }}>
-                      {searchStaff.map((s, idx) => (
-                        <div
-                          key={s.id}
-                          style={{
-                            padding: '10px 14px',
-                            cursor: 'pointer',
-                            borderBottom: idx < searchStaff.length - 1 ? '1px solid var(--border)' : 'none',
-                            transition: 'background 0.15s',
-                            background: idx === selectedSuggestionIndex ? 'var(--accent-subtle)' : viewingStaffId === s.id ? 'rgba(79, 70, 229, 0.05)' : 'transparent'
-                          }}
-                          onMouseEnter={() => setSelectedSuggestionIndex(idx)}
-                          onClick={() => {
-                            setViewingStaffId(s.id)
-                            setStaffSearch('')
-                            setShowStaffSuggestions(false)
-                            setSelectedSuggestionIndex(0)
-                          }}
-                        >
-                          <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {s.name}
-                            {viewingStaffId === s.id && <span style={{ fontSize: 10, color: 'var(--accent)' }}>✓ viewing</span>}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-                            {s.department || 'No department'} · {s.role}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <select className="form-select text-xs" style={{ width: 'auto', minWidth: 160, borderColor: viewingStaffId ? 'var(--warning)' : undefined }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
-                  <option value="">My Timesheet</option>
-                  {staff
-                    .filter(s => s.id !== user?.id)
-                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Third Row: Export/Import Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, marginRight: 4 }}>Actions:</span>
-          <button className="btn btn-secondary btn-sm" title="Download CSV Template" onClick={downloadTemplate}>
-            📄 Template
-          </button>
-          <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-            <Upload size={13} /> Import
-            <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
-          </label>
-          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>
-            <Download size={13} /> CSV
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>
-            <Download size={13} /> PDF
-          </button>
-        </div>
-      </div>
 
       {/* Dynamic Banners */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1307,30 +1185,6 @@ export default function TimesheetPage() {
             🎓 <strong>Intern CDS:</strong> 8h deduction applied to your weekly cap.
           </div>
         )}
-      </div>
-
-      {/* Hours bar */}
-      <div style={{ background: 'var(--bg-card)', border: `1px solid ${isOver ? 'var(--danger)' : 'var(--border)'}`, borderRadius: 10, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 4 }}>TOTAL HOURS</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: isOver ? 'var(--danger)' : 'var(--text-1)' }}>
-            {parseFloat(totalHours.toFixed(1))}h <span style={{ fontSize: 14, color: 'var(--text-3)', fontWeight: 400 }}>/ {weekCap}h</span>
-          </div>
-        </div>
-        <div style={{ flex: 1, minWidth: 150 }}>
-          <div className="progress" style={{ height: 8 }}>
-            <div className="progress-bar" style={{ width: `${Math.min((totalHours / weekCap) * 100, 100)}%`, background: isOver ? 'var(--warning)' : totalHours >= weekCap * 0.8 ? 'var(--accent)' : 'var(--accent)' }} />
-          </div>
-          {isOver && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 4 }}>⚡ Overtime: Logging {(totalHours - weekCap).toFixed(1)}h beyond base cap</div>}
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {submitted && <span className="badge badge-green" style={{ fontSize: 13 }}>✅ Submitted</span>}
-          {isLocked && <span className="badge badge-red">🔒 Locked</span>}
-          {canSubmit && <button className="btn btn-primary" onClick={submitWeek}>📤 Submit Week</button>}
-          {!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek && (
-            <button className="btn btn-secondary btn-sm" onClick={markNoWork}>No Work This Week</button>
-          )}
-        </div>
       </div>
 
       {isLocked && <div style={{ background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--danger)' }}>🔒 Week locked by admin. No changes allowed.</div>}
@@ -1385,26 +1239,141 @@ export default function TimesheetPage() {
         {/* MAIN COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
 
+      {/* TOP TOOLBAR card — week select, staff view, actions */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px', boxShadow: 'var(--sh-sm)', display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+        {/* Week selector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={tbLabel}>Week</span>
+          <select style={{ ...tbControl, minWidth: 190 }} value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}>
+            {weeks.map(w => <option key={w} value={w}>{weekRange(w)}{w === currentWeek ? ' (current)' : ''}</option>)}
+          </select>
+        </div>
+
+        {/* Admin: view another staff member's sheet */}
+        {isAdmin && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 240 }}>
+            <span style={tbLabel}>View Staff</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
+                <input
+                  style={{ ...tbControl, width: '100%' }}
+                  placeholder="🔍 Search staff..."
+                  value={staffSearch}
+                  onChange={e => {
+                    setStaffSearch(e.target.value)
+                    setShowStaffSuggestions(true)
+                    setSelectedSuggestionIndex(0)
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  onFocus={() => setShowStaffSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowStaffSuggestions(false), 200)}
+                />
+                {showStaffSuggestions && searchStaff.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                    background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    boxShadow: 'var(--sh)', maxHeight: 320, overflowY: 'auto', zIndex: 1000
+                  }}>
+                    {searchStaff.map((s, idx) => (
+                      <div
+                        key={s.id}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer',
+                          borderBottom: idx < searchStaff.length - 1 ? '1px solid var(--line-2)' : 'none',
+                          background: idx === selectedSuggestionIndex ? 'var(--tint)' : viewingStaffId === s.id ? 'var(--elev)' : 'transparent'
+                        }}
+                        onMouseEnter={() => setSelectedSuggestionIndex(idx)}
+                        onClick={() => {
+                          setViewingStaffId(s.id)
+                          setStaffSearch('')
+                          setShowStaffSuggestions(false)
+                          setSelectedSuggestionIndex(0)
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {s.name}
+                          {viewingStaffId === s.id && <span style={{ fontSize: 10, color: 'var(--brand)' }}>✓ viewing</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                          {s.department || 'No department'} · {s.role}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <select style={{ ...tbControl, minWidth: 150, borderColor: viewingStaffId ? 'var(--warn)' : 'var(--line)' }} value={viewingStaffId || ''} onChange={e => setViewingStaffId(e.target.value || null)}>
+                <option value="">My Timesheet</option>
+                {staff.filter(s => s.id !== user?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginLeft: isAdmin ? 0 : 'auto' }}>
+          <span style={tbLabel}>Actions</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button style={tbBtn} title="Download CSV template" onClick={downloadTemplate}>
+              <FileText size={14} /> Template
+            </button>
+            <label style={{ ...tbBtn, cursor: 'pointer' }}>
+              <Upload size={14} /> Import
+              <input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleBulkImport} />
+            </label>
+            <button style={tbBtn} onClick={() => handleExport('csv')}>
+              <Download size={14} /> CSV
+            </button>
+            <button style={tbBtn} onClick={() => handleExport('pdf')}>
+              <Download size={14} /> PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Week-nav bar card */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px', boxShadow: 'var(--sh-sm)', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <button onClick={() => shiftWeek(-1)} title="Previous week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
-          <ChevronLeft size={17} />
-        </button>
-        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Week of {weekRange(selectedWeek)}</div>
-          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 1 }}>
-            {isCurrentWeek ? 'Current week' : weekRange(selectedWeek)}{canEdit ? ' · editable' : ' · locked'}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px', boxShadow: 'var(--sh-sm)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button onClick={() => shiftWeek(-1)} title="Previous week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
+            <ChevronLeft size={17} />
+          </button>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Week of {weekRange(selectedWeek)}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 1 }}>
+              {isCurrentWeek ? 'Current week' : weekRange(selectedWeek)}{canEdit ? ' · editable' : ' · locked'}
+              {viewingStaffId && <> · viewing <strong>{targetUser?.name}</strong></>}
+            </div>
+          </div>
+          <button onClick={() => shiftWeek(1)} title="Next week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
+            <ChevronRight size={17} />
+          </button>
+          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: isOver ? 'var(--danger)' : 'var(--ink)' }}>
+              {parseFloat(totalHours.toFixed(1))}/{weekCap}h
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>logged</div>
           </div>
         </div>
-        <button onClick={() => shiftWeek(1)} title="Next week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
-          <ChevronRight size={17} />
-        </button>
-        <div style={{ flexShrink: 0, textAlign: 'right' }}>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            {parseFloat(totalHours.toFixed(1))}/{weekCap}h
+
+        {/* Status indicators + submit / no-work actions */}
+        {(isCurrentWeek || submitted || isLocked || canSubmit || isOver || (!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek)) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-2)', paddingTop: 12 }}>
+            {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
+            {submitted && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand)', background: 'var(--tint)', padding: '4px 10px', borderRadius: 20 }}>✅ Submitted</span>}
+            {isLocked && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-tint)', padding: '4px 10px', borderRadius: 20 }}>🔒 Locked</span>}
+            {isOver && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--warn)', background: 'var(--warn-tint)', padding: '4px 10px', borderRadius: 20 }}>⚡ {(totalHours - weekCap).toFixed(1)}h over cap</span>}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              {!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek && (
+                <button style={tbBtn} onClick={markNoWork}>No Work This Week</button>
+              )}
+              {canSubmit && (
+                <button onClick={submitWeek} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(12,122,55,.25)' }}>
+                  📤 Submit week
+                </button>
+              )}
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>logged</div>
-        </div>
+        )}
       </div>
 
       {/* Status Filter Tabs */}

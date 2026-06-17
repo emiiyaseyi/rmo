@@ -393,36 +393,62 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
+      {/* Combined banner: your rank (left) + top-3 podium (right) */}
       <div style={{
         background: 'linear-gradient(150deg, var(--brand-2), var(--brand))',
-        borderRadius: 'var(--r-lg)', padding: 24, color: 'white',
-        display: 'flex', alignItems: 'center', gap: 18, boxShadow: 'var(--sh-sm)'
+        borderRadius: 'var(--r-lg)', padding: '24px 28px', color: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 28, boxShadow: 'var(--sh-sm)', flexWrap: 'wrap', position: 'relative', overflow: 'hidden'
       }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
-          background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)'
-        }}>
-          {myRank > 0 && myRank <= 3 ? <Medal size={30} /> : `#${myRank || '-'}`}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
-          <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRank || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {ranked.length}</span></div>
-          <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
-            <span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'radial-gradient(circle at 1px 1px,#fff 1.5px,transparent 0)', backgroundSize: '24px 24px', pointerEvents: 'none' }} />
+        {/* Your rank */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative', zIndex: 1 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)'
+          }}>
+            {myRank > 0 && myRank <= 3 ? <Medal size={30} /> : `#${myRank || '-'}`}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
+            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRank || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {ranked.length}</span></div>
+            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+              <span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>Badges</div>
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'wrap', maxWidth: 120 }}>
-            {(user?.badges || []).map(b => {
-              const badge = BADGES.find(x => x.id === b)
-              return badge ? <span key={b} style={{ fontSize: 20 }} title={badge.name}>{badge.icon}</span> : null
-            })}
-            {(user?.badges || []).length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>No badges yet</span>}
-          </div>
-        </div>
+        {/* Top-3 podium */}
+        {ranked.length >= 1 && (() => {
+          const top3 = ranked.slice(0, 3)
+          const order = [top3[1], top3[0], top3[2]].filter(Boolean) as RankedStaff[]
+          return (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, position: 'relative', zIndex: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {order.map(s => {
+                const rank = ranked.findIndex(r => r.id === s.id) + 1
+                const isFirst = rank === 1
+                const size = isFirst ? 70 : 56
+                const isMe = s.id === user?.id
+                return (
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 78 }}>
+                    <div style={{
+                      width: size, height: size, borderRadius: '50%',
+                      background: avatarColor(s.name), color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: isFirst ? 24 : 19, fontWeight: 800, fontFamily: 'var(--font-sora)',
+                      border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)',
+                      boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15)' : 'none'
+                    }}>{initials(s.name)}</div>
+                    <span style={{ padding: '1px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)', color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)' }}>#{rank}</span>
+                    <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 13 : 12, textAlign: 'center', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name.split(' ')[0]}{isMe ? ' (You)' : ''}</span>
+                    <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 11, fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()} pts</span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 2 }}>
@@ -548,53 +574,6 @@ export default function LeaderboardPage() {
               )}
             </div>
           </div>
-          {/* Podium — top 3 */}
-          {ranked.length >= 1 && (() => {
-            const top3 = ranked.slice(0, 3)
-            // visual order: rank2 (left), rank1 (center), rank3 (right)
-            const order = [top3[1], top3[0], top3[2]].filter(Boolean) as RankedStaff[]
-            return (
-              <div style={{
-                background: 'linear-gradient(150deg, var(--brand-2), var(--brand))',
-                borderRadius: 'var(--r-lg)', padding: 30,
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 24,
-                boxShadow: 'var(--sh-sm)', flexWrap: 'wrap'
-              }}>
-                {order.map(s => {
-                  const rank = ranked.findIndex(r => r.id === s.id) + 1
-                  const isFirst = rank === 1
-                  const size = isFirst ? 88 : 70
-                  const isMe = s.id === user?.id
-                  return (
-                    <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 90 }}>
-                      <div style={{
-                        width: size, height: size, borderRadius: '50%',
-                        background: avatarColor(s.name), color: '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: isFirst ? 30 : 24, fontWeight: 800, fontFamily: 'var(--font-sora)',
-                        border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)',
-                        boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15), var(--sh-sm)' : 'var(--sh-sm)'
-                      }}>
-                        {initials(s.name)}
-                      </div>
-                      <span style={{
-                        padding: '2px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800,
-                        background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)',
-                        color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)'
-                      }}>#{rank}</span>
-                      <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 15 : 13, textAlign: 'center' }}>
-                        {s.name}{isMe ? ' (You)' : ''}
-                      </span>
-                      <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12, fontFamily: 'var(--mono)' }}>
-                        {(s.points || 0).toLocaleString()} pts
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-
           {/* Pinned My Rank Card (if not in top 25) */}
           {(myRank > 25 || myRank === 0) && (
             <div style={{ background: 'var(--tint)', border: '1px solid var(--brand)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16, position: 'relative', overflow: 'hidden' }}>

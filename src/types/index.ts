@@ -206,9 +206,11 @@ export interface AppSettings {
     pointsConfig: {
         earlySubmission: number;
         onTimeSubmission: number;
-        lateAddition: number;
         outsideWindowPenalty: number;
         earlySubmissionHours: number;
+        fullWeekBonus?: number;
+        streakBonus?: number;
+        approvalBonus?: number;
     };
     hourCaps: {
         defaultStaffCap: number;
@@ -216,6 +218,12 @@ export interface AppSettings {
         cdsVisibility: boolean;
         customCaps: { staffId: string; cap: number; label: string }[];
         deadlineOverride?: string | null;
+        maxHoursPerDay?: number;
+        maxHoursPerWeek?: number;
+        minHoursPerWeek?: number;
+        weeklyPointsCap?: number;
+        dailyEntryLimit?: number;
+        backdatingLimitDays?: number;
     };
     approvalWorkflow: {
         secondLevelEnabled: boolean;
@@ -228,6 +236,13 @@ export interface AppSettings {
         enabled: boolean;
         hoursAfterClose: number; // hours after submission window close, default 24
         penaltyPerEntry: number; // points deducted per unreviewed entry, e.g. -5
+        autoApprove?: boolean; // auto-approve unreviewed hours when review window closes
+        schedule?: {
+            openDay: string;
+            openTime: string;
+            closeDay: string;
+            closeTime: string;
+        };
     };
     submissionWindow: {
         enabled: boolean;
@@ -242,6 +257,7 @@ export interface AppSettings {
             pointsPerPeriod: number; // e.g., -5
             periodHours: number; // e.g., 12
         };
+        gracePeriodHours?: number; // grace hours after close before penalty applies
         timezone: string; // e.g., 'Africa/Lagos' for WAT
     };
     categories: string[];
@@ -252,6 +268,10 @@ export interface AppSettings {
     security?: {
         defaultPassword?: string;
         requireTwoFactor?: boolean;
+        autoLogoutIdle?: boolean;
+        minPasswordLength?: number;
+        passwordExpiryDays?: number;
+        sessionTimeoutMin?: number;
     };
     // Keep legacy fields for compatibility during migration if needed
     app_name?: string;
@@ -269,6 +289,7 @@ export interface PublicHoliday {
     name: string;
     date: string;
     capReduction: number;
+    type?: 'public' | 'internal';
 }
 
 export type LeaveType = 'annual' | 'sick' | 'maternity' | 'paternity' | 'compassionate' | 'study' | 'unpaid' | 'other';

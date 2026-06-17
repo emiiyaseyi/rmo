@@ -1,15 +1,11 @@
 'use client'
 import React, { useState, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, Area } from 'recharts'
-import { getWeekKey, weekRange, exportCSV, exportPDF, fmtDate } from '../../lib/utils'
-import { Staff, Entry, Reward, Redemption, HofEntry } from '../../types'
+import { getWeekKey, weekRange, exportCSV, exportPDF } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subWeeks, eachWeekOfInterval, startOfDay, endOfDay } from 'date-fns'
 import TimeReport from './TimeReport'
-
-const COLORS = ['#076C04', '#22C55E', '#EAB308', '#D8001A', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16']
-const TT = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-1)' }
+import { Clock, CheckCircle2, AlertCircle, Users, TrendingUp, TrendingDown, Download, ChevronDown, ChevronUp } from 'lucide-react'
 
 type PeriodType = 'week' | 'month' | 'custom'
 
@@ -28,6 +24,10 @@ export default function AnalyticsPage() {
 
   const [staffFilter, setStaffFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
+
+  // Overview expand toggles
+  const [showAllDept, setShowAllDept] = useState(false)
+  const [showAllTeams, setShowAllTeams] = useState(false)
 
   // Utils
   const weekCap = settings?.weekly_cap || 45
@@ -222,6 +222,31 @@ export default function AnalyticsPage() {
     }).sort((a, b) => b.avgWeekly - a.avgWeekly)
   }, [filteredStaff, filteredEntries, weekCap, dateRange, settings])
 
+  // Hours by department (derived from filtered approved entries + scoped staff)
+  const hoursByDept = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredEntries
+      .filter(e => e.status === 'approved')
+      .forEach(e => {
+        const s = scopedStaff.find(st => st.id === e.staffId)
+        const dept = s?.department || 'Unassigned'
+        map[dept] = (map[dept] || 0) + (e.hours || 0)
+      })
+    const rows = Object.entries(map)
+      .map(([dept, hours]) => ({ dept, hours: parseFloat(hours.toFixed(1)) }))
+      .sort((a, b) => b.hours - a.hours)
+    const max = Math.max(...rows.map(r => r.hours), 1)
+    return rows.map(r => ({ ...r, pct: Math.round((r.hours / max) * 100) }))
+  }, [filteredEntries, scopedStaff])
+
+  // Weekly submission rate (derived from weeklyBreakdown approval rate per week)
+  const weeklySubmissionRate = useMemo(() => {
+    return last5WeeksData.map(w => {
+      const wk = weeklyBreakdown.find(b => format(parseISO(b.weekKey), 'dd MMM') === w.week)
+      return { week: w.week, rate: wk ? wk.approvalRate : 0 }
+    })
+  }, [last5WeeksData, weeklyBreakdown])
+
   // Staff YTD Data
   const staffYTD = useMemo(() => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1)
@@ -394,99 +419,230 @@ export default function AnalyticsPage() {
           dateRange={dateRange}
         />
       )}
-      {tab === 'overview' && (
+      {tab === 'overview' && (() => {
+        const orgSubmissionRate = activeStaff.length > 0
+          ? Math.round(((activeStaff.length - stats.notSubmittedList.length) / activeStaff.length) * 100)
+          : 0
+        const labelStyle: React.CSSProperties = {
+          fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-3)'
+        }
+        const numberStyle: React.CSSProperties = {
+          fontFamily: 'var(--font-sora)', fontSize: 28, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.1, marginTop: 8
+        }
+        const cardStyle: React.CSSProperties = {
+          background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 20, boxShadow: 'var(--sh-sm)'
+        }
+        const Delta = ({ up, children }: { up: boolean; children: React.ReactNode }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 12, fontWeight: 600, color: up ? 'var(--brand)' : 'var(--danger)' }}>
+            {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+            <span>{children}</span>
+          </div>
+        )
+        const approvedCount = filteredEntries.filter(e => e.status === 'approved').length
+        const rejectedCount = filteredEntries.filter(e => e.status === 'rejected').length
+        const subInline = (color: string, children: React.ReactNode): React.ReactNode => (
+          <div style={{ marginTop: 8, fontSize: 12, color }}>{children}</div>
+        )
+        const kpis: { label: string; icon: React.ReactNode; value: string; delta: React.ReactNode }[] = [
+          {
+            label: 'Total Hours', icon: <Clock size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${stats.totalHours}h`,
+            delta: subInline('var(--ink-3)', 'Approved in period')
+          },
+          {
+            label: 'Approval Rate', icon: <CheckCircle2 size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${stats.approvalRate}%`,
+            delta: <Delta up={stats.approvalRate >= 80}>Of submitted entries</Delta>
+          },
+          {
+            label: 'Pending Review', icon: <AlertCircle size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${stats.pendingCount}`,
+            delta: subInline(stats.pendingCount > 0 ? 'var(--warn)' : 'var(--ink-3)', 'Awaiting approval')
+          },
+          {
+            label: 'Active Staff', icon: <Users size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${stats.activeStaffCount}`,
+            delta: subInline('var(--ink-3)', 'Logging in period')
+          },
+          {
+            label: 'Org Submission Rate', icon: <CheckCircle2 size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${orgSubmissionRate}%`,
+            delta: <Delta up={orgSubmissionRate >= 80}>Submitted in selected week</Delta>
+          },
+          {
+            label: 'Not Submitted', icon: <AlertCircle size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${stats.notSubmittedList.length}`,
+            delta: subInline(stats.notSubmittedList.length > 0 ? 'var(--danger)' : 'var(--ink-3)', 'In selected week')
+          },
+          {
+            label: 'Approved', icon: <CheckCircle2 size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${approvedCount}`,
+            delta: subInline('var(--brand)', 'Entries fully approved')
+          },
+          {
+            label: 'Rejected', icon: <AlertCircle size={15} style={{ color: 'var(--ink-4)' }} />,
+            value: `${rejectedCount}`,
+            delta: subInline(rejectedCount > 0 ? 'var(--danger)' : 'var(--ink-3)', 'Entries rejected')
+          },
+        ]
+        const toggleBtnStyle: React.CSSProperties = {
+          display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16,
+          background: 'transparent', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+          padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--brand)', cursor: 'pointer'
+        }
+        return (
         <div className="flex flex-col gap-6">
-          <div className="grid-4">
-            <div className="stat-card">
-              <div className="stat-label">Total Hours</div>
-              <div className="stat-value text-accent">{stats.totalHours}h</div>
-              <div className="stat-sub">Approved entries in period</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Approval Rate</div>
-              <div className="stat-value" style={{ color: stats.approvalRate >= 80 ? 'var(--success)' : 'var(--warning)' }}>
-                {stats.approvalRate}%
+          {/* KPI grid: 8 cards, two rows of 4 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            {kpis.map(k => (
+              <div key={k.label} style={cardStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={labelStyle}>{k.label}</span>
+                  {k.icon}
+                </div>
+                <div style={numberStyle}>{k.value}</div>
+                {k.delta}
               </div>
-              <div className="stat-sub">Of submitted entries</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Pending Review</div>
-              <div className="stat-value" style={{ color: stats.pendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>{stats.pendingCount}</div>
-              <div className="stat-sub">Awaiting approval</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Active Staff</div>
-              <div className="stat-value">{stats.activeStaffCount}</div>
-              <div className="stat-sub">Logging hours in period</div>
-            </div>
+            ))}
           </div>
-          <div className="grid-4">
-            <div className="stat-card">
-              <div className="stat-label">Org Submission Rate</div>
-              <div className="stat-value" style={{ color: activeStaff.length > 0 && (activeStaff.length - stats.notSubmittedList.length) / activeStaff.length >= 0.8 ? 'var(--success)' : 'var(--warning)' }}>
-                {activeStaff.length > 0 ? Math.round(((activeStaff.length - stats.notSubmittedList.length) / activeStaff.length) * 100) : 0}%
-              </div>
-              <div className="stat-sub">Submitted in selected week</div>
+
+          {/* Charts row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            {/* Hours by department */}
+            <div style={cardStyle}>
+              <h3 style={{ fontFamily: 'var(--font-sora)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 18 }}>Hours by department</h3>
+              {hoursByDept.length === 0 ? (
+                <div style={{ color: 'var(--ink-4)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>No data for this period.</div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {(showAllDept ? hoursByDept : hoursByDept.slice(0, 5)).map(d => (
+                      <div key={d.dept} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ width: 88, flexShrink: 0, fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.dept}>{d.dept}</span>
+                        <div style={{ flex: 1, height: 24, background: 'var(--line-2)', borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${d.pct}%`, background: 'var(--brand)', borderRadius: 6, transition: 'width .3s' }} />
+                        </div>
+                        <span style={{ width: 56, flexShrink: 0, textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink)' }}>{d.hours}h</span>
+                      </div>
+                    ))}
+                  </div>
+                  {hoursByDept.length > 5 && (
+                    <button style={toggleBtnStyle} onClick={() => setShowAllDept(v => !v)}>
+                      {showAllDept ? <><ChevronUp size={14} /> Show less</> : <><ChevronDown size={14} /> View all {hoursByDept.length}</>}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Not Submitted</div>
-              <div className="stat-value" style={{ color: stats.notSubmittedList.length > 0 ? 'var(--danger)' : 'var(--success)' }}>{stats.notSubmittedList.length}</div>
-              <div className="stat-sub">In selected week</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Approved (Period)</div>
-              <div className="stat-value text-success">{filteredEntries.filter(e => e.status === 'approved').length}</div>
-              <div className="stat-sub">Entries fully approved</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Rejected (Period)</div>
-              <div className="stat-value" style={{ color: filteredEntries.filter(e => e.status === 'rejected').length > 0 ? 'var(--danger)' : 'var(--text-3)' }}>
-                {filteredEntries.filter(e => e.status === 'rejected').length}
-              </div>
-              <div className="stat-sub">Entries rejected</div>
+
+            {/* Weekly submission rate */}
+            <div style={cardStyle}>
+              <h3 style={{ fontFamily: 'var(--font-sora)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 18 }}>Weekly submission rate</h3>
+              {weeklySubmissionRate.length === 0 ? (
+                <div style={{ color: 'var(--ink-4)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>No data for this period.</div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, paddingTop: 8 }}>
+                  {weeklySubmissionRate.map(w => (
+                    <div key={w.week} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-2)' }}>{w.rate}%</span>
+                      <div style={{ width: '100%', height: `${Math.max(w.rate, 2)}%`, background: w.rate < 50 ? 'var(--warn)' : 'var(--brand)', borderRadius: '6px 6px 0 0', transition: 'height .3s' }} />
+                      <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{w.week}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="grid-2">
-            <div className="card">
-              <h3 className="text-1 font-bold mb-4">Hours Logged (Last 5 Weeks)</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={last5WeeksData}>
-                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} />
-                  <Tooltip contentStyle={TT} />
-                  <Bar dataKey="hours" fill="var(--accent)" radius={[4, 4, 0, 0]} name="Approved Hours" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="card flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-1 font-bold">Not-Submitted List</h3>
-                <button className="btn btn-secondary btn-sm" onClick={exportNotSubmitted}>⬇ Export CSV</button>
-              </div>
-              <div className="table-wrap flex-1" style={{ maxHeight: 250 }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Staff Name</th>
-                      <th>Department</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.notSubmittedList.length === 0 ? (
-                      <tr><td colSpan={2} className="text-center py-8 text-4">All staff submitted! 🎉</td></tr>
-                    ) : (
-                      stats.notSubmittedList.map(s => (
-                        <tr key={s.id}>
-                          <td>{s.name}</td>
-                          <td className="text-3">{s.department || '—'}</td>
+          {/* Utilisation by team table */}
+          {(() => {
+            const deptAgg: Record<string, { members: Set<string>; hours: number; util: number; n: number }> = {}
+            utilisationData.forEach(u => {
+              const dept = u.department || 'Unassigned'
+              if (!deptAgg[dept]) deptAgg[dept] = { members: new Set(), hours: 0, util: 0, n: 0 }
+              deptAgg[dept].members.add(u.id)
+              deptAgg[dept].hours += u.avgWeekly
+              deptAgg[dept].util += u.utilization
+              deptAgg[dept].n++
+            })
+            const teamRows = Object.entries(deptAgg)
+              .map(([dept, d]) => ({
+                dept,
+                members: d.members.size,
+                avgHrs: parseFloat((d.hours / Math.max(d.n, 1)).toFixed(1)),
+                util: Math.round(d.util / Math.max(d.n, 1)),
+              }))
+              .sort((a, b) => b.util - a.util)
+            const visibleTeams = showAllTeams ? teamRows : teamRows.slice(0, 5)
+            return (
+              <div style={cardStyle}>
+                <h3 style={{ fontFamily: 'var(--font-sora)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 16 }}>Utilisation by team</h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                        {['Department', 'Members', 'Avg hrs/week', 'Utilisation'].map((h, i) => (
+                          <th key={h} style={{ ...labelStyle, textAlign: i === 0 ? 'left' : 'right', padding: '0 12px 10px', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamRows.length === 0 ? (
+                        <tr><td colSpan={4} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ink-4)', fontSize: 13 }}>No data for this period.</td></tr>
+                      ) : visibleTeams.map(r => (
+                        <tr key={r.dept} style={{ borderBottom: '1px solid var(--line-2)' }}>
+                          <td style={{ padding: '12px', fontSize: 13, color: 'var(--ink)', fontWeight: 600 }}>{r.dept}</td>
+                          <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--ink-2)' }}>{r.members}</td>
+                          <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--ink-2)' }}>{r.avgHrs}h</td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
+                              <div style={{ width: 90, height: 8, background: 'var(--line-2)', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min(r.util, 100)}%`, background: r.util > 100 ? 'var(--danger)' : r.util < 50 ? 'var(--warn)' : 'var(--brand)', borderRadius: 4 }} />
+                              </div>
+                              <span style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--ink)', width: 38, textAlign: 'right' }}>{r.util}%</span>
+                            </div>
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {teamRows.length > 5 && (
+                  <button style={toggleBtnStyle} onClick={() => setShowAllTeams(v => !v)}>
+                    {showAllTeams ? <><ChevronUp size={14} /> Show less</> : <><ChevronDown size={14} /> View all {teamRows.length} teams</>}
+                  </button>
+                )}
               </div>
+            )
+          })()}
+
+          {/* Not-submitted list (logic + export preserved) */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: 'var(--font-sora)', fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>Not-submitted list</h3>
+              <button className="btn btn-secondary btn-sm" onClick={exportNotSubmitted} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={14} /> Export CSV</button>
+            </div>
+            <div className="table-wrap" style={{ maxHeight: 250 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff Name</th>
+                    <th>Department</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.notSubmittedList.length === 0 ? (
+                    <tr><td colSpan={2} className="text-center py-8 text-4">All staff submitted! 🎉</td></tr>
+                  ) : (
+                    stats.notSubmittedList.map(s => (
+                      <tr key={s.id}>
+                        <td>{s.name}</td>
+                        <td className="text-3">{s.department || '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -529,7 +685,8 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ── DEPARTMENT REPORT TAB ── */}
       {tab === 'dept_report' && (() => {

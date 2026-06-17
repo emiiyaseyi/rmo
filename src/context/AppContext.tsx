@@ -410,6 +410,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function logAudit(action: string, targetId: string, metadata: any = {}) {
+    // Enrich with a human-readable target name when easily derivable, so the
+    // audit trail can show "who did what to whom" without re-resolving later.
+    let targetName = metadata?.targetName || metadata?.name
+    if (!targetName && targetId && targetId !== 'unknown') {
+      const s = staff.find(x => x.id === targetId)
+      if (s) targetName = s.name
+    }
+    const enrichedMeta = targetName ? { ...metadata, targetName } : metadata
     const entry: AuditLog = {
       id: genId(),
       action: action as any,
@@ -418,7 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       device: `${navigator.platform} (${navigator.language}) | ${navigator.userAgent.slice(0, 40)}`,
       ipAddress: 'Local Browser',
       timestamp: new Date().toISOString(),
-      metadata
+      metadata: enrichedMeta
     }
     const updated = [entry, ...auditLogs].slice(0, 1000)
     saveAuditLogs(updated)
@@ -506,16 +514,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Leave / absence records. Admin (HR) sees all; staff sees own.
   function saveLeave(leave: Leave) {
+    const isNew = !leaves.find(l => l.id === leave.id)
     setLeaves(prev => {
       const exists = prev.find(l => l.id === leave.id)
       return exists ? prev.map(l => l.id === leave.id ? leave : l) : [leave, ...prev]
     })
     apiUpsert('leaves', leave)
+    logAudit(isNew ? 'leave_logged' : 'leave_updated', leave.staffId, { staffName: leave.staffName, type: leave.type, from: leave.fromDate, to: leave.toDate })
   }
 
   function deleteLeave(id: string) {
+    const removed = leaves.find(l => l.id === id)
     setLeaves(prev => prev.filter(l => l.id !== id))
     fetch(`/api/leaves/${id}`, { method: 'DELETE' }).catch(() => {})
+    logAudit('leave_deleted', removed?.staffId || id, { staffName: removed?.staffName, type: removed?.type })
   }
 
   function reloadLeaves() {
@@ -680,6 +692,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const historyEntry: PointsHistoryEntry = {
       id: genId(),
+      staffId,
       weekId,
       action,
       points,
@@ -701,6 +714,79 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStaff(updated)
     const badge = BADGES.find(b => b.id === badgeId)
     notify(staffId, `🏆 You earned the "${badge?.name}" badge!`, 'badge')
+    logAudit('badge_granted', staffId, { badge: badge?.name || badgeId, staffName: staff[idx].name })
+  }
+
+  // Compute which badges a staff member has earned from available data and grant
+  // any missing ones. grantBadge no-ops if already present, so this is idempotent.
+  function evaluateBadges(staffId: string) {
+    const s = staff.find(x => x.id === staffId)
+    if (!s) return
+
+    const earned = new Set<string>()
+
+    // century_club — 100+ points
+    if ((s.points || 0) >= 100) earned.add('century_club')
+
+    // consistent / dedicated — streak thresholds
+    if ((s.streak || 0) >= 3) earned.add('consistent')
+    if ((s.streak || 0) >= 8) earned.add('dedicated')
+
+    // top_performer / mvp — ranking among non-suspended staff by points
+    const ranked = staff
+      .filter(x => !x.suspended)
+      .slice()
+      .sort((a, b) => (b.points || 0) - (a.points || 0))
+    const rank = ranked.findIndex(x => x.id === staffId) // 0-based
+    if (rank > -1 && rank < 5) earned.add('top_performer')
+    if (rank === 0 && (s.points || 0) > 0) earned.add('mvp')
+
+    // Per-week status analysis for this staff member
+    const myEntries = entries.filter(e => e.staffId === staffId && !e.deleted && e.weekKey)
+    const weekMap = new Map<string, { total: number; approved: number; rejected: number; submitted: number }>()
+    myEntries.forEach(e => {
+      const w = e.weekKey as string
+      const agg = weekMap.get(w) || { total: 0, approved: 0, rejected: 0, submitted: 0 }
+      agg.total++
+      if (e.status === 'approved') agg.approved++
+      if (e.status === 'rejected') agg.rejected++
+      if (['submitted', 'resubmitted', 'approved', 'pending_clarification', 'pending_2nd_approval'].includes(e.status)) agg.submitted++
+      weekMap.set(w, agg)
+    })
+
+    // perfect_week / zero_defect — weeks where all entries approved, none rejected, >=1 entry
+    let perfectWeeks = 0
+    weekMap.forEach(agg => {
+      if (agg.total >= 1 && agg.approved === agg.total && agg.rejected === 0) perfectWeeks++
+    })
+    if (perfectWeeks >= 1) earned.add('perfect_week')
+    if (perfectWeeks >= 3) earned.add('zero_defect')
+
+    // comeback — non-contiguous submitted weeks (a gap > 1 week between consecutive submissions)
+    const submittedWeeks = Array.from(weekMap.entries())
+      .filter(([, agg]) => agg.submitted >= 1)
+      .map(([w]) => w)
+      .filter(w => /^\d{4}-\d{2}-\d{2}$/.test(w))
+      .sort()
+    for (let i = 1; i < submittedWeeks.length; i++) {
+      const prev = Date.parse(submittedWeeks[i - 1])
+      const cur = Date.parse(submittedWeeks[i])
+      if (!isNaN(prev) && !isNaN(cur)) {
+        const weeksApart = Math.round((cur - prev) / (7 * 86400000))
+        if (weeksApart > 1) { earned.add('comeback'); break }
+      }
+    }
+
+    // early_bird / speed_logger — any early-submission record for this staff in points history.
+    // pointsHistory lacks a staffId field in some records; only match when present.
+    const hasEarly = pointsHistory.some(h =>
+      (h as any).staffId === staffId && typeof h.action === 'string' && h.action.includes('Early submission')
+    )
+    if (hasEarly) { earned.add('early_bird'); earned.add('speed_logger') }
+
+    // Grant only missing ones (grantBadge already no-ops if present)
+    const current = new Set(s.badges || [])
+    earned.forEach(b => { if (!current.has(b)) grantBadge(staffId, b) })
   }
 
   // ---------------------------------------------------------------------------
@@ -741,12 +827,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function canApproveTimesheets() {
     if (!user) return false
     if (['admin', 'team_lead'].includes(user.role)) return true
-    const now = new Date()
-    const hasActiveDelegation = approvalDelegations.some(d =>
-      d.delegateId === user.id && d.isActive &&
-      new Date(d.startDate) <= now && new Date(d.endDate) >= now
-    )
-    if (hasActiveDelegation) return true
     if (pendingApprovals().length > 0) return true
     const normalizedUserName = (user.name || '').trim().toLowerCase()
     return entries.some(e => !e.deleted && (e.leadId === user.id || (e.lead || '').trim().toLowerCase() === normalizedUserName))
@@ -901,10 +981,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bonusDesc = 'On-time submission'
       }
     } else if (windowStatus.isPastDeadline) {
-      // Window has closed without submission — late addition
+      // Window has closed — submitted outside the window
       isLate = true
-      totalAward = pConfig.lateAddition ?? 1
-      bonusDesc = 'Late submission'
+      totalAward = pConfig.outsideWindowPenalty ?? -1
+      bonusDesc = 'Outside window submission'
     } else {
       // Window hasn't opened yet — treat as on-time (submitted early in the week)
       totalAward = pConfig.onTimeSubmission ?? 2
@@ -931,15 +1011,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return e
     })
 
-    // Late penalty only applies to non-new-task entries
-    const hasOnlyNewTasks = updatedEntries
-      .filter(e => e.staffId === staffId && e.weekKey === weekKey)
-      .every(e => e.isNewTask)
-    if (hasOnlyNewTasks && isLate) {
-      isLate = false
-      totalAward = pConfig.lateAddition ?? 1
-      bonusDesc = 'New task submission'
-    }
 
     // Save entries to DB first — must succeed before we show "Submitted" in the UI
     try {
@@ -975,12 +1046,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
       })
 
-      // Only award points once per week — skip if the user already has submitted/approved entries
-      // for this week before the current submission (i.e., they're adding more draft entries later).
-      const alreadyEarnedThisWeek = entries.some(e =>
-        e.staffId === staffId && e.weekKey === weekKey &&
-        ['submitted', 'resubmitted', 'approved'].includes(e.status)
-      )
+      // Award points ONCE per week. Two guards:
+      // 1) entries proxy — survives reloads (submitted entries persist in DB → poll)
+      // 2) pointsHistory — closes the double-click / rapid re-submit race within a session
+      const alreadyEarnedThisWeek =
+        entries.some(e =>
+          e.staffId === staffId && e.weekKey === weekKey &&
+          ['submitted', 'resubmitted', 'approved'].includes(e.status)
+        ) ||
+        pointsHistory.some(h => h.staffId === staffId && h.weekId === weekKey && /submission/i.test(h.action || ''))
 
       if (!alreadyEarnedThisWeek) {
         // Early streak bonus: 3 consecutive early submissions unlock +1 on subsequent early submissions
@@ -1005,6 +1079,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const updatedStaff = staff.map(s => s.id === staffId ? { ...s, streak: newStreak, lastSubmittedWeek: weekKey } : s)
       saveStaff(updatedStaff)
       if (staffId === user?.id) updateUser({ streak: newStreak, lastSubmittedWeek: weekKey })
+
+      // Re-evaluate badge eligibility for the submitting staff
+      evaluateBadges(staffId)
     } catch (e) { console.error('Week submission failed', e) }
   }
 
@@ -1025,7 +1102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStreakRecoveries, savePointsHistory,
     saveLeave, deleteLeave, reloadLeaves,
     notify, markRead, markAllRead,
-    awardPoints, grantBadge,
+    awardPoints, grantBadge, evaluateBadges,
     pendingApprovals, canApproveTimesheets,
     loadAll, checkReminders,
     idleCountdown, resetIdle, showPasswordChange, setShowPasswordChange,
@@ -1051,9 +1128,11 @@ const DEFAULT_FEATURES = {
 const DEFAULT_POINTS_CONFIG = {
   earlySubmission: 3,
   onTimeSubmission: 2,
-  lateAddition: 1,
   outsideWindowPenalty: -1,
   earlySubmissionHours: 4,
+  fullWeekBonus: 50,
+  streakBonus: 25,
+  approvalBonus: 5,
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -1072,14 +1151,27 @@ const DEFAULT_SETTINGS: AppSettings = {
     announcements: true, orgChart: true,
   },
   pointsConfig: DEFAULT_POINTS_CONFIG,
-  hourCaps: { defaultStaffCap: 45, internCap: 32, cdsVisibility: true, customCaps: [] },
+  hourCaps: {
+    defaultStaffCap: 45, internCap: 32, cdsVisibility: true, customCaps: [],
+    maxHoursPerDay: 12, maxHoursPerWeek: 60, minHoursPerWeek: 35,
+    weeklyPointsCap: 200, dailyEntryLimit: 8, backdatingLimitDays: 14,
+  },
   approvalWorkflow: { secondLevelEnabled: true, secondLevelThreshold: 60 },
   idleTimeout: { minutes: 30 },
+  reviewWindow: {
+    enabled: true, hoursAfterClose: 24, penaltyPerEntry: -5, autoApprove: false,
+    schedule: { openDay: 'tuesday', openTime: '16:00', closeDay: 'thursday', closeTime: '17:00' },
+  },
   submissionWindow: {
     enabled: true,
     schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
     latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
+    gracePeriodHours: 6,
     timezone: 'Africa/Lagos'
+  },
+  security: {
+    defaultPassword: 'dsn-staff', requireTwoFactor: false, autoLogoutIdle: false,
+    minPasswordLength: 8, passwordExpiryDays: 90, sessionTimeoutMin: 30,
   },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],
 }

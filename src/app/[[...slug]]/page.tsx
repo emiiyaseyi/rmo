@@ -9,7 +9,6 @@ import Layout from '@/components/layout/Layout'
 import Dashboard from '@/components/layout/Dashboard'
 import TimesheetPage from '@/components/timesheet/TimesheetPage'
 import ApprovalsPage from '@/components/approvals/ApprovalsPage'
-import DelegationPage from '@/components/approvals/DelegationPage'
 import LeaderboardPage from '@/components/leaderboard/LeaderboardPage'
 import AnalyticsPage from '@/components/analytics/AnalyticsPage'
 import StaffPage from '@/components/staff/StaffPage'
@@ -25,7 +24,6 @@ const PAGE_ROLES: Record<string, string[]> = {
   dashboard: ['staff', 'team_lead', 'admin'],
   timesheet: ['staff', 'team_lead', 'admin'],
   approvals: ['staff', 'team_lead', 'admin'],
-  delegation: ['team_lead', 'admin'],
   leaderboard: ['staff', 'team_lead', 'admin'],
   leave: ['staff', 'team_lead', 'admin'],
   projects: ['admin'],
@@ -77,7 +75,6 @@ export default function Home() {
     if (target === 'leaderboard' && features && !features.leaderboard) return
     if (target === 'analytics' && features && !features.analytics) return
     if (target === 'org_chart' && features && !features.org_chart) return
-    if (target === 'delegation' && features && !features.delegation) return
     if (target === 'approvals' && !canApproveTimesheets()) return
     
     setPage(target)
@@ -183,7 +180,6 @@ export default function Home() {
       case 'dashboard': return <Dashboard setPage={navigate} />
       case 'timesheet': return <TimesheetPage />
       case 'approvals': return <ApprovalsPage />
-      case 'delegation': return <DelegationPage />
       case 'leaderboard': return <LeaderboardPage />
       case 'leave': return <LeavePage />
       case 'projects': return <ProjectsPage />

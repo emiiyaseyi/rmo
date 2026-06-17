@@ -83,7 +83,7 @@ const header = {
   backgroundColor: '#ffffff',
   padding: '24px 40px',
   textAlign: 'center' as const,
-  borderBottom: '3px solid #076C04',
+  borderBottom: '3px solid #0C7A37',
 }
 
 const logoImg = {
@@ -110,7 +110,7 @@ const hr = {
 
 const footer = {
   padding: '24px 40px',
-  backgroundColor: '#F0FDF4',
+  backgroundColor: '#E8F4EC',
 }
 
 const footerText = {

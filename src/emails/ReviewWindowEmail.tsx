@@ -68,7 +68,7 @@ const text = {
 
 const alertBox = {
   backgroundColor: '#FEF3C7',
-  border: '1px solid #EAB308',
+  border: '1px solid #E0A12B',
   borderRadius: '8px',
   padding: '16px',
   margin: '16px 0',
@@ -87,7 +87,7 @@ const buttonContainer = {
 }
 
 const button = {
-  backgroundColor: '#076C04',
+  backgroundColor: '#0C7A37',
   borderRadius: '8px',
   color: '#fff',
   fontSize: '14px',

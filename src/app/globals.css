@@ -1375,3 +1375,32 @@ h2 {
 .min-w-\[200px\] {
   min-width: 200px;
 }
+/* ───────────────────────────────────────────────────────────────
+   Responsive: collapse inline-styled grids on tablet / mobile.
+   Attribute selectors match the inline `style` grid declarations the
+   2026 redesign uses, so multi-column layouts reflow without per-file edits.
+   ─────────────────────────────────────────────────────────────── */
+
+/* Tablet: 4-col card rows → 2-col */
+@media (max-width: 1100px) and (min-width: 821px) {
+  main [style*="repeat(4, 1fr)"],
+  main [style*="repeat(4,1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Mobile: every multi-column grid → single column */
+@media (max-width: 820px) {
+  main [style*="grid-template-columns"],
+  .modal [style*="grid-template-columns"],
+  .modal-body [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* sticky side panels (log-time / request-leave) shouldn't stick on mobile */
+  main [style*="position:sticky"],
+  main [style*="position: sticky"] {
+    position: static !important;
+  }
+  /* tighten page padding */
+  main { padding: 14px !important; }
+}

@@ -451,148 +451,105 @@ export default function LeaderboardPage() {
         })()}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 2 }}>
-        {(['individual', 'reviewal', 'department', 'badges'] as const).map(t => {
-          const active = tab === t
-          const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : 'Badges'
-          const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : Award
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 'var(--r-md, 8px) var(--r-md, 8px) 0 0',
-                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                background: active ? 'var(--tint)' : 'transparent',
-                color: active ? 'var(--brand)' : 'var(--ink-3)',
-                borderBottom: active ? '2px solid var(--brand)' : '2px solid transparent',
-                marginBottom: -2, transition: 'all .15s'
-              }}
-            >
-              <Icon size={15} /> {label}
-            </button>
-          )
-        })}
-      </div>
+      {(() => {
+        const pill = (activeP: boolean): React.CSSProperties => ({
+          padding: '6px 13px', borderRadius: 999, border: '1px solid',
+          cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          background: activeP ? 'var(--brand)' : 'var(--elev)',
+          color: activeP ? '#fff' : 'var(--ink-2)',
+          borderColor: activeP ? 'var(--brand)' : 'var(--line)',
+        })
+        const PERIODS: PeriodType[] = ['alltime', 'week', 'month', 'custom']
+        const plabel = (p: PeriodType) => p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom'
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 6 }}>
+            {/* Tabs (left) */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(['individual', 'reviewal', 'department', 'badges'] as const).map(t => {
+                const active = tab === t
+                const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : 'Badges'
+                const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : Award
+                return (
+                  <button key={t} onClick={() => setTab(t)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                    borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    background: active ? 'var(--tint)' : 'transparent', color: active ? 'var(--brand)' : 'var(--ink-3)',
+                    borderBottom: active ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: -6, transition: 'all .15s'
+                  }}><Icon size={15} /> {label}</button>
+                )
+              })}
+            </div>
 
-      {tab === 'individual' && (
-        <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
-          <div className="flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16 }}>
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex gap-3 flex-1 min-w-[300px]">
-                <input
-                  className="form-input flex-1"
-                  placeholder="Search staff..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-                <select className="form-select w-48" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+            {/* Filters (right) — Submission tab */}
+            {tab === 'individual' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
                   <option value="">All Departments</option>
                   {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
-              </div>
-              <div className="flex gap-2">
+                {PERIODS.map(p => <button key={p} onClick={() => setPeriodType(p)} style={pill(periodType === p)}>{plabel(p)}</button>)}
+                {periodType === 'week' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={selectedWeek} onChange={e => { setSelectedWeek(e.target.value); periodFetchKey.current = '' }}>
+                    {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                )}
+                {periodType === 'month' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 130 }} value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value); periodFetchKey.current = '' }}>
+                    {availableMonths.map(m => <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</option>)}
+                  </select>
+                )}
+                {periodType === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={customFrom} max={customTo || undefined} onChange={e => { setCustomFrom(e.target.value); periodFetchKey.current = '' }} />
+                    <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>to</span>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={customTo} min={customFrom || undefined} onChange={e => { setCustomTo(e.target.value); periodFetchKey.current = '' }} />
+                  </div>
+                )}
                 <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
               </div>
-            </div>
-            {/* Period filter row */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period:</span>
-              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPeriodType(p)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
-                    cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    background: periodType === p ? 'var(--brand)' : 'var(--elev)',
-                    color: periodType === p ? '#fff' : 'var(--ink-2)',
-                    borderColor: periodType === p ? 'var(--brand)' : 'var(--line)',
-                  }}
-                >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
-                </button>
-              ))}
-              {periodType === 'week' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 160 }}
-                  value={selectedWeek}
-                  onChange={e => { setSelectedWeek(e.target.value); periodFetchKey.current = '' }}
-                >
-                  {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              )}
-              {periodType === 'month' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 140 }}
-                  value={selectedMonth}
-                  onChange={e => { setSelectedMonth(e.target.value); periodFetchKey.current = '' }}
-                >
-                  {availableMonths.map(m => (
-                    <option key={m} value={m}>
-                      {new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {periodType === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={customFrom}
-                    max={customTo || undefined}
-                    onChange={e => { setCustomFrom(e.target.value); periodFetchKey.current = '' }}
-                  />
-                  <span className="text-xs text-3">to</span>
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={customTo}
-                    min={customFrom || undefined}
-                    onChange={e => { setCustomTo(e.target.value); periodFetchKey.current = '' }}
-                  />
-                </div>
-              )}
-              {periodLoading && <span className="text-xs text-3 animate-pulse">Loading...</span>}
-              {periodType !== 'alltime' && !periodLoading && (
-                <span className="text-xs text-3">
-                  {periodType === 'week'
-                    ? `Showing points earned week of ${selectedWeek}`
-                    : periodType === 'month'
-                      ? `Showing points earned in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
-                      : customFrom && customTo
-                        ? `Showing points earned ${customFrom} → ${customTo}`
-                        : 'Pick a start and end date'}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Pinned My Rank Card (if not in top 25) */}
-          {(myRank > 25 || myRank === 0) && (
-            <div style={{ background: 'var(--tint)', border: '1px solid var(--brand)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16, position: 'relative', overflow: 'hidden' }}>
-              <div className="flex items-center gap-4">
-                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--brand)', fontFamily: 'var(--font-sora)', opacity: 0.7 }}>#{myRank || '?'}</div>
-                <div className="flex-1">
-                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{user?.name} (You)</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · {user?.streak || 0}w streak</div>
-                </div>
-                {myRank > 25 && (
-                  <div className="text-right">
-                    <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>To enter Top 25</div>
-                    <div style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>+{ (ranked[24]?.points || 0) - (user?.points || 0) + 1 } pts</div>
+            )}
+
+            {/* Filters (right) — Reviewal tab */}
+            {tab === 'reviewal' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {PERIODS.map(p => <button key={p} onClick={() => setReviewPeriodType(p)} style={pill(reviewPeriodType === p)}>{plabel(p)}</button>)}
+                {reviewPeriodType === 'week' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={reviewSelectedWeek} onChange={e => setReviewSelectedWeek(e.target.value)}>
+                    {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                )}
+                {reviewPeriodType === 'month' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 130 }} value={reviewSelectedMonth} onChange={e => setReviewSelectedMonth(e.target.value)}>
+                    {availableMonths.map(m => <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</option>)}
+                  </select>
+                )}
+                {reviewPeriodType === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={reviewCustomFrom} max={reviewCustomTo || undefined} onChange={e => setReviewCustomFrom(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>to</span>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={reviewCustomTo} min={reviewCustomFrom || undefined} onChange={e => setReviewCustomTo(e.target.value)} />
                   </div>
                 )}
+                <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
               </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {tab === 'individual' && (
+        <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
+          {periodType !== 'alltime' && (
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              {periodLoading ? 'Loading…'
+                : periodType === 'week' ? `Showing points earned week of ${selectedWeek}`
+                : periodType === 'month' ? `Showing points earned in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+                : customFrom && customTo ? `Showing points earned ${customFrom} → ${customTo}`
+                : 'Pick a start and end date'}
             </div>
           )}
-
           <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
             <div className="table-wrap">
               <table>
@@ -658,88 +615,14 @@ export default function LeaderboardPage() {
 
       {tab === 'reviewal' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16 }}>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 flex-1 flex-wrap">
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period:</span>
-              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setReviewPeriodType(p)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
-                    cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    background: reviewPeriodType === p ? 'var(--brand)' : 'var(--elev)',
-                    color: reviewPeriodType === p ? '#fff' : 'var(--ink-2)',
-                    borderColor: reviewPeriodType === p ? 'var(--brand)' : 'var(--line)',
-                  }}
-                >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
-                </button>
-              ))}
-              {reviewPeriodType === 'week' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 160 }}
-                  value={reviewSelectedWeek}
-                  onChange={e => setReviewSelectedWeek(e.target.value)}
-                >
-                  {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              )}
-              {reviewPeriodType === 'month' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 140 }}
-                  value={reviewSelectedMonth}
-                  onChange={e => setReviewSelectedMonth(e.target.value)}
-                >
-                  {availableMonths.map(m => (
-                    <option key={m} value={m}>
-                      {new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {reviewPeriodType === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={reviewCustomFrom}
-                    max={reviewCustomTo || undefined}
-                    onChange={e => setReviewCustomFrom(e.target.value)}
-                  />
-                  <span className="text-xs text-3">to</span>
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={reviewCustomTo}
-                    min={reviewCustomFrom || undefined}
-                    onChange={e => setReviewCustomTo(e.target.value)}
-                  />
-                </div>
-              )}
-              {reviewPeriodType !== 'alltime' && (
-                <span className="text-xs text-3">
-                  {reviewPeriodType === 'week'
-                    ? `Showing reviews week of ${reviewSelectedWeek}`
-                    : reviewPeriodType === 'month'
-                      ? `Showing reviews in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
-                      : reviewCustomFrom && reviewCustomTo
-                        ? `Showing reviews ${reviewCustomFrom} → ${reviewCustomTo}`
-                        : 'Pick a start and end date'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
-            </div>
+        {reviewPeriodType !== 'alltime' && (
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+            {reviewPeriodType === 'week' ? `Showing reviews week of ${reviewSelectedWeek}`
+              : reviewPeriodType === 'month' ? `Showing reviews in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+              : reviewCustomFrom && reviewCustomTo ? `Showing reviews ${reviewCustomFrom} → ${reviewCustomTo}`
+              : 'Pick a start and end date'}
           </div>
-        </div>
+        )}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>

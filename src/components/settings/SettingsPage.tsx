@@ -5,6 +5,10 @@ import { exportCSV, genId } from '../../lib/utils'
 import { AppSettings, WeekLock, PublicHoliday } from '../../types'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
+import {
+  Settings, Target, BarChart3, Clock, CheckSquare, Lock, Unlock, Calendar,
+  CalendarDays, Palmtree, Shield, ScrollText, Database, Save, Trash2, Plus, Download
+} from 'lucide-react'
 
 export default function SettingsPage() {
   const {
@@ -59,7 +63,6 @@ export default function SettingsPage() {
     { id: 'weeks', label: 'Weeks' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'security', label: 'Security' },
-    { id: 'activity', label: 'Activity Log' },
     { id: 'database', label: 'Database' },
   ]
   const actionOptions = useMemo(
@@ -106,23 +109,87 @@ export default function SettingsPage() {
   const commonTimes = ['08:00', '09:00', '12:00', '16:00', '18:00'] as const
   const titleCaseDay = (day: string) => day.charAt(0).toUpperCase() + day.slice(1)
 
+  // --- 2026 design helpers ---
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }
+  const helperStyle: React.CSSProperties = { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }
+  const inputStyle = (opts?: { mono?: boolean; danger?: boolean }): React.CSSProperties => ({
+    width: '100%', padding: '11px 13px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+    fontFamily: opts?.mono ? 'var(--mono)' : 'inherit', fontSize: 14, fontWeight: 700,
+    color: opts?.danger ? 'var(--danger)' : 'var(--ink)', background: 'var(--surface)', outline: 'none'
+  })
+  const cardShell: React.CSSProperties = {
+    background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)',
+    boxShadow: 'var(--sh-sm)', overflow: 'hidden'
+  }
+  const cardHead: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 11, padding: '18px 24px', borderBottom: '1px solid var(--line-2)'
+  }
+  const cardBody: React.CSSProperties = { padding: '22px 24px' }
+  const iconTile = (tint: string, color: string): React.CSSProperties => ({
+    width: 32, height: 32, borderRadius: 9, background: tint, color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+  })
+  const cardTitle: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: 'var(--ink)' }
+  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px 20px' }
+  const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '18px 20px' }
+  const subHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }
+  const subDesc: React.CSSProperties = { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }
+  const rubricLine: React.CSSProperties = { fontSize: 12.5, color: 'var(--ink-4)', fontStyle: 'italic', marginTop: 4 }
+  const saveBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', border: 'none', borderRadius: 'var(--r-sm)',
+    background: 'var(--brand)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 3px 10px rgba(12,122,55,.25)'
+  }
+  const discardBtn: React.CSSProperties = {
+    padding: '11px 18px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+    background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+  }
+  const saveFooter: React.CSSProperties = {
+    display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--line-2)', background: 'var(--canvas)'
+  }
+  const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
+    <div onClick={onClick} style={{ width: 38, height: 22, borderRadius: 999, background: on ? 'var(--brand)' : 'var(--line)', position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background .15s' }}>
+      <span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.3)', transition: 'left .15s' }} />
+    </div>
+  )
+  const ToggleRow = ({ title, desc, on, onClick }: { title: string; desc: string; on: boolean; onClick: () => void }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--canvas)', borderRadius: 'var(--r-sm)' }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{desc}</div>
+      </div>
+      <Toggle on={on} onClick={onClick} />
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">⚙️ System Settings</h1>
-        <p className="text-sm text-4">Platform configuration and administrative control</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand)' }}>
+          <Settings size={23} />
+        </div>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em' }}>System Settings</h1>
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>Platform configuration and administrative control</p>
+        </div>
       </div>
 
-      <div className="tabs">
-        {tabs.map(t => (
-          <div
-            key={t.id}
-            className={`tab${tab === t.id ? ' active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </div>
-        ))}
+      <div style={{ borderBottom: '1px solid var(--line)', display: 'flex', gap: 4, overflowX: 'auto' }}>
+        {tabs.map(t => {
+          const active = tab === t.id
+          return (
+            <div
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                padding: '11px 15px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', position: 'relative',
+                fontWeight: active ? 700 : 600, color: active ? 'var(--brand)' : 'var(--ink-3)'
+              }}
+            >
+              {t.label}
+              <span style={{ position: 'absolute', left: 0, right: 0, bottom: -1, height: 2.5, background: active ? 'var(--brand)' : 'transparent', borderRadius: 2 }} />
+            </div>
+          )
+        })}
       </div>
 
       <div className="grid gap-6">
@@ -130,19 +197,18 @@ export default function SettingsPage() {
 
         {/* POINTS CONFIG */}
         {tab === 'points' && (
-          <div className="card flex flex-col gap-6">
-            <h3 className="font-bold">🎯 Points & Awards Configuration</h3>
-
-            <div className="flex flex-col gap-2">
-              <div className="text-sm font-semibold text-2">Submission Points</div>
-              <p className="text-xs text-4" style={{ marginBottom: 8 }}>
-                Points awarded when staff submit their weekly timesheet.
-                <br />
-                <span style={{ fontStyle: 'italic' }}>
-                  Rubric: Early ({pointsForm.earlySubmissionHours}h from window open) → On-time → Late addition → Outside window
-                </span>
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--gold-tint)', 'var(--gold)')}><Target size={17} /></span>
+              <div style={cardTitle}>Points &amp; Awards Configuration</div>
+            </div>
+            <div style={cardBody}>
+              <div style={subHead}>Submission Points</div>
+              <div style={subDesc}>Points awarded when staff submit their weekly timesheet.</div>
+              <div style={rubricLine}>
+                Rubric: Early ({pointsForm.earlySubmissionHours}h from window open) → On-time → Late addition → Outside window
+              </div>
+              <div style={{ ...grid3, marginTop: 18 }}>
                 {([
                   { key: 'earlySubmission', label: 'Early Submission', hint: `Within first ${pointsForm.earlySubmissionHours}h of window opening` },
                   { key: 'earlySubmissionHours', label: 'Early Window (hours)', hint: 'Hours from window open that count as early' },
@@ -150,120 +216,124 @@ export default function SettingsPage() {
                   { key: 'lateAddition', label: 'Late Addition', hint: 'Submitted after window closes' },
                   { key: 'outsideWindowPenalty', label: 'Outside Window Penalty', hint: 'Submitted outside any window period' },
                 ] as { key: keyof typeof pointsForm, label: string, hint: string }[]).map(({ key, label, hint }) => (
-                  <div key={key} className="form-group">
-                    <label className="form-label">{label}</label>
-                    <input type="number" className="form-input" value={pointsForm[key]}
+                  <div key={key}>
+                    <label style={labelStyle}>{label}</label>
+                    <input type="number" style={inputStyle({ mono: true, danger: Number(pointsForm[key]) < 0 })} value={pointsForm[key]}
                       onChange={e => setPointsForm({ ...pointsForm, [key]: Number(e.target.value) })} />
-                    <div className="text-xs text-4 mt-1">{hint}</div>
+                    <div style={helperStyle}>{hint}</div>
                   </div>
                 ))}
               </div>
             </div>
-
-            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ pointsConfig: pointsForm })}>
-              Save Points Configuration
-            </button>
+            <div style={saveFooter}>
+              <button style={saveBtn} onClick={() => saveAllSettings({ pointsConfig: pointsForm })}>
+                <Save size={15} /> Save changes
+              </button>
+            </div>
           </div>
         )}
 
         {/* HOUR CAPS */}
         {tab === 'caps' && (
-          <div className="card flex flex-col gap-6">
-            <h3 className="font-bold">🕒 Hour Caps & Visibility</h3>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="form-group">
-                <label className="form-label">Default Staff Cap (hrs)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={capsForm.defaultStaffCap}
-                  onChange={e => setCapsForm({ ...capsForm, defaultStaffCap: Number(e.target.value) })}
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--info-tint)', 'var(--info)')}><BarChart3 size={17} /></span>
+              <div style={cardTitle}>Hour Caps &amp; Visibility</div>
+            </div>
+            <div style={cardBody}>
+              <div style={grid2}>
+                <div>
+                  <label style={labelStyle}>Default Staff Cap (hrs)</label>
+                  <input
+                    type="number"
+                    style={inputStyle({ mono: true })}
+                    value={capsForm.defaultStaffCap}
+                    onChange={e => setCapsForm({ ...capsForm, defaultStaffCap: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Intern Cap (hrs)</label>
+                  <input
+                    type="number"
+                    style={inputStyle({ mono: true })}
+                    value={capsForm.internCap}
+                    onChange={e => setCapsForm({ ...capsForm, internCap: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <ToggleRow
+                  title="CDS Day Visibility"
+                  desc="Show CDS Day selection in staff profiles."
+                  on={!!capsForm.cdsVisibility}
+                  onClick={() => setCapsForm({ ...capsForm, cdsVisibility: !capsForm.cdsVisibility })}
                 />
               </div>
-              <div className="form-group">
-                <label className="form-label">Intern Cap (hrs)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={capsForm.internCap}
-                  onChange={e => setCapsForm({ ...capsForm, internCap: Number(e.target.value) })}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-2 rounded-lg border border-3">
-              <button
-                onClick={() => setCapsForm({ ...capsForm, cdsVisibility: !capsForm.cdsVisibility })}
-                className={`w-10 h-5 rounded-full relative transition-all ${capsForm.cdsVisibility ? 'bg-success' : 'bg-3'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${capsForm.cdsVisibility ? 'left-6' : 'left-1'}`}></div>
-              </button>
-              <div>
-                <div className="text-xs font-bold">CDS Day Visibility</div>
-                <div className="text-[10px] text-3">Show CDS Day selection in staff profiles.</div>
-              </div>
-            </div>
 
-            <div className="flex flex-col gap-3 p-4 bg-soft-warning rounded-lg border border-warning-subtle">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">🗓️</span>
-                <div className="text-xs font-bold text-warning">Emergency Deadline Extension</div>
+              <div style={{ marginTop: 16, padding: 16, background: 'var(--warn-tint)', borderRadius: 'var(--r-sm)', border: '1px solid var(--warning-subtle)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CalendarDays size={15} style={{ color: 'var(--warn)' }} />
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--warn)' }}>Emergency Deadline Extension</div>
+                </div>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>Sets a custom date/time until which the submission window remains open for all staff.</p>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <input
+                    type="datetime-local"
+                    style={{ ...inputStyle(), width: 'auto', flex: 1 }}
+                    value={capsForm.deadlineOverride || ''}
+                    onChange={e => setCapsForm({ ...capsForm, deadlineOverride: e.target.value })}
+                  />
+                  <button style={discardBtn} onClick={() => setCapsForm({ ...capsForm, deadlineOverride: null })}>Clear</button>
+                </div>
               </div>
-              <p className="text-[10px] text-warning-subtle">Sets a custom date/time until which the submission window remains open for all staff.</p>
-              <div className="flex gap-2">
-                <input
-                  type="datetime-local"
-                  className="form-input text-xs"
-                  value={capsForm.deadlineOverride || ''}
-                  onChange={e => setCapsForm({ ...capsForm, deadlineOverride: e.target.value })}
-                />
-                <button className="btn btn-secondary btn-sm" onClick={() => setCapsForm({ ...capsForm, deadlineOverride: null })}>Clear</button>
-              </div>
-            </div>
 
-            <div className="divider"></div>
+              <div style={{ height: 1, background: 'var(--line-2)', margin: '22px 0' }} />
 
-            <h4 className="text-xs font-bold">Custom Individual Caps</h4>
-            <div className="flex flex-col gap-2">
-              {capsForm.customCaps.map((c, i) => (
-                <div key={i} className="flex items-center gap-3 bg-2 p-3 rounded-lg border border-3">
-                  <div className="flex-1 text-xs font-medium">{staff.find(s => s.id === c.staffId)?.name || 'Unknown Staff'}</div>
-                  <div className="px-2 py-1 bg-3 rounded text-[10px] font-bold uppercase">{c.label}</div>
-                  <div className="text-xs font-bold">{c.cap}h</div>
+              <div style={subHead}>Custom Individual Caps</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {capsForm.customCaps.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--canvas)', padding: '12px 14px', borderRadius: 'var(--r-sm)' }}>
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{staff.find(s => s.id === c.staffId)?.name || 'Unknown Staff'}</div>
+                    <div style={{ padding: '3px 8px', background: 'var(--elev)', borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-2)' }}>{c.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--mono)' }}>{c.cap}h</div>
+                    <button
+                      style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}
+                      onClick={() => {
+                        const next = capsForm.customCaps.filter((_, idx) => idx !== i)
+                        setCapsForm({ ...capsForm, customCaps: next })
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <select style={{ ...inputStyle(), flex: 1 }} id="custom-staff-select">
+                    <option value="">Select Staff...</option>
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <input type="number" style={{ ...inputStyle({ mono: true }), width: 90 }} placeholder="Cap" id="custom-cap-val" />
+                  <input type="text" style={{ ...inputStyle(), width: 120 }} placeholder="Label" id="custom-cap-label" defaultValue="custom" />
                   <button
-                    className="btn btn-icon text-danger"
+                    style={discardBtn}
                     onClick={() => {
-                      const next = capsForm.customCaps.filter((_, idx) => idx !== i)
+                      const sId = (document.getElementById('custom-staff-select') as HTMLSelectElement).value
+                      const cVal = Number((document.getElementById('custom-cap-val') as HTMLInputElement).value)
+                      const cLab = (document.getElementById('custom-cap-label') as HTMLInputElement).value
+                      if (!sId || !cVal) return
+                      const next = [...capsForm.customCaps, { staffId: sId, cap: cVal, label: cLab }]
                       setCapsForm({ ...capsForm, customCaps: next })
                     }}
-                  >
-                    🗑️
-                  </button>
+                  >Add</button>
                 </div>
-              ))}
-              <div className="flex gap-2 mt-2">
-                <select className="form-input text-xs" id="custom-staff-select">
-                  <option value="">Select Staff...</option>
-                  {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <input type="number" className="form-input w-20 text-xs" placeholder="Cap" id="custom-cap-val" />
-                <input type="text" className="form-input w-24 text-xs" placeholder="Label" id="custom-cap-label" defaultValue="custom" />
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    const sId = (document.getElementById('custom-staff-select') as HTMLSelectElement).value
-                    const cVal = Number((document.getElementById('custom-cap-val') as HTMLInputElement).value)
-                    const cLab = (document.getElementById('custom-cap-label') as HTMLInputElement).value
-                    if (!sId || !cVal) return
-                    const next = [...capsForm.customCaps, { staffId: sId, cap: cVal, label: cLab }]
-                    setCapsForm({ ...capsForm, customCaps: next })
-                  }}
-                >Add</button>
               </div>
             </div>
-
-            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ hourCaps: capsForm })}>
-              Save Cap Settings
-            </button>
+            <div style={saveFooter}>
+              <button style={saveBtn} onClick={() => saveAllSettings({ hourCaps: capsForm })}>
+                <Save size={15} /> Save changes
+              </button>
+            </div>
           </div>
         )}
 
@@ -271,18 +341,16 @@ export default function SettingsPage() {
         {tab === 'submission' && (
           <div className="flex flex-col gap-6">
             {/* Header Card */}
-            <div className="card">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold mb-1">🔓 Submission Window</h3>
-                  <p className="text-sm text-3">Configure timesheet submission schedule and penalties</p>
+            <div style={cardShell}>
+              <div style={{ ...cardHead, borderBottom: 'none', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <span style={iconTile('var(--tint)', 'var(--brand)')}><Clock size={17} /></span>
+                  <div>
+                    <div style={cardTitle}>Submission Window</div>
+                    <div style={subDesc}>Configure timesheet submission schedule and penalties</div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setSubmissionWindowForm({ ...submissionWindowForm, enabled: !submissionWindowForm.enabled })}
-                  className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
-                >
-                  <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${submissionWindowForm.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                </button>
+                <Toggle on={submissionWindowForm.enabled} onClick={() => setSubmissionWindowForm({ ...submissionWindowForm, enabled: !submissionWindowForm.enabled })} />
               </div>
             </div>
 
@@ -392,31 +460,32 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Late Penalties */}
-                <div className="card">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h4 className="text-sm font-bold mb-1">⚠️ Late Penalties</h4>
-                      <p className="text-xs text-3">Deduct points for late submissions</p>
+                <div style={cardShell}>
+                  <div style={{ ...cardHead, justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                      <span style={iconTile('var(--warn-tint)', 'var(--warn)')}><Clock size={17} /></span>
+                      <div>
+                        <div style={cardTitle}>Late Penalties</div>
+                        <div style={subDesc}>Deduct points for late submissions</div>
+                      </div>
                     </div>
-                    <button
+                    <Toggle
+                      on={submissionWindowForm.latePenalty.enabled}
                       onClick={() => setSubmissionWindowForm({
                         ...submissionWindowForm,
                         latePenalty: { ...submissionWindowForm.latePenalty, enabled: !submissionWindowForm.latePenalty.enabled }
                       })}
-                      className={`w-14 h-8 rounded-full relative transition-all ${submissionWindowForm.latePenalty.enabled ? 'bg-warning' : 'bg-3'}`}
-                    >
-                      <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${submissionWindowForm.latePenalty.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                    </button>
+                    />
                   </div>
 
                   {submissionWindowForm.latePenalty.enabled && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div style={cardBody}>
+                      <div style={grid2}>
                         <div>
-                          <label className="text-xs font-semibold text-3 mb-2 block">Points per Period</label>
+                          <label style={labelStyle}>Points per Period</label>
                           <input
                             type="number"
-                            className="form-input text-center text-xl font-bold w-full"
+                            style={inputStyle({ mono: true, danger: submissionWindowForm.latePenalty.pointsPerPeriod < 0 })}
                             value={submissionWindowForm.latePenalty.pointsPerPeriod}
                             onChange={e => setSubmissionWindowForm({
                               ...submissionWindowForm,
@@ -426,10 +495,10 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-semibold text-3 mb-2 block">Period Length (hours)</label>
+                          <label style={labelStyle}>Period Length (hours)</label>
                           <input
                             type="number"
-                            className="form-input text-center text-xl font-bold w-full"
+                            style={inputStyle({ mono: true })}
                             value={submissionWindowForm.latePenalty.periodHours}
                             onChange={e => setSubmissionWindowForm({
                               ...submissionWindowForm,
@@ -441,9 +510,9 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                        <div className="text-xs text-amber-900">
-                          <span className="font-semibold">Example:</span> 25 hours late = <span className="font-bold">{Math.floor(25 / submissionWindowForm.latePenalty.periodHours) * submissionWindowForm.latePenalty.pointsPerPeriod} points</span> ({Math.floor(25 / submissionWindowForm.latePenalty.periodHours)} periods × {submissionWindowForm.latePenalty.pointsPerPeriod})
+                      <div style={{ marginTop: 16, padding: 14, background: 'var(--warn-tint)', borderRadius: 'var(--r-sm)', border: '1px solid var(--warning-subtle)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                          <span style={{ fontWeight: 700 }}>Example:</span> 25 hours late = <span style={{ fontWeight: 700 }}>{Math.floor(25 / submissionWindowForm.latePenalty.periodHours) * submissionWindowForm.latePenalty.pointsPerPeriod} points</span> ({Math.floor(25 / submissionWindowForm.latePenalty.periodHours)} periods × {submissionWindowForm.latePenalty.pointsPerPeriod})
                         </div>
                       </div>
                     </div>
@@ -453,12 +522,11 @@ export default function SettingsPage() {
             )}
 
             {/* Save Button */}
-            <button
-              className="btn btn-primary btn-lg w-full sm:w-auto"
-              onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}
-            >
-              Save Changes
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button style={saveBtn} onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}>
+                <Save size={15} /> Save changes
+              </button>
+            </div>
           </div>
         )}
 
@@ -466,18 +534,16 @@ export default function SettingsPage() {
         {tab === 'review' && (
           <div className="flex flex-col gap-6">
             {/* Header Card */}
-            <div className="card">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold mb-1">📋 Review Window</h3>
-                  <p className="text-sm text-3">Configure how long team leads have to review submitted timesheets after the submission window closes. Late reviews incur point deductions.</p>
+            <div style={cardShell}>
+              <div style={{ ...cardHead, borderBottom: 'none', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <span style={iconTile('var(--violet-tint)', 'var(--violet)')}><CheckSquare size={17} /></span>
+                  <div>
+                    <div style={cardTitle}>Review Window</div>
+                    <div style={subDesc}>Configure how long team leads have to review submitted timesheets after the submission window closes. Late reviews incur point deductions.</div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setReviewWindowForm({ ...reviewWindowForm, enabled: !reviewWindowForm.enabled })}
-                  className={`w-14 h-8 rounded-full relative transition-all flex-shrink-0 ${reviewWindowForm.enabled ? 'bg-success' : 'bg-3'}`}
-                >
-                  <div className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow-md transition-all ${reviewWindowForm.enabled ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                </button>
+                <Toggle on={reviewWindowForm.enabled} onClick={() => setReviewWindowForm({ ...reviewWindowForm, enabled: !reviewWindowForm.enabled })} />
               </div>
             </div>
 
@@ -508,26 +574,31 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Late review penalty */}
-                <div className="card">
-                  <div className="mb-4">
-                    <h4 className="text-sm font-bold mb-1">⚠️ Late Review Penalty</h4>
-                    <p className="text-xs text-3">Points deducted per unreviewed entry after the review deadline passes. Applied once automatically.</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div style={cardShell}>
+                  <div style={cardHead}>
+                    <span style={iconTile('var(--warn-tint)', 'var(--warn)')}><CheckSquare size={17} /></span>
                     <div>
-                      <label className="text-xs font-semibold text-3 mb-2 block">Points per Unreviewed Entry</label>
-                      <input
-                        type="number"
-                        className="form-input text-center text-xl font-bold w-full"
-                        value={reviewWindowForm.penaltyPerEntry}
-                        onChange={e => setReviewWindowForm({ ...reviewWindowForm, penaltyPerEntry: Number(e.target.value) })}
-                        placeholder="-5"
-                      />
+                      <div style={cardTitle}>Late Review Penalty</div>
+                      <div style={subDesc}>Points deducted per unreviewed entry after the review deadline passes. Applied once automatically.</div>
                     </div>
-                    <div className="flex items-end pb-1">
-                      <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 w-full">
-                        <div className="text-xs text-amber-900">
-                          <span className="font-semibold">Example:</span> A lead with 10 unreviewed entries would lose <span className="font-bold">{Math.abs(reviewWindowForm.penaltyPerEntry) * 10} points</span> ({reviewWindowForm.penaltyPerEntry} × 10 entries)
+                  </div>
+                  <div style={cardBody}>
+                    <div style={grid2}>
+                      <div>
+                        <label style={labelStyle}>Points per Unreviewed Entry</label>
+                        <input
+                          type="number"
+                          style={inputStyle({ mono: true, danger: reviewWindowForm.penaltyPerEntry < 0 })}
+                          value={reviewWindowForm.penaltyPerEntry}
+                          onChange={e => setReviewWindowForm({ ...reviewWindowForm, penaltyPerEntry: Number(e.target.value) })}
+                          placeholder="-5"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <div style={{ padding: 14, background: 'var(--warn-tint)', borderRadius: 'var(--r-sm)', border: '1px solid var(--warning-subtle)', width: '100%' }}>
+                          <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                            <span style={{ fontWeight: 700 }}>Example:</span> A lead with 10 unreviewed entries would lose <span style={{ fontWeight: 700 }}>{Math.abs(reviewWindowForm.penaltyPerEntry) * 10} points</span> ({reviewWindowForm.penaltyPerEntry} × 10 entries)
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -535,9 +606,12 @@ export default function SettingsPage() {
                 </div>
 
                 {/* How it works */}
-                <div className="card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                  <h4 className="text-sm font-bold mb-3">How it works</h4>
-                  <ol className="text-xs text-3 flex flex-col gap-2" style={{ paddingLeft: 16 }}>
+                <div style={{ ...cardShell, background: 'var(--elev)' }}>
+                  <div style={cardHead}>
+                    <span style={iconTile('var(--info-tint)', 'var(--info)')}><ScrollText size={17} /></span>
+                    <div style={cardTitle}>How it works</div>
+                  </div>
+                  <ol style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'flex', flexDirection: 'column', gap: 8, padding: '22px 24px', paddingLeft: 40, listStyle: 'none' }}>
                     <li>1. Submission window closes (e.g. Tuesday 12:57 PM)</li>
                     <li>2. All team leads immediately receive an email listing their pending entries and the review deadline</li>
                     <li>3. Leads have <strong>{reviewWindowForm.hoursAfterClose} hours</strong> to approve or reject all submitted entries</li>
@@ -548,31 +622,34 @@ export default function SettingsPage() {
               </>
             )}
 
-            <button
-              className="btn btn-primary btn-lg w-full sm:w-auto"
-              onClick={() => saveAllSettings({ reviewWindow: reviewWindowForm })}
-            >
-              Save Changes
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button style={saveBtn} onClick={() => saveAllSettings({ reviewWindow: reviewWindowForm })}>
+                <Save size={15} /> Save changes
+              </button>
+            </div>
           </div>
         )}
 
         {/* WEEK LOCKING */}
         {tab === 'weeks' && (
-          <div className="card flex flex-col gap-4">
-            <h3 className="font-bold">🔐 Week Locking</h3>
-            <p className="text-xs text-3">Locking a week range prevents all staff from adding or submitting entries during that period.</p>
-            <div className="flex gap-2 p-4 bg-2 rounded-lg border border-3 mb-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-3 font-medium">From:</label>
-                <input type="date" className="form-input text-xs" id="lock-start-date" />
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--tint)', 'var(--brand)')}><Lock size={17} /></span>
+              <div style={cardTitle}>Week Locking</div>
+            </div>
+            <div style={cardBody}>
+            <p style={{ ...subDesc, marginTop: 0, marginBottom: 14 }}>Locking a week range prevents all staff from adding or submitting entries during that period.</p>
+            <div style={{ display: 'flex', gap: 12, padding: 16, background: 'var(--canvas)', borderRadius: 'var(--r-sm)', marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <label style={labelStyle}>From</label>
+                <input type="date" style={inputStyle()} id="lock-start-date" />
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-3 font-medium">To:</label>
-                <input type="date" className="form-input text-xs" id="lock-end-date" />
+              <div>
+                <label style={labelStyle}>To</label>
+                <input type="date" style={inputStyle()} id="lock-end-date" />
               </div>
               <button
-                className="btn btn-danger btn-sm whitespace-nowrap"
+                style={{ ...saveBtn, background: 'var(--danger)', boxShadow: '0 3px 10px rgba(216,71,63,.25)', whiteSpace: 'nowrap' }}
                 onClick={() => {
                   const startDate = (document.getElementById('lock-start-date') as HTMLInputElement).value
                   const endDate = (document.getElementById('lock-end-date') as HTMLInputElement).value
@@ -594,43 +671,51 @@ export default function SettingsPage() {
                   logAudit('settings_change', weekId, { action: 'lock_week_range' })
                   toast.success(`Week range locked: ${weekId}`)
                 }}
-              >Lock Week Range</button>
+              ><Lock size={15} /> Lock Week Range</button>
             </div>
-            <div className="grid gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {weekLocks.length === 0 ? (
-                <p className="text-xs text-4 py-4 text-center">No weeks currently locked.</p>
+                <p style={{ fontSize: 12.5, color: 'var(--ink-3)', padding: '16px 0', textAlign: 'center' }}>No weeks currently locked.</p>
               ) : (
                 weekLocks.map(lock => (
-                  <div key={lock.id} className="flex items-center justify-between p-4 bg-soft-danger rounded-lg border border-danger-subtle">
-                    <div>
-                      <div className="text-xs font-bold text-danger">Locked: {lock.weekId}</div>
-                      <div className="text-[10px] text-danger-subtle">By {lock.lockedBy} on {new Date(lock.lockedAt).toLocaleDateString()}</div>
+                  <div key={lock.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--danger-tint)', borderRadius: 'var(--r-sm)', border: '1px solid var(--danger-subtle)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                      <span style={iconTile('var(--danger-tint)', 'var(--danger)')}><Lock size={15} /></span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>Locked: {lock.weekId}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>By {lock.lockedBy} on {new Date(lock.lockedAt).toLocaleDateString()}</div>
+                      </div>
                     </div>
                     <button
-                      className="btn btn-icon text-danger"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--danger-subtle)', background: 'var(--surface)', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, padding: '7px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}
                       onClick={() => {
                         saveWeekLocks(weekLocks.filter(l => l.id !== lock.id))
                         toast.success(`Week ${lock.weekId} unlocked`)
                       }}
                     >
-                      🔓 Unlock
+                      <Unlock size={14} /> Unlock
                     </button>
                   </div>
                 ))
               )}
+            </div>
             </div>
           </div>
         )}
 
         {/* PUBLIC HOLIDAYS */}
         {tab === 'holidays' && (
-          <div className="card flex flex-col gap-4">
-            <h3 className="font-bold">🏖️ Public Holidays</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <input type="text" className="form-input text-xs" id="holiday-name" placeholder="Holiday Name" />
-              <input type="date" className="form-input text-xs" id="holiday-date" />
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--warn-tint)', 'var(--warn)')}><Palmtree size={17} /></span>
+              <div style={cardTitle}>Public Holidays</div>
+            </div>
+            <div style={cardBody}>
+            <div style={{ ...grid3, marginBottom: 18, alignItems: 'end' }}>
+              <input type="text" style={inputStyle()} id="holiday-name" placeholder="Holiday Name" />
+              <input type="date" style={inputStyle()} id="holiday-date" />
               <button
-                className="btn btn-primary btn-sm"
+                style={saveBtn}
                 onClick={() => {
                   const name = (document.getElementById('holiday-name') as HTMLInputElement).value
                   const date = (document.getElementById('holiday-date') as HTMLInputElement).value
@@ -651,20 +736,20 @@ export default function SettingsPage() {
                     }
                   })
                 }}
-              >Add Holiday</button>
+              ><Plus size={15} /> Add Holiday</button>
             </div>
-            <div className="grid gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {publicHolidays.map(h => (
-                <div key={h.id} className="flex items-center justify-between p-3 bg-2 rounded-xl border border-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-soft-primary flex items-center justify-center text-primary text-xs font-bold">🏖️</div>
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--canvas)', borderRadius: 'var(--r-sm)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                    <span style={iconTile('var(--warn-tint)', 'var(--warn)')}><Palmtree size={15} /></span>
                     <div>
-                      <div className="text-xs font-bold">{h.name}</div>
-                      <div className="text-[10px] text-3">{new Date(h.date).toLocaleDateString()} · -{h.capReduction}h cap reduction</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{h.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{new Date(h.date).toLocaleDateString()} · -{h.capReduction}h cap reduction</div>
                     </div>
                   </div>
                   <button
-                    className="btn btn-icon text-danger"
+                    style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}
                     onClick={() => setHolidayConfirm({
                       isOpen: true,
                       title: 'Delete Holiday',
@@ -675,10 +760,11 @@ export default function SettingsPage() {
                       }
                     })}
                   >
-                    🗑️
+                    <Trash2 size={15} />
                   </button>
                 </div>
               ))}
+            </div>
             </div>
           </div>
         )}
@@ -690,133 +776,57 @@ export default function SettingsPage() {
 
         {/* SECURITY & PASSWORDS */}
         {tab === 'security' && (
-          <div className="card flex flex-col gap-6">
-            <h3 className="font-bold">🛡️ Security & Access Control</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="form-group">
-                <label className="form-label">Default New User Password</label>
-                <div className="flex gap-2">
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--danger-tint)', 'var(--danger)')}><Shield size={17} /></span>
+              <div style={cardTitle}>Security &amp; Access Control</div>
+            </div>
+            <div style={cardBody}>
+              <div style={grid2}>
+                <div>
+                  <label style={labelStyle}>Default New User Password</label>
                   <input
-                    className="form-input"
+                    style={inputStyle()}
                     type="text"
                     value={securityForm.defaultPassword}
                     onChange={e => setSecurityForm({ ...securityForm, defaultPassword: e.target.value })}
                   />
+                  <div style={helperStyle}>This password will be assigned to all new users and during administrative resets.</div>
                 </div>
-                <p className="text-[10px] text-3 mt-1">This password will be assigned to all new users and during administrative resets.</p>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Active Features</label>
-                <div className="flex items-center gap-3 p-3 bg-2 rounded-lg border border-3">
-                  <button
+                <div>
+                  <label style={labelStyle}>Active Features</label>
+                  <ToggleRow
+                    title="Require 2FA for Admin/Leads"
+                    desc="Enforce two-factor authentication on privileged accounts."
+                    on={!!securityForm.requireTwoFactor}
                     onClick={() => setSecurityForm({ ...securityForm, requireTwoFactor: !securityForm.requireTwoFactor })}
-                    className={`w-10 h-5 rounded-full relative transition-all ${securityForm.requireTwoFactor ? 'bg-success' : 'bg-3'}`}
-                  >
-                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${securityForm.requireTwoFactor ? 'left-6' : 'left-1'}`}></div>
-                  </button>
-                  <span className="text-xs font-medium">Require 2FA for Admin/Leads</span>
+                  />
                 </div>
               </div>
             </div>
-            <button className="btn btn-primary w-fit" onClick={() => saveAllSettings({ security: securityForm })}>
-              Save Security Settings
-            </button>
+            <div style={saveFooter}>
+              <button style={saveBtn} onClick={() => saveAllSettings({ security: securityForm })}>
+                <Save size={15} /> Save changes
+              </button>
+            </div>
           </div>
         )}
 
         {/* ACTIVITY LOG */}
-        {tab === 'activity' && (
-          <div className="card flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold">📜 Platform Activity Log</h3>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  const data = filteredAuditLogs.map(l => ({
-                    Timestamp: l.timestamp,
-                    User: l.performedBy,
-                    Action: l.action,
-                    Target: l.targetId,
-                    Device: l.device,
-                    IP: l.ipAddress,
-                    Metadata: JSON.stringify(l.metadata || {}),
-                  }))
-                  exportCSV(data, `platform_activity_${new Date().toISOString().slice(0, 10)}.csv`)
-                }}
-              >
-                Export CSV
-              </button>
-            </div>
-            <div className="flex gap-3 flex-wrap items-center">
-              <input
-                className="form-input text-xs flex-1"
-                style={{ minWidth: '200px' }}
-                placeholder="Search user/action/target/details..."
-                value={auditSearch}
-                onChange={e => setAuditSearch(e.target.value)}
-              />
-              <select className="form-select text-xs" style={{ minWidth: '150px' }} value={auditAction} onChange={e => setAuditAction(e.target.value)}>
-                <option value="">All Actions</option>
-                {actionOptions.map((action: string) => <option key={action} value={action}>{action}</option>)}
-              </select>
-              <input className="form-input text-xs" style={{ width: '140px' }} type="date" placeholder="dd----yyyy" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} />
-              <input className="form-input text-xs" style={{ width: '140px' }} type="date" placeholder="dd----yyyy" value={auditTo} onChange={e => setAuditTo(e.target.value)} />
-            </div>
-            <div className="text-xs text-3">
-              Showing {filteredAuditLogs.length} log event{filteredAuditLogs.length === 1 ? '' : 's'} .
-            </div>
-            <div className="table-wrap" style={{ maxHeight: 600 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>User</th>
-                    <th>Action</th>
-                    <th>Target</th>
-                    <th>Device</th>
-                    <th>IP</th>
-                    <th>Metadata</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAuditLogs.map(log => (
-                    <tr key={log.id}>
-                      <td className="text-xs font-mono whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
-                      <td className="font-medium">{log.performedBy || 'System'}</td>
-                      <td><span className="badge badge-blue">{log.action}</span></td>
-                      <td className="text-xs">{log.targetId || '—'}</td>
-                      <td className="text-xs" title={log.device || ''}>
-                        <div className="truncate max-w-[220px]">{log.device || '—'}</div>
-                      </td>
-                      <td className="text-xs font-mono">{log.ipAddress || '—'}</td>
-                      <td className="text-xs">
-                        <div className="truncate max-w-[320px]" title={JSON.stringify(log.metadata || {})}>
-                          {JSON.stringify(log.metadata || {})}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredAuditLogs.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-10 text-4">No logs match current filters.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
         {/* DATABASE */}
         {tab === 'database' && (
-          <div className="flex flex-col gap-6">
-            <div className="card flex flex-col gap-4">
-              <h3 className="font-bold">🗄️ PostgreSQL Database Statistics</h3>
-              <p className="text-xs text-3">Real-time collection counts and estimated storage size</p>
-
-              <div className="overflow-x-auto border border-3 rounded-lg">
+          <div style={cardShell}>
+            <div style={cardHead}>
+              <span style={iconTile('var(--elev)', 'var(--ink-2)')}><Database size={17} /></span>
+              <div>
+                <div style={cardTitle}>PostgreSQL Database Statistics</div>
+                <div style={subDesc}>Real-time collection counts and estimated storage size</div>
+              </div>
+            </div>
+            <div style={cardBody}>
+              <div style={{ overflowX: 'auto', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }}>
                 <table className="w-full text-xs">
-                  <thead className="bg-2">
+                  <thead style={{ background: 'var(--canvas)' }}>
                     <tr>
                       <th className="p-3 text-left font-bold uppercase text-[10px]">Collection</th>
                       <th className="p-3 text-right font-bold uppercase text-[10px]">Documents</th>
@@ -839,14 +849,14 @@ export default function SettingsPage() {
                     ].map(({ name, count, data }) => {
                       const estimatedSize = data ? (JSON.stringify(data).length / 1024).toFixed(2) : '0.00'
                       return (
-                        <tr key={name} className="border-t border-3">
+                        <tr key={name} style={{ borderTop: '1px solid var(--line-2)' }}>
                           <td className="p-3 font-mono font-bold">{name}</td>
                           <td className="p-3 text-right">{count.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{estimatedSize} KB</td>
                         </tr>
                       )
                     })}
-                    <tr className="border-t-2 border-3 bg-2 font-bold">
+                    <tr className="font-bold" style={{ borderTop: '2px solid var(--line)', background: 'var(--canvas)' }}>
                       <td className="p-3">Total</td>
                       <td className="p-3 text-right">
                         {[
@@ -875,8 +885,8 @@ export default function SettingsPage() {
                 </table>
               </div>
 
-              <div className="p-4 bg-soft-info rounded-lg text-xs text-info">
-                ℹ️ Data is synced in real-time (every 30s) from the PostgreSQL Database. Size estimates are based on JSON serialization and may differ from actual storage calculations.
+              <div style={{ marginTop: 16, padding: 14, background: 'var(--info-tint)', borderRadius: 'var(--r-sm)', fontSize: 12, color: 'var(--info)' }}>
+                Data is synced in real-time (every 30s) from the PostgreSQL Database. Size estimates are based on JSON serialization and may differ from actual storage calculations.
               </div>
             </div>
           </div>

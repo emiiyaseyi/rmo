@@ -600,10 +600,9 @@ export default function LeaderboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
             {[
-              { score: 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +4 after 3 consecutive early weeks`, color: 'var(--success)' },
-              { score: 2, label: 'On-time (within submission window)', color: 'var(--brand)' },
-              { score: 1, label: 'Late addition (after window closes)', color: 'var(--warning)' },
-              { score: -1, label: 'Outside window', color: 'var(--danger)' },
+              { score: settings?.pointsConfig?.earlySubmission ?? 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +1 after 3 consecutive early weeks`, color: 'var(--success)' },
+              { score: settings?.pointsConfig?.onTimeSubmission ?? 2, label: 'On-time (within submission window)', color: 'var(--brand)' },
+              { score: settings?.pointsConfig?.outsideWindowPenalty ?? -1, label: 'Outside window (after window closes)', color: 'var(--danger)' },
             ].map(({ score, label, color }, i, arr) => (
               <React.Fragment key={score}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

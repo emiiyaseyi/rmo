@@ -981,10 +981,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bonusDesc = 'On-time submission'
       }
     } else if (windowStatus.isPastDeadline) {
-      // Window has closed without submission — late addition
+      // Window has closed — submitted outside the window
       isLate = true
-      totalAward = pConfig.lateAddition ?? 1
-      bonusDesc = 'Late submission'
+      totalAward = pConfig.outsideWindowPenalty ?? -1
+      bonusDesc = 'Outside window submission'
     } else {
       // Window hasn't opened yet — treat as on-time (submitted early in the week)
       totalAward = pConfig.onTimeSubmission ?? 2
@@ -1011,15 +1011,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return e
     })
 
-    // Late penalty only applies to non-new-task entries
-    const hasOnlyNewTasks = updatedEntries
-      .filter(e => e.staffId === staffId && e.weekKey === weekKey)
-      .every(e => e.isNewTask)
-    if (hasOnlyNewTasks && isLate) {
-      isLate = false
-      totalAward = pConfig.lateAddition ?? 1
-      bonusDesc = 'New task submission'
-    }
 
     // Save entries to DB first — must succeed before we show "Submitted" in the UI
     try {
@@ -1137,7 +1128,6 @@ const DEFAULT_FEATURES = {
 const DEFAULT_POINTS_CONFIG = {
   earlySubmission: 3,
   onTimeSubmission: 2,
-  lateAddition: 1,
   outsideWindowPenalty: -1,
   earlySubmissionHours: 4,
   fullWeekBonus: 50,

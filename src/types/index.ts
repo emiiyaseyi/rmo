@@ -206,7 +206,6 @@ export interface AppSettings {
     pointsConfig: {
         earlySubmission: number;
         onTimeSubmission: number;
-        lateAddition: number;
         outsideWindowPenalty: number;
         earlySubmissionHours: number;
         fullWeekBonus?: number;

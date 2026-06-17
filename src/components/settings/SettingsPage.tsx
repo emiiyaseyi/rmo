@@ -34,7 +34,6 @@ export default function SettingsPage() {
   const [pointsForm, setPointsForm] = useState({
     earlySubmission: settings?.pointsConfig?.earlySubmission ?? 3,
     onTimeSubmission: settings?.pointsConfig?.onTimeSubmission ?? 2,
-    lateAddition: settings?.pointsConfig?.lateAddition ?? 1,
     outsideWindowPenalty: settings?.pointsConfig?.outsideWindowPenalty ?? -1,
     earlySubmissionHours: settings?.pointsConfig?.earlySubmissionHours ?? 4,
     fullWeekBonus: settings?.pointsConfig?.fullWeekBonus ?? 50,
@@ -239,15 +238,14 @@ export default function SettingsPage() {
                 <div style={subHead}>Submission Points</div>
                 <div style={subDesc}>Points awarded when staff submit their weekly timesheet.</div>
                 <div style={rubricLine}>
-                  Rubric: Early ({pointsForm.earlySubmissionHours}h from window open) → On-time → Late addition → Outside window
+                  Rubric: Early ({pointsForm.earlySubmissionHours}h from window open) → On-time → Outside window penalty
                 </div>
                 <div style={{ ...grid2, marginTop: 18 }}>
                   {([
                     { key: 'earlySubmission', label: 'Early Submission', hint: `Within first ${pointsForm.earlySubmissionHours}h of window opening` },
                     { key: 'earlySubmissionHours', label: 'Early Window (hours)', hint: 'Hours from window open that count as early' },
                     { key: 'onTimeSubmission', label: 'On-Time Submission', hint: 'Within submission window (after early cutoff)' },
-                    { key: 'lateAddition', label: 'Late Addition', hint: 'Submitted after window closes' },
-                    { key: 'outsideWindowPenalty', label: 'Outside Window Penalty', hint: 'Submitted outside any window period', danger: true },
+                    { key: 'outsideWindowPenalty', label: 'Outside Window Penalty', hint: 'Submitted after the window closes / outside any window', danger: true },
                   ] as { key: keyof typeof pointsForm, label: string, hint: string, danger?: boolean }[]).map(({ key, label, hint, danger }) => (
                     <div key={key}>
                       <label style={labelStyle}>{label}</label>
@@ -285,7 +283,6 @@ export default function SettingsPage() {
                 <button style={discardBtn} onClick={() => setPointsForm({
                   earlySubmission: settings?.pointsConfig?.earlySubmission ?? 3,
                   onTimeSubmission: settings?.pointsConfig?.onTimeSubmission ?? 2,
-                  lateAddition: settings?.pointsConfig?.lateAddition ?? 1,
                   outsideWindowPenalty: settings?.pointsConfig?.outsideWindowPenalty ?? -1,
                   earlySubmissionHours: settings?.pointsConfig?.earlySubmissionHours ?? 4,
                   fullWeekBonus: settings?.pointsConfig?.fullWeekBonus ?? 50,
@@ -403,31 +400,11 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div style={cardShell}>
-              <div style={cardHead}>
-                <span style={iconTile('var(--warn-tint)', 'var(--warn)')}><Clock size={17} /></span>
-                <div style={cardTitle}>Grace &amp; penalties</div>
-              </div>
-              <div style={cardBody}>
-                <div style={grid2}>
-                  <div>
-                    <label style={labelStyle}>Grace Period (hrs)</label>
-                    <input type="number" style={inputStyle({ mono: true })} value={submissionWindowForm.gracePeriodHours ?? 6}
-                      onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, gracePeriodHours: Number(e.target.value) })} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Late Penalty (pts)</label>
-                    <input type="number" style={inputStyle({ mono: true, danger: true })} value={submissionWindowForm.latePenalty.pointsPerPeriod}
-                      onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, latePenalty: { ...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value) } })} />
-                  </div>
-                </div>
-              </div>
-              <div style={saveFooter}>
-                <button style={discardBtn} onClick={() => settings?.submissionWindow && setSubmissionWindowForm({ gracePeriodHours: 6, ...settings.submissionWindow })}>Discard</button>
-                <button style={saveBtn} onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}>
-                  <Save size={15} /> Save changes
-                </button>
-              </div>
+            <div style={saveFooter}>
+              <button style={discardBtn} onClick={() => settings?.submissionWindow && setSubmissionWindowForm({ gracePeriodHours: 6, ...settings.submissionWindow })}>Discard</button>
+              <button style={saveBtn} onClick={() => saveAllSettings({ submissionWindow: submissionWindowForm })}>
+                <Save size={15} /> Save changes
+              </button>
             </div>
           </div>
         )}

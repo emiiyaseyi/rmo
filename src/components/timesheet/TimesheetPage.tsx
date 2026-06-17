@@ -387,7 +387,7 @@ function ClarifyModal({ entry, onSave, onClose }: ClarifyModalProps) {
 /* ────────────────────────────────────────────────────────────── */
 /*  Countdown Timer with Window Status                           */
 /* ────────────────────────────────────────────────────────────── */
-function CountdownTimer({ weekKey, submissionWindow }: { weekKey: string; submissionWindow?: any }) {
+function CountdownTimer({ weekKey, submissionWindow, latePenalty }: { weekKey: string; submissionWindow?: any; latePenalty?: number }) {
   const [timeLeft, setTimeLeft] = useState('')
   const [status, setStatus] = useState<any>(null)
 
@@ -427,7 +427,7 @@ function CountdownTimer({ weekKey, submissionWindow }: { weekKey: string; submis
   if (status.isPastDeadline) {
     return (
       <div className="badge badge-red" style={{ fontSize: 11, fontWeight: 700 }}>
-        ⚠️ Late Submission ({status.penalty < 0 ? status.penalty : 0} pts penalty)
+        ⚠️ Late Submission ({(latePenalty ?? 0) < 0 ? latePenalty : 0} pts penalty)
       </div>
     )
   }
@@ -442,9 +442,9 @@ function CountdownTimer({ weekKey, submissionWindow }: { weekKey: string; submis
 /* ────────────────────────────────────────────────────────────── */
 /*  Submission Confirmation Modal                                 */
 /* ────────────────────────────────────────────────────────────── */
-function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, onConfirm, onClose }: any) {
+function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, latePenalty, onConfirm, onClose }: any) {
   const isLate = windowStatus?.isPastDeadline
-  const penalty = windowStatus?.penalty || 0
+  const penalty = latePenalty || 0
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -1364,7 +1364,7 @@ export default function TimesheetPage() {
         {/* Status indicators + submit / no-work actions */}
         {(isCurrentWeek || submitted || isLocked || canSubmit || isOver || (!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek)) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-2)', paddingTop: 12 }}>
-            {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} />}
+            {isCurrentWeek && <CountdownTimer weekKey={selectedWeek} submissionWindow={settings?.submissionWindow} latePenalty={settings?.pointsConfig?.outsideWindowPenalty} />}
             {submitted && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand)', background: 'var(--tint)', padding: '4px 10px', borderRadius: 20 }}>✅ Submitted</span>}
             {isLocked && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-tint)', padding: '4px 10px', borderRadius: 20 }}>🔒 Locked</span>}
             {isOver && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--warn)', background: 'var(--warn-tint)', padding: '4px 10px', borderRadius: 20 }}>⚡ {(totalHours - weekCap).toFixed(1)}h over cap</span>}
@@ -1601,7 +1601,7 @@ export default function TimesheetPage() {
               categories={categories}
               windowOpen={isWindowOpen}
               isLate={!!windowStatus?.isPastDeadline}
-              latePenalty={settings?.submissionWindow?.latePenalty?.pointsPerPeriod}
+              latePenalty={settings?.pointsConfig?.outsideWindowPenalty}
               defaultStart={new Date().toISOString().slice(0, 10)}
               defaultEnd={new Date().toISOString().slice(0, 10)}
             />
@@ -1852,6 +1852,7 @@ export default function TimesheetPage() {
           totalHours={totalHours}
           cap={weekCap}
           windowStatus={windowStatus}
+          latePenalty={settings?.pointsConfig?.outsideWindowPenalty}
           onConfirm={handleConfirmSubmit}
           onClose={() => setShowConfirm(false)}
         />

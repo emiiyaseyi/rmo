@@ -380,6 +380,7 @@ export function rowToPublicHoliday(r: any) {
     name: r.name,
     date: r.date,
     capReduction: r.cap_reduction,
+    type: r.type ?? 'public',
   }
 }
 
@@ -389,6 +390,7 @@ export function publicHolidayToRow(d: any) {
     name: d.name ?? '',
     date: d.date ?? '',
     cap_reduction: d.capReduction ?? 8,
+    type: d.type ?? 'public',
   }
 }
 

@@ -692,6 +692,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const historyEntry: PointsHistoryEntry = {
       id: genId(),
+      staffId,
       weekId,
       action,
       points,
@@ -1054,12 +1055,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notify(lId as string, `${staffMember.name} submitted their timesheet for week ${weekKey}`, 'submission_received', 'Timesheet Submitted', submissionId, 'entry')
       })
 
-      // Only award points once per week — skip if the user already has submitted/approved entries
-      // for this week before the current submission (i.e., they're adding more draft entries later).
-      const alreadyEarnedThisWeek = entries.some(e =>
-        e.staffId === staffId && e.weekKey === weekKey &&
-        ['submitted', 'resubmitted', 'approved'].includes(e.status)
-      )
+      // Award points ONCE per week. Two guards:
+      // 1) entries proxy — survives reloads (submitted entries persist in DB → poll)
+      // 2) pointsHistory — closes the double-click / rapid re-submit race within a session
+      const alreadyEarnedThisWeek =
+        entries.some(e =>
+          e.staffId === staffId && e.weekKey === weekKey &&
+          ['submitted', 'resubmitted', 'approved'].includes(e.status)
+        ) ||
+        pointsHistory.some(h => h.staffId === staffId && h.weekId === weekKey && /submission/i.test(h.action || ''))
 
       if (!alreadyEarnedThisWeek) {
         // Early streak bonus: 3 consecutive early submissions unlock +1 on subsequent early submissions

@@ -409,7 +409,7 @@ export default function SettingsPage() {
                 <div style={cardTitle}>Grace &amp; penalties</div>
               </div>
               <div style={cardBody}>
-                <div style={grid3}>
+                <div style={grid2}>
                   <div>
                     <label style={labelStyle}>Grace Period (hrs)</label>
                     <input type="number" style={inputStyle({ mono: true })} value={submissionWindowForm.gracePeriodHours ?? 6}
@@ -419,11 +419,6 @@ export default function SettingsPage() {
                     <label style={labelStyle}>Late Penalty (pts)</label>
                     <input type="number" style={inputStyle({ mono: true, danger: true })} value={submissionWindowForm.latePenalty.pointsPerPeriod}
                       onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, latePenalty: { ...submissionWindowForm.latePenalty, pointsPerPeriod: Number(e.target.value) } })} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Per (hrs late)</label>
-                    <input type="number" min={1} style={inputStyle({ mono: true })} value={submissionWindowForm.latePenalty.periodHours}
-                      onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, latePenalty: { ...submissionWindowForm.latePenalty, periodHours: Number(e.target.value) } })} />
                   </div>
                 </div>
               </div>

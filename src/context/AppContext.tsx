@@ -1131,6 +1131,9 @@ const DEFAULT_POINTS_CONFIG = {
   lateAddition: 1,
   outsideWindowPenalty: -1,
   earlySubmissionHours: 4,
+  fullWeekBonus: 50,
+  streakBonus: 25,
+  approvalBonus: 5,
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -1149,14 +1152,27 @@ const DEFAULT_SETTINGS: AppSettings = {
     announcements: true, orgChart: true,
   },
   pointsConfig: DEFAULT_POINTS_CONFIG,
-  hourCaps: { defaultStaffCap: 45, internCap: 32, cdsVisibility: true, customCaps: [] },
+  hourCaps: {
+    defaultStaffCap: 45, internCap: 32, cdsVisibility: true, customCaps: [],
+    maxHoursPerDay: 12, maxHoursPerWeek: 60, minHoursPerWeek: 35,
+    weeklyPointsCap: 200, dailyEntryLimit: 8, backdatingLimitDays: 14,
+  },
   approvalWorkflow: { secondLevelEnabled: true, secondLevelThreshold: 60 },
   idleTimeout: { minutes: 30 },
+  reviewWindow: {
+    enabled: true, hoursAfterClose: 24, penaltyPerEntry: -5, autoApprove: false,
+    schedule: { openDay: 'tuesday', openTime: '16:00', closeDay: 'thursday', closeTime: '17:00' },
+  },
   submissionWindow: {
     enabled: true,
     schedule: { startDay: 'monday' as const, startTime: '08:00', endDay: 'tuesday' as const, endTime: '16:00' },
     latePenalty: { enabled: true, pointsPerPeriod: -5, periodHours: 12 },
+    gracePeriodHours: 6,
     timezone: 'Africa/Lagos'
+  },
+  security: {
+    defaultPassword: 'dsn-staff', requireTwoFactor: false, autoLogoutIdle: false,
+    minPasswordLength: 8, passwordExpiryDays: 90, sessionTimeoutMin: 30,
   },
   categories: ['Client Work', 'Internal', 'Training', 'Admin', 'Business Development', 'Research'],
 }

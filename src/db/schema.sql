@@ -212,7 +212,8 @@ CREATE TABLE IF NOT EXISTS public_holidays (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     date          TEXT NOT NULL,
-    cap_reduction INTEGER DEFAULT 8
+    cap_reduction INTEGER DEFAULT 8,
+    type          TEXT DEFAULT 'public'
 );
 
 -- 11. audit_logs

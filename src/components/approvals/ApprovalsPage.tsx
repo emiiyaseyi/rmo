@@ -871,6 +871,17 @@ export default function ApprovalsPage() {
                       <div style={{ color: 'var(--ink-3)', fontSize: 12 }}>{weekRange(e.weekKey)}</div>
                     </div>
 
+                    {/* project lead / reviewer */}
+                    {(() => {
+                      const leadName = e.lead || staff.find(x => x.id === e.leadId)?.name || '—'
+                      return (
+                        <div style={{ width: 150, flexShrink: 0, minWidth: 0 }} title={leadName}>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Reviewer</div>
+                          <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{leadName}</div>
+                        </div>
+                      )
+                    })()}
+
                     {/* flag pill */}
                     {isFlagged && (
                       <span

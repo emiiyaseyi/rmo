@@ -356,105 +356,45 @@ export default function SettingsPage() {
 
             {submissionWindowForm.enabled && (
               <>
-                {/* Active Window Schedule */}
-                <div className="rounded-[32px] border-2 border-cyan-400/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl">
-                  {/* Header */}
-                  <div className="text-center mb-8">
-                    <div className="text-sm font-bold mb-4 text-slate-200">Active Window:</div>
-                    <div className="text-5xl md:text-6xl font-black tracking-tight leading-tight mb-6" style={{ fontSize: '3.5rem', fontWeight: '900' }}>
-                      {titleCaseDay(submissionWindowForm.schedule.startDay)}, {submissionWindowForm.schedule.startTime.replace(/^0/, '')}
-                      <span className="text-cyan-400/60"> - </span>
-                      {titleCaseDay(submissionWindowForm.schedule.endDay)} {submissionWindowForm.schedule.endTime.replace(/^0/, '')}
+                {/* Window Schedule */}
+                <div style={cardShell}>
+                  <div style={cardHead}>
+                    <span style={iconTile('var(--tint)', 'var(--brand)')}><Clock size={17} /></span>
+                    <div style={cardTitle}>Window Schedule</div>
+                  </div>
+                  <div style={cardBody}>
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 18 }}>
+                      Active window: <strong style={{ color: 'var(--ink)' }}>{titleCaseDay(submissionWindowForm.schedule.startDay)} {submissionWindowForm.schedule.startTime} – {titleCaseDay(submissionWindowForm.schedule.endDay)} {submissionWindowForm.schedule.endTime}</strong>
                     </div>
-                    <div className="flex items-center justify-center gap-3 flex-wrap">
-                      <span className="text-lg font-bold text-slate-200">Timezone:</span>
-                      <select
-                        className="rounded-lg border-2 border-slate-600 bg-slate-800/80 px-4 py-2 text-base text-white font-bold focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transition-all"
-                        value={submissionWindowForm.timezone}
-                        onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, timezone: e.target.value })}
-                      >
-                        <option className="bg-slate-800" value="Africa/Windhoek">Africa/Windhoek</option>
-                        <option className="bg-slate-800" value="Africa/Lagos">Africa/Lagos</option>
-                        <option className="bg-slate-800" value="Africa/Johannesburg">Africa/Johannesburg</option>
-                        <option className="bg-slate-800" value="UTC">UTC</option>
-                        <option className="bg-slate-800" value="America/New_York">America/New_York</option>
-                        <option className="bg-slate-800" value="Europe/London">Europe/London</option>
+                    <div style={{ maxWidth: 300, marginBottom: 22 }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>Timezone</label>
+                      <select style={inputStyle()} value={submissionWindowForm.timezone} onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, timezone: e.target.value })}>
+                        <option value="Africa/Lagos">Africa/Lagos</option>
+                        <option value="Africa/Windhoek">Africa/Windhoek</option>
+                        <option value="Africa/Johannesburg">Africa/Johannesburg</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="Europe/London">Europe/London</option>
                       </select>
                     </div>
-                  </div>
-
-                  {/* Opens and Closes Sections - Side by Side */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                    {/* Opens */}
-                    <div className="rounded-[28px] border-2 border-slate-600/70 bg-slate-800/40 backdrop-blur-sm p-6 hover:border-cyan-400/50 transition-all">
-                      <div className="text-center text-4xl font-black mb-6 text-white">Opens</div>
-
-                      {/* Days */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
-                        {scheduleDays.filter(d => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d.value)).map((day) => (
-                          <button
-                            key={day.value}
-                            onClick={() => setSubmissionWindowForm({
-                              ...submissionWindowForm,
-                              schedule: { ...submissionWindowForm.schedule, startDay: day.value }
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                      {([['start', 'startDay', 'startTime', 'Opens'], ['end', 'endDay', 'endTime', 'Closes']] as const).map(([k, dayKey, timeKey, title]) => (
+                        <div key={k} style={{ background: 'var(--canvas)', borderRadius: 'var(--r-sm)', padding: 16 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>{title}</div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                            {scheduleDays.filter(d => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d.value)).map(day => {
+                              const active = (submissionWindowForm.schedule as any)[dayKey] === day.value
+                              return (
+                                <button key={day.value} onClick={() => setSubmissionWindowForm({ ...submissionWindowForm, schedule: { ...submissionWindowForm.schedule, [dayKey]: day.value } })}
+                                  style={{ minWidth: 46, height: 34, borderRadius: 'var(--r-sm)', border: '1px solid', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: active ? 'var(--brand)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-2)', borderColor: active ? 'var(--brand)' : 'var(--line)' }}>
+                                  {day.short}
+                                </button>
+                              )
                             })}
-                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${submissionWindowForm.schedule.startDay === day.value
-                                ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
-                                : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
-                              }`}
-                          >
-                            {day.short}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Time Input */}
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/30 transition-all"
-                        style={{ width: '100%' }}
-                        value={submissionWindowForm.schedule.startTime}
-                        onChange={e => setSubmissionWindowForm({
-                          ...submissionWindowForm,
-                          schedule: { ...submissionWindowForm.schedule, startTime: e.target.value }
-                        })}
-                      />
-                    </div>
-
-                    {/* Closes */}
-                    <div className="rounded-[28px] border-2 border-slate-600/70 bg-slate-800/40 backdrop-blur-sm p-6 hover:border-cyan-400/50 transition-all">
-                      <div className="text-center text-4xl font-black mb-6 text-white">Closes</div>
-
-                      {/* Days */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
-                        {scheduleDays.filter(d => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d.value)).map((day) => (
-                          <button
-                            key={`end-${day.value}`}
-                            onClick={() => setSubmissionWindowForm({
-                              ...submissionWindowForm,
-                              schedule: { ...submissionWindowForm.schedule, endDay: day.value }
-                            })}
-                            className={`h-10 rounded-lg border-2 text-sm font-bold transition-all transform active:scale-95 ${submissionWindowForm.schedule.endDay === day.value
-                                ? 'border-white bg-white text-slate-900 shadow-lg scale-105'
-                                : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-700'
-                              }`}
-                          >
-                            {day.short}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Time Input */}
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/30 transition-all"
-                        style={{ width: '100%' }}
-                        value={submissionWindowForm.schedule.endTime}
-                        onChange={e => setSubmissionWindowForm({
-                          ...submissionWindowForm,
-                          schedule: { ...submissionWindowForm.schedule, endTime: e.target.value }
-                        })}
-                      />
+                          </div>
+                          <input type="time" style={inputStyle({ mono: true })} value={(submissionWindowForm.schedule as any)[timeKey]} onChange={e => setSubmissionWindowForm({ ...submissionWindowForm, schedule: { ...submissionWindowForm.schedule, [timeKey]: e.target.value } })} />
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -549,27 +489,21 @@ export default function SettingsPage() {
 
             {reviewWindowForm.enabled && (
               <>
-                {/* Visual display */}
-                <div className="rounded-[32px] border-2 border-emerald-400/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl">
-                  <div className="text-center mb-8">
-                    <div className="text-sm font-bold mb-4 text-slate-200">Review Deadline:</div>
-                    <div className="text-5xl font-black tracking-tight leading-tight mb-4">
-                      Submission close + <span className="text-emerald-400">{reviewWindowForm.hoursAfterClose}h</span>
-                    </div>
-                    <p className="text-slate-400 text-sm">Team leads receive an email when the submission window closes and must complete all reviews within this window.</p>
+                {/* Review deadline */}
+                <div style={cardShell}>
+                  <div style={cardHead}>
+                    <span style={iconTile('var(--violet-tint)', 'var(--violet)')}><CheckSquare size={17} /></span>
+                    <div style={cardTitle}>Review Deadline</div>
                   </div>
-
-                  <div className="rounded-[20px] border-2 border-slate-600/70 bg-slate-800/40 p-6">
-                    <label className="text-center text-2xl font-black mb-6 text-white block">Hours to Review</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="168"
-                      className="w-full bg-slate-900/60 border-2 border-slate-600 rounded-2xl px-6 py-4 text-center text-5xl font-black text-white focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/30 transition-all"
-                      value={reviewWindowForm.hoursAfterClose}
-                      onChange={e => setReviewWindowForm({ ...reviewWindowForm, hoursAfterClose: Number(e.target.value) })}
-                    />
-                    <p className="text-slate-400 text-sm text-center mt-3">Maximum 168h (1 week)</p>
+                  <div style={cardBody}>
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 18 }}>
+                      Team leads receive an email when the submission window closes and must complete all reviews within this window.
+                    </div>
+                    <div style={{ maxWidth: 280 }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>Hours to Review (after submission close)</label>
+                      <input type="number" min={1} max={168} style={inputStyle({ mono: true })} value={reviewWindowForm.hoursAfterClose} onChange={e => setReviewWindowForm({ ...reviewWindowForm, hoursAfterClose: Number(e.target.value) })} />
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>Maximum 168h (1 week). Deadline = submission close + {reviewWindowForm.hoursAfterClose}h.</div>
+                    </div>
                   </div>
                 </div>
 

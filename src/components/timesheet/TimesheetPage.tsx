@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { genId, getWeekKey, weekRange, fmtDate, logAudit, exportCSV, exportPDF, isSubmissionOpen, getSubmissionWindowStatus, formatTimeUntilDeadline } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save, CheckSquare, Square } from 'lucide-react'
+import { Plus, Copy, Trash2, Edit2, Upload, Download, BookOpen, Save, CheckSquare, Square, ChevronLeft, ChevronRight, Pencil, Info } from 'lucide-react'
 import { Entry, Staff } from '../../types'
 import PageHeader from '../common/PageHeader'
 import ConfirmModal from '../common/ConfirmModal'
@@ -535,6 +535,155 @@ function NoWorkConfirmationModal({ onConfirm, onClose }: { onConfirm: () => void
 }
 
 /* ────────────────────────────────────────────────────────────── */
+/*  Log Time Panel (sticky right column)                          */
+/* ────────────────────────────────────────────────────────────── */
+interface LogTimePanelProps {
+  onSave: (form: any) => void;
+  projects: any[];
+  leads: Staff[];
+  categories: string[];
+  windowOpen: boolean;
+  isLate: boolean;
+  defaultStart: string;
+  defaultEnd: string;
+}
+function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate, defaultStart, defaultEnd }: LogTimePanelProps) {
+  const fresh = () => ({ project: '', leadId: '', lead: '', description: '', startDate: defaultStart, endDate: defaultEnd, hours: '', category: 'Project Execution', task: '', isNewTask: false })
+  const [form, setForm] = useState<any>(fresh())
+  const [errors, setErrors] = useState<any>({})
+  const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
+
+  const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 6 }
+  const inp: React.CSSProperties = { width: '100%', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--ink)', padding: '9px 11px', fontSize: 13, fontFamily: 'inherit' }
+  const err: React.CSSProperties = { fontSize: 11, color: 'var(--danger)', marginTop: 4, display: 'block' }
+
+  function validate() {
+    const e: any = {}
+    if (!form.project) e.project = 'Required'
+    if (!form.leadId && !form.lead) e.lead = 'Required'
+    if (!form.description) e.description = 'Required'
+    if (!form.startDate) e.startDate = 'Required'
+    if (!form.endDate) e.endDate = 'Required'
+    if (form.startDate && form.endDate && form.endDate < form.startDate) e.endDate = 'End must be ≥ start'
+    if (!form.hours || parseFloat(form.hours) <= 0 || parseFloat(form.hours) > 24) e.hours = 'Must be 0.5–24'
+    const selectedProj = projects.find((p: any) => p.name === form.project)
+    if (selectedProj?.tasks?.length && !form.task) e.task = 'Required'
+    return e
+  }
+
+  function handleAdd() {
+    const errs = validate()
+    if (Object.keys(errs).length) { setErrors(errs); return }
+    onSave({ ...form, hours: parseFloat(form.hours) })
+    setForm(fresh()); setErrors({})
+  }
+
+  const selProj = projects.find((p: any) => p.name === form.project)
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 22, boxShadow: 'var(--sh)', position: 'sticky', top: 0 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Log time</div>
+      <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, marginBottom: 18 }}>Add an entry to this week</div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={lbl}>Project</label>
+        <select style={inp} value={form.project} onChange={e => setForm((f: any) => ({ ...f, project: e.target.value, task: '', category: 'Project Execution' }))}>
+          <option value="">— Select project —</option>
+          {projects.filter(p => p.active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+        </select>
+        {errors.project && <span style={err}>{errors.project}</span>}
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={lbl}>Lead / Supervisor</label>
+        <select style={inp} value={form.leadId || ''} onChange={e => {
+          const selected = leads.find(l => l.id === e.target.value)
+          setForm((f: any) => ({ ...f, leadId: e.target.value, lead: selected?.name || '' }))
+        }}>
+          <option value="">Select lead…</option>
+          {leads.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+        {errors.lead && <span style={err}>{errors.lead}</span>}
+      </div>
+
+      {selProj?.tasks?.length ? (
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Task</label>
+          <select style={inp} value={form.task || ''} onChange={e => F('task', e.target.value)}>
+            <option value="">— Select task —</option>
+            {selProj.tasks.map((t: string) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {errors.task && <span style={err}>{errors.task}</span>}
+        </div>
+      ) : null}
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={lbl}>Description</label>
+        <textarea style={{ ...inp, resize: 'vertical' }} placeholder="What did you work on?" rows={3} value={form.description} onChange={e => F('description', e.target.value)} />
+        {errors.description && <span style={err}>{errors.description}</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        <div>
+          <label style={lbl}>Start date</label>
+          <input style={inp} type="date" value={form.startDate || ''} onChange={e => { F('startDate', e.target.value); if (!form.endDate || form.endDate < e.target.value) F('endDate', e.target.value) }} />
+          {errors.startDate && <span style={err}>{errors.startDate}</span>}
+        </div>
+        <div>
+          <label style={lbl}>End date</label>
+          <input style={inp} type="date" value={form.endDate || ''} min={form.startDate || ''} onChange={e => F('endDate', e.target.value)} />
+          {errors.endDate && <span style={err}>{errors.endDate}</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={lbl}>Hours</label>
+          <input style={inp} type="number" step="0.5" min="0.5" max="24" placeholder="e.g. 4" value={form.hours} onChange={e => F('hours', e.target.value)} />
+          {errors.hours && <span style={err}>{errors.hours}</span>}
+        </div>
+        <div>
+          <label style={lbl}>Category</label>
+          <select style={inp} value={form.category} onChange={e => F('category', e.target.value)}>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {!windowOpen && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, background: form.isNewTask ? 'var(--tint)' : 'var(--warn-tint)', border: `1px solid ${form.isNewTask ? 'var(--brand)' : 'var(--warn)'}`, borderRadius: 'var(--r-sm)', padding: '10px 12px', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: form.isNewTask ? 'var(--brand)' : 'var(--warn)' }}>
+              {form.isNewTask ? 'New Task — Admin review' : 'Late submission — penalty may apply'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+              {form.isNewTask ? 'Goes to 2nd-level review, no late penalty.' : 'Toggle on if this is a new task.'}
+            </div>
+          </div>
+          <button type="button" onClick={() => F('isNewTask', !form.isNewTask)} style={{ flexShrink: 0, width: 44, height: 24, borderRadius: 12, background: form.isNewTask ? 'var(--brand)' : 'var(--line)', border: 'none', cursor: 'pointer', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 3, left: form.isNewTask ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+          </button>
+        </div>
+      )}
+
+      <button
+        onClick={handleAdd}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', padding: '11px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(12,122,55,.25)' }}
+      >
+        <Plus size={16} /> Add entry
+      </button>
+
+      {windowOpen && isLate && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--info-tint)', borderRadius: 'var(--r-sm)', padding: '10px 12px', marginTop: 14 }}>
+          <Info size={15} color="var(--info)" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 11.5, color: 'var(--ink-2)' }}>Submitting after the deadline may incur a late point penalty.</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
 /*  Main Page                                                     */
 /* ────────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
@@ -986,6 +1135,36 @@ export default function TimesheetPage() {
 
   const statusBadge: Record<string, string> = { draft: 'gray', submitted: 'blue', approved: 'green', rejected: 'red', resubmitted: 'yellow', pending_clarification: 'yellow' }
 
+  // 2026 status color tokens (fg / bg) for pills + left bar
+  const STATUS_COLOR: Record<string, { fg: string; bg: string }> = {
+    approved: { fg: 'var(--brand)', bg: 'var(--tint)' },
+    submitted: { fg: 'var(--info)', bg: 'var(--info-tint)' },
+    resubmitted: { fg: 'var(--info)', bg: 'var(--info-tint)' },
+    rejected: { fg: 'var(--danger)', bg: 'var(--danger-tint)' },
+    draft: { fg: 'var(--ink-3)', bg: 'var(--elev)' },
+    pending_clarification: { fg: 'var(--warn)', bg: 'var(--warn-tint)' },
+    pending_2nd_approval: { fg: 'var(--warn)', bg: 'var(--warn-tint)' },
+  }
+  const statusColor = (s: string) => STATUS_COLOR[s] || STATUS_COLOR.draft
+
+  // Week navigation by ± 7 days, snapped to the week key
+  function shiftWeek(deltaWeeks: number) {
+    const d = new Date(selectedWeek + 'T00:00:00')
+    d.setDate(d.getDate() + deltaWeeks * 7)
+    setSelectedWeek(getWeekKey(d))
+  }
+
+  // Group week entries by day for the new entries card
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const entriesByDay = useMemo(() => {
+    const groups: Record<string, Entry[]> = {}
+    weekEntries.forEach(e => {
+      const key = e.startDate || e.date || selectedWeek
+      ;(groups[key] = groups[key] || []).push(e)
+    })
+    return Object.entries(groups).sort((a, b) => a[0] < b[0] ? -1 : 1)
+  }, [weekEntries, selectedWeek])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div className="card" style={{ padding: 20 }}>
@@ -1201,6 +1380,33 @@ export default function TimesheetPage() {
         Need to import entries? Use our <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={downloadTemplate}>CSV template</span> (columns: Staff Name, Project, Lead, Description, Start Date, End Date, Hours, Category)
       </div>
 
+      {/* Two-column layout: entries (left) + sticky Log time panel (right) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 340px', gap: 20, alignItems: 'start' }}>
+        {/* MAIN COLUMN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+
+      {/* Week-nav bar card */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px', boxShadow: 'var(--sh-sm)', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <button onClick={() => shiftWeek(-1)} title="Previous week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
+          <ChevronLeft size={17} />
+        </button>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Week of {weekRange(selectedWeek)}</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 1 }}>
+            {isCurrentWeek ? 'Current week' : weekRange(selectedWeek)}{canEdit ? ' · editable' : ' · locked'}
+          </div>
+        </div>
+        <button onClick={() => shiftWeek(1)} title="Next week" style={{ width: 34, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--ink-2)' }}>
+          <ChevronRight size={17} />
+        </button>
+        <div style={{ flexShrink: 0, textAlign: 'right' }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+            {parseFloat(totalHours.toFixed(1))}/{weekCap}h
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>logged</div>
+        </div>
+      </div>
+
       {/* Status Filter Tabs */}
       {allWeekEntries.length > 0 && (
         <div className="tabs" style={{ marginBottom: 0, borderBottom: '1px solid var(--border)' }}>
@@ -1245,24 +1451,198 @@ export default function TimesheetPage() {
         </div>
       )}
 
-      {/* Entries table */}
+      {/* Entries card — grouped by day */}
       {weekEntries.length === 0 ? (
-        <div className="empty-state card">
-          <div className="empty-state-icon">📋</div>
-          <div className="empty-state-title">No entries {targetUser?.id !== user?.id ? `for ${targetUser?.name}` : ''} this week</div>
-          {canAddEntry && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowForm(true)}><Plus size={14} /> Log Hours</button>}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: '48px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 30 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginTop: 8 }}>No entries {targetUser?.id !== user?.id ? `for ${targetUser?.name}` : ''} this week</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 4 }}>Use the Log time panel to add your first entry.</div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           {selectedEntryIds.length > 0 && (
-            <div style={{ padding: '10px 16px', background: 'var(--accent-subtle)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedEntryIds.length} selected</span>
+            <div style={{ padding: '10px 18px', background: 'var(--tint)', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{selectedEntryIds.length} selected</span>
               <button className="btn btn-danger btn-sm" onClick={bulkDeleteEntries}>
                 <Trash2 size={12} /> Delete Selected
               </button>
               <button className="btn btn-secondary btn-sm" onClick={() => setSelectedEntryIds([])}>Clear</button>
             </div>
           )}
+          {entriesByDay.map(([dayKey, dayEntries]) => {
+            const isToday = dayKey === todayKey
+            const dayTotal = dayEntries.reduce((s, e) => s + (e.hours || 0), 0)
+            const dObj = new Date(dayKey + 'T00:00:00')
+            const dayName = dObj.toLocaleDateString(undefined, { weekday: 'long' })
+            return (
+              <div key={dayKey}>
+                {/* Day header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', background: isToday ? 'var(--canvas)' : 'transparent', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{dayName}</span>
+                  <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{fmtDate(dayKey)}</span>
+                  {isToday && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand)', background: 'var(--tint)', padding: '2px 8px', borderRadius: 20 }}>Today</span>}
+                  <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{parseFloat(dayTotal.toFixed(1))}h</span>
+                </div>
+                {/* Day entries */}
+                {dayEntries.map(e => {
+                  const isExpanded = expandedEntryId === e.id
+                  const hasHistory = e.approvalHistory && e.approvalHistory.length > 0
+                  const hasFeedback = e.rejectionReason || e.clarificationNote || e.correctionNote || e.resubmitNote || hasHistory
+                  const sc = statusColor(e.status)
+                  return (
+                    <div key={e.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px 12px 0', borderTop: '1px solid var(--line-2)', position: 'relative', background: e.overriddenBy ? 'var(--warn-tint)' : 'transparent' }}>
+                        <div style={{ width: 3, alignSelf: 'stretch', background: sc.fg, flexShrink: 0 }} />
+                        {(e.status === 'draft' || isAdmin) && !isLocked && (
+                          <input
+                            type="checkbox"
+                            checked={selectedEntryIds.includes(e.id)}
+                            onChange={() => {
+                              if (selectedEntryIds.includes(e.id)) setSelectedEntryIds(selectedEntryIds.filter(id => id !== e.id))
+                              else setSelectedEntryIds([...selectedEntryIds, e.id])
+                            }}
+                            style={{ flexShrink: 0 }}
+                          />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</span>
+                            {e.category && <span style={{ fontSize: 11, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>· {e.category}</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.description}>{e.description}</div>
+                          {e.lead && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>Lead: {e.lead}</div>}
+                          {e.overriddenBy && <div style={{ fontSize: 10, color: 'var(--warn)', marginTop: 1 }}>⚡ Overridden by {e.overriddenBy}</div>}
+                          {hasFeedback && (
+                            <div style={{ fontSize: 11, color: 'var(--info)', marginTop: 3, cursor: 'pointer' }} onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}>
+                              💬 {isExpanded ? 'Hide feedback' : 'View feedback'}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--ink)', flexShrink: 0 }}>{e.hours}h</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: sc.fg, background: sc.bg, padding: '3px 9px', borderRadius: 20, flexShrink: 0, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{e.status.replace(/_/g, ' ')}</span>
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          {e.status === 'draft' && canEdit && !isLocked && (
+                            <button className="btn btn-icon btn-secondary btn-sm" title="Edit" onClick={() => { setEditEntry(e); setShowForm(true) }}><Pencil size={13} /></button>
+                          )}
+                          <button className="btn btn-icon btn-secondary btn-sm" title="Duplicate" onClick={() => duplicateEntry(e)}><Copy size={13} /></button>
+                          {e.status === 'rejected' && !viewingStaffId && (
+                            <button className="btn btn-success btn-sm" onClick={() => setResubmitEntry(e)}>Resubmit</button>
+                          )}
+                          {e.status === 'pending_clarification' && !viewingStaffId && (
+                            <button className="btn btn-primary btn-sm" onClick={() => setClarifyEntry(e)}>Explain</button>
+                          )}
+                          {isAdmin && (
+                            <button className="btn btn-secondary btn-sm" title="Override" onClick={() => setOverrideEntry(e)}>Override</button>
+                          )}
+                          {(e.status === 'draft' || isAdmin) && !isLocked && (
+                            <button className="btn btn-icon btn-danger btn-sm" title="Delete" onClick={() => deleteEntry(e.id)}><Trash2 size={13} /></button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expandable feedback / history */}
+                      {isExpanded && hasFeedback && (
+                        <div style={{ padding: '14px 18px', background: 'var(--elev)', borderTop: '1px solid var(--line-2)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {e.rejectionReason && (
+                              <div style={{ background: 'var(--danger-tint)', border: '1px solid var(--danger)', borderRadius: 'var(--r-sm)', padding: '12px 16px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', marginBottom: 4, textTransform: 'uppercase' }}>Rejection Reason</div>
+                                <div style={{ fontSize: 13, color: 'var(--ink)' }}>{e.rejectionReason}</div>
+                                {e.rejectedBy && (
+                                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
+                                    By: {staff.find(s => s.id === e.rejectedBy)?.name || e.rejectedBy} • {e.rejectedAt && fmtDate(e.rejectedAt)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {e.clarificationNote && (
+                              <div style={{ background: 'var(--info-tint)', border: '1px solid var(--info)', borderRadius: 'var(--r-sm)', padding: '12px 16px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--info)', marginBottom: 4, textTransform: 'uppercase' }}>Clarification Requested</div>
+                                <div style={{ fontSize: 13, color: 'var(--ink)' }}>{e.clarificationNote}</div>
+                              </div>
+                            )}
+                            {e.correctionNote && (
+                              <div style={{ background: 'var(--warn-tint)', border: '1px solid var(--warn)', borderRadius: 'var(--r-sm)', padding: '12px 16px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--warn)', marginBottom: 4, textTransform: 'uppercase' }}>Correction Applied</div>
+                                <div style={{ fontSize: 13, color: 'var(--ink)' }}>{e.correctionNote}</div>
+                                {e.corrected && (
+                                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>Hours were adjusted during approval</div>
+                                )}
+                              </div>
+                            )}
+                            {e.resubmitNote && (
+                              <div style={{ background: 'var(--tint)', border: '1px solid var(--brand)', borderRadius: 'var(--r-sm)', padding: '12px 16px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand)', marginBottom: 4, textTransform: 'uppercase' }}>Your Response</div>
+                                <div style={{ fontSize: 13, color: 'var(--ink)' }}>{e.resubmitNote}</div>
+                              </div>
+                            )}
+                            {hasHistory && (
+                              <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '12px 16px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8, textTransform: 'uppercase' }}>Approval History</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  {e.approvalHistory!.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((h) => (
+                                    <div key={h.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px', background: 'var(--elev)', borderRadius: 6 }}>
+                                      <div style={{ fontSize: 18, flexShrink: 0 }}>
+                                        {h.action === 'approved' ? '✅' : h.action === 'rejected' ? '❌' : h.action === 'clarification' ? '❓' : h.action === 'correction' ? '✏️' : '📋'}
+                                      </div>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                          {h.action === 'approved' ? 'Approved' : h.action === 'rejected' ? 'Rejected' : h.action === 'clarification' ? 'Clarification Requested' : h.action === 'correction' ? 'Approved with Correction' : h.action}
+                                          {h.correctedHours !== undefined && ` (${h.correctedHours}h)`}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                                          By: <strong>{h.reviewerName}</strong> ({h.reviewerRole}) • {fmtDate(h.timestamp)}
+                                        </div>
+                                        {h.note && (
+                                          <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, fontStyle: 'italic' }}>"{h.note}"</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+        </div>{/* end MAIN COLUMN */}
+
+        {/* RIGHT PANEL */}
+        <div>
+          {canAddEntry ? (
+            <LogTimePanel
+              onSave={saveEntry}
+              projects={projects}
+              leads={leads}
+              categories={categories}
+              windowOpen={isWindowOpen}
+              isLate={!!windowStatus?.isPastDeadline}
+              defaultStart={new Date().toISOString().slice(0, 10)}
+              defaultEnd={new Date().toISOString().slice(0, 10)}
+            />
+          ) : (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 22, boxShadow: 'var(--sh)', position: 'sticky', top: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Log time</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 8 }}>
+                {isLocked ? 'This week is locked by an admin — no changes allowed.' : !isOwnSheet ? 'You are viewing another staff member’s timesheet.' : 'Logging is unavailable for this week.'}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>{/* end two-column grid */}
+
+      {/* Hidden table kept for reference removed */}
+      {false && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>
               <thead>

@@ -1,10 +1,10 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF } from '../../lib/utils'
+import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
 import { Staff, Entry, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
-import { X, CheckSquare, Square, Trash2 } from 'lucide-react'
+import { X, CheckSquare, Square, Trash2, Check, Search } from 'lucide-react'
 import PageHeader from '../common/PageHeader'
 import ConfirmModal from '../common/ConfirmModal'
 
@@ -633,8 +633,30 @@ export default function ApprovalsPage() {
     })
   }
 
+  // Derived metrics for stat row
+  const startOfWeek = useMemo(() => {
+    const d = new Date()
+    const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    const m = new Date(d.setDate(diff))
+    m.setHours(0, 0, 0, 0)
+    return m
+  }, [])
+  const approvedThisWeek = useMemo(
+    () => history.filter(e => e.status === 'approved' && e.approvedAt && new Date(e.approvedAt) >= startOfWeek).length,
+    [history, startOfWeek]
+  )
+  const flaggedCount = useMemo(
+    () => pending.filter(e => e.hours >= secondLevelThreshold || e.isNewTask).length,
+    [pending, secondLevelThreshold]
+  )
+  const pendingHours = useMemo(
+    () => pending.reduce((sum, e) => sum + (e.hours || 0), 0),
+    [pending]
+  )
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, fontFamily: 'var(--font-sora)' }}>
       {reviewWindowInfo && (
         <div style={{
           background: reviewWindowInfo.isOverdue ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
@@ -685,157 +707,229 @@ export default function ApprovalsPage() {
         }
       />
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-        <div className="stat-card">
-          <div className="stat-label">Pending Review</div>
-          <div className="stat-value" style={{ color: pending.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{pending.length}</div>
-          <div className="stat-sub">{pending.length > 0 ? 'Requires action' : 'All caught up!'}</div>
-        </div>
-        {isAdmin && (
-          <div className="stat-card">
-            <div className="stat-label">2nd-Level Review</div>
-            <div className="stat-value" style={{ color: pending2ndLevel.length > 0 ? 'var(--warning)' : 'var(--text-3)' }}>{pending2ndLevel.length}</div>
-            <div className="stat-sub">High-value entries</div>
+      {/* Stat row */}
+      {(() => {
+        const cardStyle: React.CSSProperties = {
+          flex: 1, minWidth: 180, background: 'var(--surface)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r-lg)', padding: 18, boxShadow: 'var(--sh-sm)',
+        }
+        const labelStyle: React.CSSProperties = {
+          fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-3)',
+        }
+        const numStyle = (color: string): React.CSSProperties => ({
+          fontFamily: 'var(--font-sora)', fontSize: 28, fontWeight: 700, color, marginTop: 8, lineHeight: 1,
+        })
+        const cards = [
+          { label: 'Awaiting you', value: pending.length, color: pending.length > 0 ? 'var(--warn)' : 'var(--brand)' },
+          { label: 'Flagged / high-value', value: flaggedCount, color: flaggedCount > 0 ? 'var(--danger)' : 'var(--ink-3)' },
+          { label: 'Approved this week', value: approvedThisWeek, color: 'var(--brand)' },
+          { label: 'Pending hours', value: `${pendingHours}h`, color: 'var(--ink)' },
+        ]
+        return (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {cards.map(c => (
+              <div key={c.label} style={cardStyle}>
+                <div style={labelStyle}>{c.label}</div>
+                <div style={numStyle(c.color)}>{c.value}</div>
+              </div>
+            ))}
           </div>
-        )}
-        <div className="stat-card">
-          <div className="stat-label">Approved (All time)</div>
-          <div className="stat-value" style={{ color: 'var(--success)' }}>{history.filter(e => e.status === 'approved').length}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Rejected (All time)</div>
-          <div className="stat-value" style={{ color: 'var(--danger)' }}>{history.filter(e => e.status === 'rejected').length}</div>
-        </div>
-      </div>
+        )
+      })()}
 
       {/* Tabs */}
-      <div className="tabs" style={{ marginBottom: 20 }}>
-        <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending ({displayPending.length})</button>
-        {isAdmin && <button className={`tab ${tab === 'outstanding' ? 'active' : ''}`} onClick={() => setTab('outstanding')}>Outstanding</button>}
-        <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
-        {isAdmin && <button className={`tab ${tab === '2nd_level' ? 'active' : ''}`} onClick={() => setTab('2nd_level')}>2nd-Level Review ({secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})</button>}
-        {isAdmin && <button className={`tab ${tab === 'export' ? 'active' : ''}`} onClick={() => setTab('export')}>Export</button>}
-      </div>
+      {(() => {
+        const tabs: { key: string; label: string }[] = [
+          { key: 'pending', label: `Pending (${displayPending.length})` },
+          ...(isAdmin ? [{ key: 'outstanding', label: 'Outstanding' }] : []),
+          { key: 'history', label: 'History' },
+          ...(isAdmin ? [{ key: '2nd_level', label: `2nd-Level Review (${secondLevelWeekEntries.filter(e => e.status === 'pending_2nd_approval').length})` }] : []),
+          ...(isAdmin ? [{ key: 'export', label: 'Export' }] : []),
+        ]
+        return (
+          <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)' }}>
+            {tabs.map(t => {
+              const active = tab === t.key
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  style={{
+                    appearance: 'none', background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '10px 14px', fontSize: 13.5, fontWeight: active ? 700 : 600,
+                    fontFamily: 'var(--font-sora)', color: active ? 'var(--brand)' : 'var(--ink-3)',
+                    borderBottom: `2px solid ${active ? 'var(--brand)' : 'transparent'}`,
+                    marginBottom: -1, transition: 'color .15s',
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {tab === 'pending' && (
-        <>
-          {/* Filters + bulk approve */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              className="form-input"
-              placeholder="Search name, project, or department..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ minWidth: 240 }}
-            />
-            <select className="form-select" style={{ width: 'auto' }} value={filterDept} onChange={e => setFilterDept(e.target.value)}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
+          {/* Queue header: title + filter controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginRight: 'auto' }}>Approval queue</div>
+
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={15} style={{ position: 'absolute', left: 12, color: 'var(--ink-3)', pointerEvents: 'none' }} />
+              <input
+                placeholder="Search name, project, or department..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{
+                  height: 38, minWidth: 240, paddingLeft: 34, paddingRight: 12,
+                  border: '1px solid var(--line)', borderRadius: 999, background: 'var(--elev)',
+                  color: 'var(--ink)', fontSize: 13, outline: 'none', fontFamily: 'var(--font-sora)',
+                }}
+              />
+            </div>
+
+            <select
+              value={filterDept}
+              onChange={e => setFilterDept(e.target.value)}
+              style={{ height: 38, padding: '0 14px', border: '1px solid var(--line)', borderRadius: 999, background: 'var(--elev)', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sora)' }}
+            >
               <option value="">All Departments</option>
               {departments.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
-            <select className="form-select" style={{ width: 'auto' }} value={filterWeek} onChange={e => setFilterWeek(e.target.value)}>
+
+            <select
+              value={filterWeek}
+              onChange={e => setFilterWeek(e.target.value)}
+              style={{ height: 38, padding: '0 14px', border: '1px solid var(--line)', borderRadius: 999, background: 'var(--elev)', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sora)' }}
+            >
               <option value="">All Weeks</option>
               {weeks.map(w => <option key={w} value={w}>{weekRange(w)}</option>)}
             </select>
+
             {displayPending.length > 0 && (
-              <button className="btn btn-success btn-sm" onClick={() => bulkApprove(displayPending.map(e => e.id))}>
-                ✅ Approve All Visible ({displayPending.length})
+              <button
+                onClick={() => bulkApprove(displayPending.map(e => e.id))}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 38, padding: '0 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sora)' }}
+              >
+                <Check size={15} /> Approve all ({displayPending.length})
               </button>
             )}
           </div>
 
           {displayPending.length === 0 ? (
-            <div className="empty-state card">
+            <div className="empty-state" style={{ padding: 48 }}>
               <div className="empty-state-icon">✅</div>
               <div className="empty-state-title">No pending approvals</div>
               <div className="empty-state-desc">All submissions have been reviewed</div>
             </div>
           ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 40 }}>
+            <div>
+              {displayPending.map(e => {
+                const s = staff.find(m => m.id === e.staffId)
+                const needsSecondLevel = e.hours >= secondLevelThreshold
+                const isFlagged = needsSecondLevel || e.isNewTask
+                const isDraft = e.status === 'draft'
+                const checkable = ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status)
+                const selected = selectedIds.includes(e.id)
+                return (
+                  <div
+                    key={e.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px',
+                      borderBottom: '1px solid var(--line-2)',
+                      background: selected ? 'var(--tint)' : e.status === 'pending_clarification' ? 'var(--warn-tint)' : 'transparent',
+                    }}
+                  >
+                    {/* select checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!checkable}
+                      onChange={() => {
+                        if (selected) setSelectedIds(selectedIds.filter(id => id !== e.id))
+                        else setSelectedIds([...selectedIds, e.id])
+                      }}
+                      style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: checkable ? 'pointer' : 'default', flexShrink: 0 }}
+                    />
+
+                    {/* avatar */}
+                    <div style={{ width: 42, height: 42, borderRadius: 11, background: avatarColor(e.staffName || ''), color: '#fff', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {initials(e.staffName || '')}
+                    </div>
+
+                    {/* name + dept */}
+                    <div style={{ width: 180, flexShrink: 0, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.staffName}</div>
+                      <div style={{ color: 'var(--ink-3)', fontSize: 12 }}>{s?.department || '—'}</div>
+                    </div>
+
+                    {/* project + week */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
+                      <div style={{ color: 'var(--ink-3)', fontSize: 12 }}>{weekRange(e.weekKey)}</div>
+                    </div>
+
+                    {/* flag pill */}
+                    {isFlagged && (
+                      <span
+                        title={e.isNewTask ? 'New task (no late penalty)' : `Will trigger 2nd-level approval (threshold: ${secondLevelThreshold}h)`}
+                        style={{ fontSize: 11, fontWeight: 700, color: e.isNewTask ? 'var(--brand-2)' : 'var(--danger)', background: e.isNewTask ? 'var(--tint)' : 'var(--danger-tint)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        {e.isNewTask ? 'New task' : 'High value'}
+                      </span>
+                    )}
+
+                    {/* status pill for clarification/resubmitted/draft */}
+                    {e.status !== 'submitted' && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' }}>
+                        {e.status === 'pending_clarification' ? 'clarification' : e.status === 'draft' ? 'planned' : e.status}
+                      </span>
+                    )}
+
+                    {/* hours */}
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', width: 56, textAlign: 'right', flexShrink: 0 }}>
+                      {e.hours}h
+                    </div>
+
+                    {/* actions */}
+                    {isDraft ? (
+                      <span style={{ fontSize: 12, color: 'var(--ink-3)', flexShrink: 0 }}>Awaiting submit</span>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                         <button
-                          className="btn btn-icon btn-secondary btn-sm"
-                          onClick={() => {
-                            const selectableIds = displayPending
-                              .filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status))
-                              .map(e => e.id)
-                            if (selectedIds.length === selectableIds.length) setSelectedIds([])
-                            else setSelectedIds(selectableIds)
-                          }}
+                          onClick={() => setSelectedEntry(e)}
+                          style={{ height: 34, padding: '0 12px', background: 'var(--elev)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--font-sora)' }}
                         >
-                          {selectedIds.length > 0 && selectedIds.length === displayPending.filter(e => ['submitted', 'resubmitted', 'pending_clarification'].includes(e.status)).length ? <CheckSquare size={14} /> : <Square size={14} />}
+                          Review
                         </button>
-                      </th>
-                      <th>Staff</th>
-                      <th>Dept</th>
-                      <th>Project</th>
-                      <th>Lead</th>
-                      <th>Submitted</th>
-                      <th>Hours</th>
-                      <th>Category</th>
-                      <th>Week</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayPending.map(e => {
-                      const s = staff.find(m => m.id === e.staffId)
-                      const needsSecondLevel = e.hours >= secondLevelThreshold
-                      return (
-                        <tr key={e.id} style={{ background: e.status === 'pending_clarification' ? 'rgba(245,158,11,0.05)' : undefined }}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.includes(e.id)}
-                              disabled={e.status === 'draft'}
-                              onChange={() => {
-                                if (selectedIds.includes(e.id)) {
-                                  setSelectedIds(selectedIds.filter(id => id !== e.id))
-                                } else {
-                                  setSelectedIds([...selectedIds, e.id])
-                                }
-                              }}
-                            />
-                          </td>
-                          <td style={{ fontWeight: 600 }}>{e.staffName}</td>
-                          <td style={{ color: 'var(--text-3)' }}>{s?.department || '—'}</td>
-                          <td>{e.project}</td>
-                          <td style={{ color: 'var(--text-3)', fontSize: 13 }}>{e.lead || '—'}</td>
-                          <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{e.submittedAt ? new Date(e.submittedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                          <td style={{ fontWeight: 700 }}>
-                            {e.hours}h
-                            {needsSecondLevel && !isAdmin && <span title={`Will trigger 2nd-level approval (threshold: ${secondLevelThreshold}h)`} style={{ marginLeft: 4, fontSize: 14 }}>⚠️</span>}
-                          </td>
-                          <td><span className="badge badge-blue">{e.category}</span></td>
-                          <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>
-                          <td>
-                            <span className={`badge badge-${e.status === 'draft' ? 'gray' : e.status === 'resubmitted' ? 'yellow' : e.status === 'pending_clarification' ? 'yellow' : 'blue'}`}>
-                              {e.status === 'pending_clarification' ? 'clarification' : e.status === 'draft' ? 'planned' : e.status}
-                            </span>
-                          </td>
-                          <td>
-                            {e.status === 'draft' ? (
-                              <span className="badge badge-gray">Awaiting Submit</span>
-                            ) : (
-                              <button className="btn btn-primary btn-sm" onClick={() => setSelectedEntry(e)}>
-                                Review
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        <button
+                          title="Approve"
+                          onClick={() => handleAction(e.id, 'approve', '', e.hours)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: 'var(--tint)', color: 'var(--brand-2)', border: 'none', borderRadius: 'var(--r-sm)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--font-sora)', transition: 'background .15s, color .15s' }}
+                          onMouseEnter={ev => { ev.currentTarget.style.background = 'var(--brand)'; ev.currentTarget.style.color = '#fff' }}
+                          onMouseLeave={ev => { ev.currentTarget.style.background = 'var(--tint)'; ev.currentTarget.style.color = 'var(--brand-2)' }}
+                        >
+                          <Check size={15} /> Approve
+                        </button>
+                        <button
+                          title="Reject"
+                          onClick={() => setSelectedEntry(e)}
+                          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, background: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', cursor: 'pointer', transition: 'background .15s' }}
+                          onMouseEnter={ev => { ev.currentTarget.style.background = 'var(--danger-tint)' }}
+                          onMouseLeave={ev => { ev.currentTarget.style.background = 'var(--surface)' }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {tab === '2nd_level' && isAdmin && (

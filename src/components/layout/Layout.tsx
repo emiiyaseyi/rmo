@@ -313,8 +313,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
               {windowPill && !isMobile && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: windowPill.open ? 'var(--tint)' : 'var(--elev)', color: windowPill.open ? 'var(--brand-2)' : 'var(--ink-3)', padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: windowPill.open ? 'var(--brand)' : 'var(--ink-4)' }} />{windowPill.text}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: windowPill.open ? 'var(--tint)' : 'var(--danger-tint)', color: windowPill.open ? 'var(--brand-2)' : 'var(--danger)', padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: windowPill.open ? 'var(--brand)' : 'var(--danger)' }} />{windowPill.text}
                 </div>
               )}
               <button onClick={toggleDark} title="Toggle theme" style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-2)', cursor: 'pointer' }}

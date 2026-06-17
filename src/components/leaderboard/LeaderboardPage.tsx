@@ -253,7 +253,8 @@ export default function LeaderboardPage() {
       d.members++
       d.totalPts += s.points || 0
       const myEntries = entries.filter(e => e.staffId === s.id)
-      const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
+      // Exclude approved-leave weeks, consistent with calcSubmissionRate
+      const weeks = Array.from(new Set(myEntries.map(e => e.weekKey))).filter(w => !weekOnLeave(s.id, w))
       const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && SUBMITTED_STATUSES.includes(e.status)))
       d.totalRate += weeks.length > 0 ? (submitted.length / weeks.length) * 100 : 0
     })
@@ -262,7 +263,7 @@ export default function LeaderboardPage() {
       avgPts: d.members > 0 ? Math.round(d.totalPts / d.members) : 0,
       avgRate: d.members > 0 ? Math.round(d.totalRate / d.members) : 0,
     })).sort((a, b) => b.avgPts - a.avgPts)
-  }, [staff, entries])
+  }, [staff, entries, leaves])
 
   function addReward() {
     if (!rewardForm.name || !rewardForm.cost) { toast.error('Name and cost required'); return }
@@ -424,7 +425,8 @@ export default function LeaderboardPage() {
         {/* Top-3 podium */}
         {ranked.length >= 1 && (() => {
           const top3 = ranked.slice(0, 3)
-          const order = [top3[1], top3[0], top3[2]].filter(Boolean) as RankedStaff[]
+          // Center the #1; only use the 2-1-3 podium order when all three exist
+          const order = (top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3).filter(Boolean) as RankedStaff[]
           return (
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, position: 'relative', zIndex: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
               {order.map(s => {

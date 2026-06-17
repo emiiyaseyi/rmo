@@ -120,6 +120,7 @@ export default function SettingsPage() {
     a.href = URL.createObjectURL(blob)
     a.download = `dsn-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
+    logAudit('backup_downloaded', 'system', { staff: staff.length, entries: entries.length })
   }
 
   const recalcAllPoints = async () => {
@@ -133,6 +134,7 @@ export default function SettingsPage() {
       }
       const updated = staff.map(s => ({ ...s, points: totals.get(s.id) ?? 0 }))
       saveStaff(updated)
+      logAudit('points_recalculated', 'system', { staffCount: updated.length })
       toast.success('Points recalculated')
     } catch {
       toast.error('Failed to recalculate points')
@@ -669,6 +671,7 @@ export default function SettingsPage() {
                               type: holidayDraft.type,
                             }
                             savePublicHolidays([...publicHolidays, newHoliday])
+                            logAudit('holiday_added', newHoliday.id, { name: newHoliday.name, date: newHoliday.date, type: newHoliday.type })
                             setHolidayDraft({ name: '', date: '', type: 'public' })
                             setShowHolidayForm(false)
                             toast.success('Holiday added')
@@ -707,6 +710,7 @@ export default function SettingsPage() {
                             message: `Delete "${h.name}"? This cannot be undone.`,
                             action: () => {
                               savePublicHolidays(publicHolidays.filter(x => x.id !== h.id))
+                              logAudit('holiday_deleted', h.id, { name: h.name, date: h.date })
                               toast.success('Holiday deleted')
                             }
                           })}
@@ -815,12 +819,13 @@ export default function SettingsPage() {
                                 saveStaff(staff.map(s => s.id === req.staffId ? { ...s, password: resetPw, first_login: true, password_reset_pending: true } : s))
                                 savePasswordResetRequests((passwordResetRequests || []).filter(r => r.id !== req.id))
                                 notify(req.staffId, `Your password has been reset by Admin. Please change it on next login.`, 'info')
+                                logAudit('password_reset_approved', req.staffId, { name })
                                 toast.success('Password reset')
                               }}
                             ><Check size={14} /> Reset</button>
                             <button
                               style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 6 }}
-                              onClick={() => savePasswordResetRequests((passwordResetRequests || []).filter(r => r.id !== req.id))}
+                              onClick={() => { savePasswordResetRequests((passwordResetRequests || []).filter(r => r.id !== req.id)); logAudit('password_reset_declined', req.staffId, { name }) }}
                             ><X size={16} /></button>
                           </div>
                         </div>

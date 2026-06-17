@@ -514,16 +514,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Leave / absence records. Admin (HR) sees all; staff sees own.
   function saveLeave(leave: Leave) {
+    const isNew = !leaves.find(l => l.id === leave.id)
     setLeaves(prev => {
       const exists = prev.find(l => l.id === leave.id)
       return exists ? prev.map(l => l.id === leave.id ? leave : l) : [leave, ...prev]
     })
     apiUpsert('leaves', leave)
+    logAudit(isNew ? 'leave_logged' : 'leave_updated', leave.staffId, { staffName: leave.staffName, type: leave.type, from: leave.fromDate, to: leave.toDate })
   }
 
   function deleteLeave(id: string) {
+    const removed = leaves.find(l => l.id === id)
     setLeaves(prev => prev.filter(l => l.id !== id))
     fetch(`/api/leaves/${id}`, { method: 'DELETE' }).catch(() => {})
+    logAudit('leave_deleted', removed?.staffId || id, { staffName: removed?.staffName, type: removed?.type })
   }
 
   function reloadLeaves() {
@@ -709,6 +713,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStaff(updated)
     const badge = BADGES.find(b => b.id === badgeId)
     notify(staffId, `🏆 You earned the "${badge?.name}" badge!`, 'badge')
+    logAudit('badge_granted', staffId, { badge: badge?.name || badgeId, staffName: staff[idx].name })
   }
 
   // Compute which badges a staff member has earned from available data and grant

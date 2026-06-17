@@ -25,7 +25,7 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, rewards, saveRewards, redeems, saveRedeems, awardPoints, notify, settings, leaves, evaluateBadges } = useApp()
+  const { staff, user, entries, rewards, saveRewards, redeems, saveRedeems, awardPoints, notify, settings, leaves, evaluateBadges, logAudit } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
@@ -307,6 +307,7 @@ export default function LeaderboardPage() {
 
         saveRedeems([...redeems, redeem])
         awardPoints(user.id, -reward.cost, `Redeemed ${reward.name}`)
+        logAudit('reward_redeemed', user.id, { reward: reward.name, cost: reward.cost })
         toast.success('🎁 Redemption request sent to admin!')
       },
       message: `Redeem "${reward.name}" for ${reward.cost} pts?`,
@@ -319,6 +320,7 @@ export default function LeaderboardPage() {
     saveRedeems(updated)
     const r = redeems.find(x => x.id === id)
     if (r) notify(r.staffId, `Your redemption for ${r.rewardName} has been fulfilled!`, 'redemption_fulfilled', 'Reward Fulfilled', id, 'message')
+    if (r) logAudit('reward_fulfilled', r.staffId, { reward: r.rewardName, staffName: r.staffName })
     toast.success('Reward fulfilled!')
   }
 

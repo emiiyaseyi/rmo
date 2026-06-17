@@ -102,19 +102,71 @@
 
 /* Re-defining dark mode for high readability */
 body.dark {
-  --bg-base: #000000;
-  --bg-surface: #0A0A0A;
-  --bg-card: #111111;
-  --bg-elevated: #1A1A1A;
-  --bg-hover: #222222;
-  --bg-input: #0A0A0A;
-  --border: #333333;
-  --border-light: #222222;
-  --text-1: #FFFFFF;
-  --text-2: #FFFFFF;
-  --text-3: #FFFFFF;
-  --text-4: #E0E0E0;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  /* Base/original tokens */
+  --bg-base: #0B0F0D;
+  --bg-surface: #141916;
+  --bg-card: #141916;
+  --bg-elevated: #1C221E;
+  --bg-hover: #232A25;
+  --bg-input: #141916;
+  --border: #2A322C;
+  --border-light: #222824;
+  --text-1: #F2F5F3;
+  --text-2: #C7D0CA;
+  --text-3: #93A099;
+  --text-4: #6E7C74;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  /* Brand + accents */
+  --brand-primary: #1F9E54;
+  --brand-hover: #1B8A49;
+  --brand-light: rgba(31, 158, 84, 0.16);
+  --accent: var(--brand-primary);
+  --accent-hover: var(--brand-hover);
+  --accent-glow: rgba(31, 158, 84, 0.20);
+  --accent-subtle: rgba(31, 158, 84, 0.14);
+  --success: #2EB36A;
+  --success-bg: rgba(46, 179, 106, 0.16);
+  --success-subtle: rgba(46, 179, 106, 0.24);
+  --warning: #E0A12B;
+  --warning-bg: rgba(224, 161, 43, 0.16);
+  --warning-subtle: rgba(224, 161, 43, 0.26);
+  --danger: #F0635B;
+  --danger-bg: rgba(240, 99, 91, 0.16);
+  --danger-subtle: rgba(240, 99, 91, 0.26);
+  --purple: #9B7CF0;
+  --purple-bg: rgba(155, 124, 240, 0.18);
+  --info: #5891E8;
+  --info-bg: rgba(88, 145, 232, 0.16);
+  --gold: #E8B24A;
+  --gold-bg: rgba(232, 178, 74, 0.16);
+
+  /* 2026 design aliases — MUST be redefined here (alias indirection from :root
+     resolves with light values and does not flip on its own) */
+  --brand: var(--brand-primary);
+  --brand-2: var(--brand-hover);
+  --tint: rgba(31, 158, 84, 0.16);
+  --tint-2: rgba(31, 158, 84, 0.24);
+  --ink: #F2F5F3;
+  --ink-2: #C7D0CA;
+  --ink-3: #93A099;
+  --ink-4: #6E7C74;
+  --line: #2A322C;
+  --line-2: #222824;
+  --surface: #141916;
+  --canvas: #0B0F0D;
+  --elev: #1C221E;
+  --sh: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --sh-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --warn: #E0A12B;
+  --warn-tint: rgba(224, 161, 43, 0.16);
+  --gold-tint: rgba(232, 178, 74, 0.16);
+  --info-tint: rgba(88, 145, 232, 0.16);
+  --violet: #9B7CF0;
+  --violet-tint: rgba(155, 124, 240, 0.18);
+  --danger-tint: rgba(240, 99, 91, 0.16);
 }
 
 

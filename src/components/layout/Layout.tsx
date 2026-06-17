@@ -204,12 +204,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           } : { position: 'relative' })
         }}>
           {/* Brand */}
-          <div style={{ height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 11, padding: '0 20px', borderBottom: '1px solid var(--line-2)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 17, boxShadow: '0 2px 8px rgba(12,122,55,.3)' }}>D</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-sora)', fontWeight: 700, fontSize: 15, color: 'var(--ink)', lineHeight: 1.1 }}>{appName}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--ink-4)', fontWeight: 500, letterSpacing: '.02em' }}>Resource Mgmt Office</div>
-            </div>
+          <div style={{ height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--line-2)' }}>
+            <img src={branding?.logoBase64 || '/dsn.png'} alt={appName} style={{ height: 38, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
           </div>
 
           {/* Search */}

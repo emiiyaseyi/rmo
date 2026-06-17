@@ -207,8 +207,9 @@ export function getSubmissionWindowStatus(
   if (isPastDeadline && latePenalty.enabled) {
     const msLate = nowUtc.getTime() - deadlineUtc.getTime()
     hoursLate = msLate / (1000 * 60 * 60)
-    periodsLate = Math.floor(hoursLate / latePenalty.periodHours)
-    penalty = periodsLate * latePenalty.pointsPerPeriod
+    // Flat one-time late penalty (no per-hours multiplier)
+    periodsLate = 1
+    penalty = latePenalty.pointsPerPeriod || 0
   }
 
   // Calculate next window opening

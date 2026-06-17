@@ -461,7 +461,7 @@ function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, o
               <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Late Submission Warning</div>
               <div>You are submitting after the deadline. A penalty of <strong>{penalty} points</strong> will be applied.</div>
               <div style={{ fontSize: 11, marginTop: 4, opacity: 0.9 }}>
-                Hours late: {Math.floor(windowStatus.hoursLate)}h | Penalty periods: {windowStatus.periodsLate}
+                Hours late: {Math.floor(windowStatus.hoursLate)}h
               </div>
             </div>
           )}
@@ -546,8 +546,9 @@ interface LogTimePanelProps {
   isLate: boolean;
   defaultStart: string;
   defaultEnd: string;
+  latePenalty?: number;
 }
-function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate, defaultStart, defaultEnd }: LogTimePanelProps) {
+function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate, defaultStart, defaultEnd, latePenalty }: LogTimePanelProps) {
   const fresh = () => ({ project: '', leadId: '', lead: '', description: '', startDate: defaultStart, endDate: defaultEnd, hours: '', category: 'Project Execution', task: '', isNewTask: false })
   const [form, setForm] = useState<any>(fresh())
   const [errors, setErrors] = useState<any>({})
@@ -676,7 +677,7 @@ function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate,
       {windowOpen && isLate && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--info-tint)', borderRadius: 'var(--r-sm)', padding: '10px 12px', marginTop: 14 }}>
           <Info size={15} color="var(--info)" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 11.5, color: 'var(--ink-2)' }}>Submitting after the deadline may incur a late point penalty.</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-2)' }}>Submitting after the deadline incurs a {latePenalty != null && latePenalty !== 0 ? <strong>{latePenalty} point</strong> : 'late point'} penalty.</div>
         </div>
       )}
     </div>
@@ -1355,6 +1356,11 @@ export default function TimesheetPage() {
           </div>
         </div>
 
+        {/* Sliding hours indicator */}
+        <div style={{ height: 6, background: 'var(--line-2)', borderRadius: 999, overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min((totalHours / (weekCap || 40)) * 100, 100)}%`, height: '100%', background: isOver ? 'var(--danger)' : 'var(--brand)', borderRadius: 999, transition: 'width .3s ease' }} />
+        </div>
+
         {/* Status indicators + submit / no-work actions */}
         {(isCurrentWeek || submitted || isLocked || canSubmit || isOver || (!isAdmin && !submitted && weekEntries.length === 0 && isCurrentWeek)) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-2)', paddingTop: 12 }}>
@@ -1595,6 +1601,7 @@ export default function TimesheetPage() {
               categories={categories}
               windowOpen={isWindowOpen}
               isLate={!!windowStatus?.isPastDeadline}
+              latePenalty={settings?.submissionWindow?.latePenalty?.pointsPerPeriod}
               defaultStart={new Date().toISOString().slice(0, 10)}
               defaultEnd={new Date().toISOString().slice(0, 10)}
             />

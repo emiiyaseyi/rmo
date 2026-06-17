@@ -1,10 +1,13 @@
 'use client'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
-import { BADGES, genId, exportCSV, exportPDF, avatarColor, getWeekKey } from '../../lib/utils'
-import { Staff, HofEntry, Reward, Redemption, PointsHistoryEntry } from '../../types'
+import { BADGES, genId, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
+import { Staff, Reward, Redemption, PointsHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../common/ConfirmModal'
+import { Trophy, Flame, Medal, Download, ShoppingBag, Award } from 'lucide-react'
+
+const RANK_COLORS = ['var(--gold)', '#9CA3AF', '#B45309']
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
@@ -22,12 +25,11 @@ interface DeptRank {
 }
 
 export default function LeaderboardPage() {
-  const { staff, user, entries, hof, saveHof, rewards, saveRewards, redeems, saveRedeems, awardPoints, streakRecoveries, saveStreakRecoveries, saveStaff, notify, settings, leaves } = useApp()
+  const { staff, user, entries, rewards, saveRewards, redeems, saveRedeems, awardPoints, notify, settings, leaves, evaluateBadges, logAudit } = useApp()
   const [tab, setTab] = useState('individual')
   const [showShop, setShowShop] = useState(false)
   const [showAddReward, setShowAddReward] = useState(false)
   const [rewardForm, setRewardForm] = useState({ name: '', desc: '', cost: '', icon: '🎁' })
-  const [recoveryForm, setRecoveryForm] = useState({ weekId: '', reason: '' })
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
@@ -79,6 +81,11 @@ export default function LeaderboardPage() {
       setReviewSelectedMonth(availableMonths[0])
     }
   }, [reviewPeriodType, availableWeeks, availableMonths])
+
+  // Refresh the current user's badges when the Badges tab is opened
+  useEffect(() => {
+    if (tab === 'badges' && user?.id) evaluateBadges(user.id)
+  }, [tab, user?.id])
 
   // Fetch points history when period filter is active
   useEffect(() => {
@@ -160,41 +167,42 @@ export default function LeaderboardPage() {
   function reviewSpeedScore(submittedAt: string | undefined, reviewedAt: string | undefined, weekKey: string): number {
     if (!submittedAt || !reviewedAt) return 0
     const subWin = settings?.submissionWindow
-    // Derive the submission deadline for this entry's week from weekKey (e.g. "2026-W17")
-    let deadline: Date | null = null
-    if (subWin?.enabled && subWin.schedule) {
-      const [year, weekPart] = weekKey.split('-W')
-      const weekNum = parseInt(weekPart, 10)
-      if (!isNaN(weekNum)) {
-        // ISO week: Jan 4 is always in W1
-        const jan4 = new Date(parseInt(year), 0, 4)
-        const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay()
-        const monday = new Date(jan4)
-        monday.setDate(jan4.getDate() - (jan4Day - 1) + (weekNum - 1) * 7)
+    // weekKey = Monday of the week, format "YYYY-MM-DD" (WAT). Derive submission
+    // deadline from it: Monday + endDay offset + endTime, all in WAT (UTC+1).
+    let deadlineMs: number | null = null
+    if (subWin?.enabled && subWin.schedule && /^\d{4}-\d{2}-\d{2}$/.test(weekKey)) {
+      const mondayUtcMidnight = Date.parse(weekKey + 'T00:00:00Z')
+      if (!isNaN(mondayUtcMidnight)) {
+        const WAT_MS = 60 * 60 * 1000
+        // WAT Monday 00:00 expressed in UTC ms
+        const watMondayUtc = mondayUtcMidnight - WAT_MS
         const DAY: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
         const endDayOff = (DAY[subWin.schedule.endDay.toLowerCase()] || 2) - 1
-        deadline = new Date(monday)
-        deadline.setDate(deadline.getDate() + endDayOff)
         const [h, m] = subWin.schedule.endTime.split(':').map(Number)
-        deadline.setHours(h, m, 0, 0)
+        deadlineMs = watMondayUtc + endDayOff * 86400000 + (h * 3600000 + m * 60000)
       }
     }
     const reviewedMs = new Date(reviewedAt).getTime()
-    if (deadline && reviewedMs <= deadline.getTime()) return 100
+    if (deadlineMs !== null && reviewedMs <= deadlineMs) return 100
     // Hours after deadline (or after submission if no deadline config)
-    const baseMs = deadline ? deadline.getTime() : new Date(submittedAt).getTime()
+    const baseMs = deadlineMs !== null ? deadlineMs : new Date(submittedAt).getTime()
     const hoursAfter = (reviewedMs - baseMs) / (1000 * 60 * 60)
     if (hoursAfter <= 2) return 80
     if (hoursAfter <= 24) return 60
     return 0
   }
 
+  // Best timestamp for when an entry was reviewed: approval/rejection time, else last update
+  const reviewDateOf = (e: any): string | undefined =>
+    (e.status === 'approved' ? e.approvedAt : e.status === 'rejected' ? e.rejectedAt : undefined) || e.updatedAt
+
   const reviewalRanked: ReviewerStat[] = useMemo(() => {
     const filteredForReview = reviewPeriodType === 'alltime'
       ? entries
       : entries.filter(e => {
-          if (!e.updatedAt) return false
-          const d = e.updatedAt.slice(0, 10)
+          const rd = reviewDateOf(e)
+          if (!rd) return false
+          const d = rd.slice(0, 10)
           if (reviewPeriodType === 'month') return d.startsWith(reviewSelectedMonth)
           if (reviewPeriodType === 'week') {
             const weekStart = new Date(reviewSelectedWeek)
@@ -213,13 +221,13 @@ export default function LeaderboardPage() {
     return reviewers.map(s => {
       const reviewed = filteredForReview.filter(e =>
         !e.deleted && (
-          (e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved' ||
-          (e.rejectedBy === s.id) && e.status === 'rejected'
+          ((e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved') ||
+          (e.rejectedBy === s.id && e.status === 'rejected')
         )
       )
       const scores = reviewed
-        .filter(e => e.submittedAt && e.updatedAt && e.weekKey)
-        .map(e => reviewSpeedScore(e.submittedAt, e.updatedAt, e.weekKey))
+        .filter(e => e.submittedAt && reviewDateOf(e) && e.weekKey)
+        .map(e => reviewSpeedScore(e.submittedAt, reviewDateOf(e), e.weekKey))
       const avgScore = scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
         : 0
@@ -245,7 +253,8 @@ export default function LeaderboardPage() {
       d.members++
       d.totalPts += s.points || 0
       const myEntries = entries.filter(e => e.staffId === s.id)
-      const weeks = Array.from(new Set(myEntries.map(e => e.weekKey)))
+      // Exclude approved-leave weeks, consistent with calcSubmissionRate
+      const weeks = Array.from(new Set(myEntries.map(e => e.weekKey))).filter(w => !weekOnLeave(s.id, w))
       const submitted = weeks.filter(w => myEntries.some(e => e.weekKey === w && SUBMITTED_STATUSES.includes(e.status)))
       d.totalRate += weeks.length > 0 ? (submitted.length / weeks.length) * 100 : 0
     })
@@ -254,13 +263,7 @@ export default function LeaderboardPage() {
       avgPts: d.members > 0 ? Math.round(d.totalPts / d.members) : 0,
       avgRate: d.members > 0 ? Math.round(d.totalRate / d.members) : 0,
     })).sort((a, b) => b.avgPts - a.avgPts)
-  }, [staff, entries])
-
-  function saveHofNow() {
-    const top3: HofEntry[] = ranked.slice(0, 3).map((s, i) => ({ ...s, rank: i + 1, savedAt: new Date().toISOString() }))
-    saveHof(top3)
-    toast.success('Hall of Fame updated!')
-  }
+  }, [staff, entries, leaves])
 
   function addReward() {
     if (!rewardForm.name || !rewardForm.cost) { toast.error('Name and cost required'); return }
@@ -305,6 +308,7 @@ export default function LeaderboardPage() {
 
         saveRedeems([...redeems, redeem])
         awardPoints(user.id, -reward.cost, `Redeemed ${reward.name}`)
+        logAudit('reward_redeemed', user.id, { reward: reward.name, cost: reward.cost })
         toast.success('🎁 Redemption request sent to admin!')
       },
       message: `Redeem "${reward.name}" for ${reward.cost} pts?`,
@@ -312,47 +316,12 @@ export default function LeaderboardPage() {
     })
   }
 
-  function handleRecoveryRequest() {
-    if (!recoveryForm.weekId || !recoveryForm.reason) { toast.error('Week and reason required'); return }
-    const req = {
-      id: genId(),
-      staffId: user!.id,
-      staffName: user!.name,
-      weekId: recoveryForm.weekId,
-      reason: recoveryForm.reason,
-      status: 'pending' as const,
-      createdAt: new Date().toISOString()
-    }
-    saveStreakRecoveries([...streakRecoveries, req])
-    setRecoveryForm({ weekId: '', reason: '' })
-    toast.success('Recovery request submitted')
-  }
-
-  function resolveRecovery(reqId: string, status: 'approved' | 'rejected') {
-    const req = streakRecoveries.find(r => r.id === reqId)
-    if (!req) return
-    
-    const updated = streakRecoveries.map(r => r.id === reqId ? { ...r, status, reviewedBy: user?.name, reviewedAt: new Date().toISOString() } : r)
-    saveStreakRecoveries(updated)
-    notify(req.staffId, `Your streak recovery request was ${status}.`, status === 'approved' ? 'streak_recovery_approved' : 'streak_recovery_declined', `Streak Recovery ${status === 'approved' ? 'Approved' : 'Declined'}`, reqId, 'message')
-    
-    if (status === 'approved') {
-      const sIdx = staff.findIndex(s => s.id === req.staffId)
-      if (sIdx > -1) {
-        const updatedStaff = [...staff]
-        updatedStaff[sIdx] = { ...updatedStaff[sIdx], streak: (updatedStaff[sIdx].streak || 0) + 1 }
-        saveStaff(updatedStaff)
-        awardPoints(req.staffId, 5, 'Streak Recovery Bonus', req.weekId)
-      }
-    }
-    toast.success(`Request ${status}`)
-  }
-
   function fulfillRedeem(id: string) {
     const updated = redeems.map(r => r.id === id ? { ...r, status: 'fulfilled' as const, fulfilledAt: new Date().toISOString() } : r)
     saveRedeems(updated)
     const r = redeems.find(x => x.id === id)
     if (r) notify(r.staffId, `Your redemption for ${r.rewardName} has been fulfilled!`, 'redemption_fulfilled', 'Reward Fulfilled', id, 'message')
+    if (r) logAudit('reward_fulfilled', r.staffId, { reward: r.rewardName, staffName: r.staffName })
     toast.success('Reward fulfilled!')
   }
 
@@ -415,216 +384,212 @@ export default function LeaderboardPage() {
       {/* ... rest of the UI ... */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>🏆 Leaderboard</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>Rankings, badges & rewards</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trophy size={22} style={{ color: 'var(--brand)' }} /> Leaderboard
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>Rankings, badges &amp; rewards</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" onClick={() => setShowShop(!showShop)}>
-            🛍️ Points Shop
+          <button className="btn btn-secondary" onClick={() => setShowShop(!showShop)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShoppingBag size={16} /> Points Shop
           </button>
-          {user?.role === 'admin' && (
-            <button className="btn btn-secondary btn-sm" onClick={saveHofNow}>Save Hall of Fame</button>
-          )}
         </div>
       </div>
 
+      {/* Combined banner: your rank (left) + top-3 podium (right) */}
       <div style={{
-        background: 'linear-gradient(135deg, var(--accent), #7C3AED)',
-        borderRadius: 14, padding: 20, color: 'white',
-        display: 'flex', alignItems: 'center', gap: 16
+        background: 'linear-gradient(150deg, var(--brand-2), var(--brand))',
+        borderRadius: 'var(--r-lg)', padding: '24px 28px', color: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 28, boxShadow: 'var(--sh-sm)', flexWrap: 'wrap', position: 'relative', overflow: 'hidden'
       }}>
-        <div style={{ fontSize: 40 }}>{myRank > 0 && myRank <= 3 ? MEDAL[myRank - 1] : `#${myRank || '-'}`}</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>#{myRank || '-'} of {ranked.length}</div>
-          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{user?.points || 0} points · {user?.streak || 0} week streak</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>Badges</div>
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'wrap', maxWidth: 120 }}>
-            {(user?.badges || []).map(b => {
-              const badge = BADGES.find(x => x.id === b)
-              return badge ? <span key={b} style={{ fontSize: 20 }} title={badge.name}>{badge.icon}</span> : null
-            })}
-            {(user?.badges || []).length === 0 && <span style={{ opacity: 0.6, fontSize: 12 }}>No badges yet</span>}
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'radial-gradient(circle at 1px 1px,#fff 1.5px,transparent 0)', backgroundSize: '24px 24px', pointerEvents: 'none' }} />
+        {/* Your rank */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative', zIndex: 1 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)'
+          }}>
+            {myRank > 0 && myRank <= 3 ? <Medal size={30} /> : `#${myRank || '-'}`}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
+            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRank || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {ranked.length}</span></div>
+            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+              <span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak
+            </div>
           </div>
         </div>
+        {/* Top-3 podium */}
+        {ranked.length >= 1 && (() => {
+          const top3 = ranked.slice(0, 3)
+          // Center the #1; only use the 2-1-3 podium order when all three exist
+          const order = (top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3).filter(Boolean) as RankedStaff[]
+          return (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, position: 'relative', zIndex: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {order.map(s => {
+                const rank = ranked.findIndex(r => r.id === s.id) + 1
+                const isFirst = rank === 1
+                const size = isFirst ? 70 : 56
+                const isMe = s.id === user?.id
+                return (
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 78 }}>
+                    <div style={{
+                      width: size, height: size, borderRadius: '50%',
+                      background: avatarColor(s.name), color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: isFirst ? 24 : 19, fontWeight: 800, fontFamily: 'var(--font-sora)',
+                      border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)',
+                      boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15)' : 'none'
+                    }}>{initials(s.name)}</div>
+                    <span style={{ padding: '1px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)', color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)' }}>#{rank}</span>
+                    <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 13 : 12, textAlign: 'center', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name.split(' ')[0]}{isMe ? ' (You)' : ''}</span>
+                    <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 11, fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()} pts</span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
       </div>
 
-      <div className="tabs">
-        {['individual', 'reviewal', 'department', 'badges', 'hof', 'recovery'].map(t => (
-          <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'individual' ? '📋 Submission' : t === 'reviewal' ? '✅ Reviewal' : t === 'department' ? '🏢 Departments' : t === 'badges' ? '🏅 Badges' : t === 'hof' ? '🏛️ Hall of Fame' : '🔄 Recovery'}
-          </div>
-        ))}
-      </div>
+      {(() => {
+        const pill = (activeP: boolean): React.CSSProperties => ({
+          padding: '6px 13px', borderRadius: 999, border: '1px solid',
+          cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          background: activeP ? 'var(--brand)' : 'var(--elev)',
+          color: activeP ? '#fff' : 'var(--ink-2)',
+          borderColor: activeP ? 'var(--brand)' : 'var(--line)',
+        })
+        const PERIODS: PeriodType[] = ['alltime', 'week', 'month', 'custom']
+        const plabel = (p: PeriodType) => p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom'
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 6 }}>
+            {/* Tabs (left) */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(['individual', 'reviewal', 'department', 'badges'] as const).map(t => {
+                const active = tab === t
+                const label = t === 'individual' ? 'Submission' : t === 'reviewal' ? 'Reviewal' : t === 'department' ? 'Departments' : 'Badges'
+                const Icon = t === 'individual' ? Trophy : t === 'reviewal' ? Award : t === 'department' ? Medal : Award
+                return (
+                  <button key={t} onClick={() => setTab(t)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                    borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    background: active ? 'var(--tint)' : 'transparent', color: active ? 'var(--brand)' : 'var(--ink-3)',
+                    borderBottom: active ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: -6, transition: 'all .15s'
+                  }}><Icon size={15} /> {label}</button>
+                )
+              })}
+            </div>
 
-      {tab === 'individual' && (
-        <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
-          <div className="card flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex gap-3 flex-1 min-w-[300px]">
-                <input
-                  className="form-input flex-1"
-                  placeholder="Search staff..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-                <select className="form-select w-48" value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+            {/* Filters (right) — Submission tab */}
+            {tab === 'individual' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
                   <option value="">All Departments</option>
                   {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
-              </div>
-              <div className="flex gap-2">
-                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}>💾 CSV</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>📕 PDF</button>
-              </div>
-            </div>
-            {/* Period filter row */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
-              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
-                <button
-                  key={p}
-                  className={`btn btn-sm ${periodType === p ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setPeriodType(p)}
-                >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
-                </button>
-              ))}
-              {periodType === 'week' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 160 }}
-                  value={selectedWeek}
-                  onChange={e => { setSelectedWeek(e.target.value); periodFetchKey.current = '' }}
-                >
-                  {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              )}
-              {periodType === 'month' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 140 }}
-                  value={selectedMonth}
-                  onChange={e => { setSelectedMonth(e.target.value); periodFetchKey.current = '' }}
-                >
-                  {availableMonths.map(m => (
-                    <option key={m} value={m}>
-                      {new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {periodType === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={customFrom}
-                    max={customTo || undefined}
-                    onChange={e => { setCustomFrom(e.target.value); periodFetchKey.current = '' }}
-                  />
-                  <span className="text-xs text-3">to</span>
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={customTo}
-                    min={customFrom || undefined}
-                    onChange={e => { setCustomTo(e.target.value); periodFetchKey.current = '' }}
-                  />
-                </div>
-              )}
-              {periodLoading && <span className="text-xs text-3 animate-pulse">Loading...</span>}
-              {periodType !== 'alltime' && !periodLoading && (
-                <span className="text-xs text-3">
-                  {periodType === 'week'
-                    ? `Showing points earned week of ${selectedWeek}`
-                    : periodType === 'month'
-                      ? `Showing points earned in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
-                      : customFrom && customTo
-                        ? `Showing points earned ${customFrom} → ${customTo}`
-                        : 'Pick a start and end date'}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Pinned My Rank Card (if not in top 25) */}
-          {(myRank > 25 || myRank === 0) && (
-            <div className="card border-accent bg-accent-subtle relative overflow-hidden">
-              <div className="flex items-center gap-4">
-                <div className="text-3xl font-bold opacity-50">#{myRank || '?'}</div>
-                <div className="flex-1">
-                  <div className="font-bold text-1">{user?.name} (You)</div>
-                  <div className="text-xs text-3">{user?.points || 0} points · {user?.streak || 0}w streak</div>
-                </div>
-                {myRank > 25 && (
-                  <div className="text-right">
-                    <div className="text-xs text-4">To enter Top 25</div>
-                    <div className="font-bold text-accent">+{ (ranked[24]?.points || 0) - (user?.points || 0) + 1 } pts</div>
+                {PERIODS.map(p => <button key={p} onClick={() => setPeriodType(p)} style={pill(periodType === p)}>{plabel(p)}</button>)}
+                {periodType === 'week' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={selectedWeek} onChange={e => { setSelectedWeek(e.target.value); periodFetchKey.current = '' }}>
+                    {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                )}
+                {periodType === 'month' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 130 }} value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value); periodFetchKey.current = '' }}>
+                    {availableMonths.map(m => <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</option>)}
+                  </select>
+                )}
+                {periodType === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={customFrom} max={customTo || undefined} onChange={e => { setCustomFrom(e.target.value); periodFetchKey.current = '' }} />
+                    <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>to</span>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={customTo} min={customFrom || undefined} onChange={e => { setCustomTo(e.target.value); periodFetchKey.current = '' }} />
                   </div>
                 )}
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
               </div>
+            )}
+
+            {/* Filters (right) — Reviewal tab */}
+            {tab === 'reviewal' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {PERIODS.map(p => <button key={p} onClick={() => setReviewPeriodType(p)} style={pill(reviewPeriodType === p)}>{plabel(p)}</button>)}
+                {reviewPeriodType === 'week' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 150 }} value={reviewSelectedWeek} onChange={e => setReviewSelectedWeek(e.target.value)}>
+                    {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                )}
+                {reviewPeriodType === 'month' && (
+                  <select className="form-select" style={{ width: 'auto', minWidth: 130 }} value={reviewSelectedMonth} onChange={e => setReviewSelectedMonth(e.target.value)}>
+                    {availableMonths.map(m => <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</option>)}
+                  </select>
+                )}
+                {reviewPeriodType === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={reviewCustomFrom} max={reviewCustomTo || undefined} onChange={e => setReviewCustomFrom(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>to</span>
+                    <input type="date" className="form-input" style={{ width: 'auto' }} value={reviewCustomTo} min={reviewCustomFrom || undefined} onChange={e => setReviewCustomTo(e.target.value)} />
+                  </div>
+                )}
+                <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> CSV</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Download size={14} /> PDF</button>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {tab === 'individual' && (
+        <div className="flex flex-col gap-4" style={{ paddingBottom: 4 }}>
+          {periodType !== 'alltime' && (
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              {periodLoading ? 'Loading…'
+                : periodType === 'week' ? `Showing points earned week of ${selectedWeek}`
+                : periodType === 'month' ? `Showing points earned in ${new Date((selectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+                : customFrom && customTo ? `Showing points earned ${customFrom} → ${customTo}`
+                : 'Pick a start and end date'}
             </div>
           )}
-
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Name</th>
-                    <th>Points</th>
-                    <th>Performance</th>
-                    <th>Streak</th>
-                    <th>Badges</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Member</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Department</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Streak</th>
+                    <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Points</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ranked.slice(0, 25).map((s, i) => {
                     const isMe = s.id === user?.id
-                    const relWidth = Math.max(5, Math.round(((s.points || 0) / (ranked[0]?.points || 1)) * 100))
+                    const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
                     return (
-                      <tr key={s.id} className={isMe ? 'bg-accent-subtle' : ''}>
-                        <td className="font-bold text-lg">
-                          {i < 3 ? MEDAL[i] : (i < 25 ? `🏅 #${i + 1}` : `#${i + 1}`)}
+                      <tr key={s.id} style={isMe ? { background: 'var(--tint)' } : undefined}>
+                        <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: rankColor }}>
+                          {i + 1}
                         </td>
                         <td>
                           <div className="flex items-center gap-2">
-                             <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>
-                                {s.name?.[0]}
+                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                                {initials(s.name)}
                              </div>
-                            <span className="font-bold">{s.name}{isMe ? ' (You)' : ''}</span>
-                          </div>
-                          <div className="text-4 text-xs">{s.department}</div>
-                        </td>
-                        <td className="font-bold text-accent">{(s.points || 0).toLocaleString()}</td>
-                        <td style={{ minWidth: 140 }}>
-                          <div className="flex flex-col gap-1">
-                            <div className="progress h-1.5 w-full bg-border rounded-full overflow-hidden">
-                                <div className="progress-bar h-full bg-accent" style={{ width: `${relWidth}%` }} />
-                            </div>
-                            <div className="flex justify-between text-[10px] text-4">
-                                <span>{s.submissionRate}% rate</span>
-                                <span>{relWidth}% of top</span>
-                            </div>
+                            <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{s.name}{isMe ? <span style={{ color: 'var(--brand)' }}> (You)</span> : ''}</span>
                           </div>
                         </td>
+                        <td style={{ color: 'var(--ink-3)', fontSize: 13 }}>{s.department || '—'}</td>
                         <td>
-                          {s.streak ? <span className="badge badge-yellow">🔥 {s.streak}</span> : <span className="text-4">—</span>}
+                          {s.streak
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--gold)', fontWeight: 600 }}><Flame size={14} /> {s.streak}</span>
+                            : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                         </td>
-                        <td>
-                          <div className="flex gap-1">
-                            {(s.badges || []).slice(0, 3).map(b => {
-                              const badge = BADGES.find(x => x.id === b)
-                              return badge ? <span key={b} title={badge.name}>{badge.icon}</span> : null
-                            })}
-                            {(s.badges || []).length > 3 && <span className="text-4 text-xs">+{s.badges!.length - 3}</span>}
-                          </div>
-                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--brand)' }}>{(s.points || 0).toLocaleString()}</td>
                       </tr>
                     )
                   })}
@@ -632,13 +597,12 @@ export default function LeaderboardPage() {
               </table>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
             {[
-              { score: 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +4 after 3 consecutive early weeks`, color: 'var(--success)' },
-              { score: 2, label: 'On-time (within submission window)', color: 'var(--accent)' },
-              { score: 1, label: 'Late addition (after window closes)', color: 'var(--warning)' },
-              { score: -1, label: 'Outside window', color: 'var(--danger)' },
+              { score: settings?.pointsConfig?.earlySubmission ?? 3, label: `Early (within ${settings?.pointsConfig?.earlySubmissionHours ?? 4}h of window opening) · +1 after 3 consecutive early weeks`, color: 'var(--success)' },
+              { score: settings?.pointsConfig?.onTimeSubmission ?? 2, label: 'On-time (within submission window)', color: 'var(--brand)' },
+              { score: settings?.pointsConfig?.outsideWindowPenalty ?? -1, label: 'Outside window (after window closes)', color: 'var(--danger)' },
             ].map(({ score, label, color }, i, arr) => (
               <React.Fragment key={score}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -654,122 +618,55 @@ export default function LeaderboardPage() {
 
       {tab === 'reviewal' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="card flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 flex-1 flex-wrap">
-              <span className="text-xs font-semibold text-3 uppercase tracking-wider">Period:</span>
-              {(['alltime', 'week', 'month', 'custom'] as PeriodType[]).map(p => (
-                <button
-                  key={p}
-                  className={`btn btn-sm ${reviewPeriodType === p ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setReviewPeriodType(p)}
-                >
-                  {p === 'alltime' ? 'All Time' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom Range'}
-                </button>
-              ))}
-              {reviewPeriodType === 'week' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 160 }}
-                  value={reviewSelectedWeek}
-                  onChange={e => setReviewSelectedWeek(e.target.value)}
-                >
-                  {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              )}
-              {reviewPeriodType === 'month' && (
-                <select
-                  className="form-select"
-                  style={{ width: 'auto', minWidth: 140 }}
-                  value={reviewSelectedMonth}
-                  onChange={e => setReviewSelectedMonth(e.target.value)}
-                >
-                  {availableMonths.map(m => (
-                    <option key={m} value={m}>
-                      {new Date(m + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {reviewPeriodType === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={reviewCustomFrom}
-                    max={reviewCustomTo || undefined}
-                    onChange={e => setReviewCustomFrom(e.target.value)}
-                  />
-                  <span className="text-xs text-3">to</span>
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: 'auto' }}
-                    value={reviewCustomTo}
-                    min={reviewCustomFrom || undefined}
-                    onChange={e => setReviewCustomTo(e.target.value)}
-                  />
-                </div>
-              )}
-              {reviewPeriodType !== 'alltime' && (
-                <span className="text-xs text-3">
-                  {reviewPeriodType === 'week'
-                    ? `Showing reviews week of ${reviewSelectedWeek}`
-                    : reviewPeriodType === 'month'
-                      ? `Showing reviews in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
-                      : reviewCustomFrom && reviewCustomTo
-                        ? `Showing reviews ${reviewCustomFrom} → ${reviewCustomTo}`
-                        : 'Pick a start and end date'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('csv')}>💾 CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleReviewExport('pdf')}>📕 PDF</button>
-            </div>
+        {reviewPeriodType !== 'alltime' && (
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+            {reviewPeriodType === 'week' ? `Showing reviews week of ${reviewSelectedWeek}`
+              : reviewPeriodType === 'month' ? `Showing reviews in ${new Date((reviewSelectedMonth || '2000-01') + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`
+              : reviewCustomFrom && reviewCustomTo ? `Showing reviews ${reviewCustomFrom} → ${reviewCustomTo}`
+              : 'Pick a start and end date'}
           </div>
-        </div>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        )}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Reviewer</th>
-                  <th>Reviewed</th>
-                  <th title="Avg score based on review speed: 100 within submission window, 80 within 2h after, 60 within 24h, 0 after 24h">Avg Score</th>
-                  <th>Performance</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reviewer</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Reviewed</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }} title="Avg score based on review speed: 100 within submission window, 80 within 2h after, 60 within 24h, 0 after 24h">Avg Score</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Performance</th>
                 </tr>
               </thead>
               <tbody>
                 {reviewalRanked.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>No review data yet</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-3)' }}>No review data yet</td></tr>
                 )}
                 {reviewalRanked.map((s, i) => {
-                  const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--text-3)'
+                  const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--ink-3)'
                   const scoreLabel = s.avgScore === 100 ? 'Excellent' : s.avgScore >= 80 ? 'Great' : s.avgScore >= 60 ? 'Good' : s.avgScore >= 40 ? 'Fair' : s.avgScore > 0 ? 'Slow' : '—'
+                  const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
                   return (
-                    <tr key={s.id} className={s.id === user?.id ? 'bg-accent-subtle' : ''}>
-                      <td className="font-bold text-lg">{i < 3 ? MEDAL[i] : `#${i + 1}`}</td>
+                    <tr key={s.id} style={s.id === user?.id ? { background: 'var(--tint)' } : undefined}>
+                      <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: rankColor }}>{i + 1}</td>
                       <td>
                         <div className="flex items-center gap-2">
-                          <div className="avatar avatar-xs" style={{ background: `hsl(${(s.name?.charCodeAt(0) || 0) * 40 % 360}, 60%, 45%)` }}>{s.name?.[0]}</div>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials(s.name)}</div>
                           <div>
-                            <span className="font-bold">{s.name}{s.id === user?.id ? ' (You)' : ''}</span>
-                            <div className="text-xs text-3">{s.department} · {s.role.replace('_', ' ')}</div>
+                            <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{s.name}{s.id === user?.id ? <span style={{ color: 'var(--brand)' }}> (You)</span> : ''}</span>
+                            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.department} · {s.role.replace('_', ' ')}</div>
                           </div>
                         </div>
                       </td>
-                      <td style={{ fontWeight: 700 }}>{s.totalReviewed}</td>
+                      <td style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--ink)' }}>{s.totalReviewed}</td>
                       <td>
                         {s.totalReviewed === 0
-                          ? <span className="text-4">—</span>
+                          ? <span style={{ color: 'var(--ink-4)' }}>—</span>
                           : <span style={{ fontWeight: 800, color: scoreColor, fontFamily: 'var(--mono)', fontSize: 16 }}>{s.avgScore}</span>
                         }
                       </td>
                       <td>
-                        {s.totalReviewed === 0 ? <span className="text-4">—</span> : (
+                        {s.totalReviewed === 0 ? <span style={{ color: 'var(--ink-4)' }}>—</span> : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div className="progress" style={{ width: 80 }}>
                               <div className="progress-bar" style={{ width: `${s.avgScore}%`, background: scoreColor }} />
@@ -785,11 +682,11 @@ export default function LeaderboardPage() {
             </table>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-3)', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>Scoring rubric:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
           {[
             { score: 100, label: 'Within submission window', color: 'var(--success)' },
-            { score: 80, label: '≤ 2h after window closes', color: 'var(--accent)' },
+            { score: 80, label: '≤ 2h after window closes', color: 'var(--brand)' },
             { score: 60, label: '≤ 24h after window closes', color: 'var(--warning)' },
             { score: 0, label: 'After 24h', color: 'var(--danger)' },
           ].map(({ score, label, color }, i, arr) => (
@@ -806,25 +703,25 @@ export default function LeaderboardPage() {
       )}
 
       {tab === 'department' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', overflow: 'hidden' }}>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Department</th>
-                  <th>Members</th>
-                  <th>Avg Points</th>
-                  <th>Avg Submit Rate</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Rank</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Department</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Members</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Avg Points</th>
+                  <th style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.05em' }}>Avg Submit Rate</th>
                 </tr>
               </thead>
               <tbody>
                 {deptRanked.map((d, i) => (
                   <tr key={d.dept}>
-                    <td style={{ fontWeight: 700, fontSize: 18 }}>{i < 3 ? MEDAL[i] : `#${i + 1}`}</td>
-                    <td style={{ fontWeight: 600 }}>{d.dept}</td>
-                    <td>{d.members}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--gold)', fontFamily: 'var(--mono)' }}>{d.avgPts}</td>
+                    <td style={{ fontFamily: 'var(--font-sora)', fontWeight: 800, fontSize: 16, color: i < 3 ? RANK_COLORS[i] : 'var(--ink-3)' }}>{i + 1}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{d.dept}</td>
+                    <td style={{ color: 'var(--ink-2)' }}>{d.members}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: 'var(--mono)' }}>{d.avgPts}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div className="progress" style={{ width: 80 }}>
@@ -846,155 +743,22 @@ export default function LeaderboardPage() {
           {BADGES.map(badge => {
             const earned = (user?.badges || []).includes(badge.id)
             return (
-              <div key={badge.id} className={`card flex items-center gap-4 ${earned ? 'border-accent bg-accent-subtle' : 'opacity-50 grayscale'}`}>
+              <div key={badge.id} className="flex items-center gap-4" style={{
+                background: earned ? 'var(--tint)' : 'var(--surface)',
+                border: earned ? '1px solid var(--brand)' : '1px solid var(--line)',
+                borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-sm)', padding: 16,
+                opacity: earned ? 1 : 0.55, filter: earned ? 'none' : 'grayscale(1)'
+              }}>
                 <div className="text-4xl">{badge.icon}</div>
                 <div className="flex-1">
-                  <div className="font-bold">{badge.name}</div>
-                  <div className="text-xs text-3">{badge.desc}</div>
-                  {!earned && <div className="text-[10px] text-accent mt-1 uppercase font-bold tracking-wider">Earn: {badge.id.replace(/_/g, ' ')}...</div>}
+                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{badge.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{badge.desc}</div>
+                  {!earned && <div style={{ fontSize: 10, color: 'var(--brand)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Earn: {badge.id.replace(/_/g, ' ')}...</div>}
                 </div>
-                {earned && <div className="text-accent">✓</div>}
+                {earned && <div style={{ color: 'var(--brand)', fontWeight: 800 }}>✓</div>}
               </div>
             )
           })}
-        </div>
-      )}
-
-      {tab === 'hof' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {hof.length === 0 ? (
-            <div className="empty-state card col-span-full">
-              <div className="empty-state-icon">🏛️</div>
-              <div className="empty-state-title">Hall of Fame is empty</div>
-              <p className="text-4 text-xs mt-2">Admins can save a snapshot of the current Top 3.</p>
-            </div>
-          ) : (
-            hof.map((s, i) => (
-              <div key={s.id} className="card text-center relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-2 opacity-10 font-bold text-4xl">#{s.rank}</div>
-                <div className="text-5xl mb-4">{MEDAL[s.rank - 1]}</div>
-                <div className="font-bold text-lg">{s.name}</div>
-                <div className="text-xs text-4 mb-3">{s.department}</div>
-                <div className="text-2xl font-bold text-accent">{(s.points || 0).toLocaleString()} <span className="text-xs uppercase opacity-60">pts</span></div>
-                {s.savedAt && <div className="text-[10px] text-4 mt-4 italic">Snapshot: {new Date(s.savedAt).toLocaleDateString()}</div>}
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {tab === 'recovery' && (
-        <div className="flex flex-col gap-6">
-          {user?.role !== 'admin' && (
-            <div className="card w-full" style={{ maxWidth: 700, margin: '0 auto', border: 'none', background: 'linear-gradient(145deg, var(--bg-card), var(--bg-hover))', boxShadow: 'var(--shadow)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
-                <div style={{ width: 64, height: 64, borderRadius: '20px', background: 'var(--warning-bg)', border: '1px solid rgba(234, 179, 8, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0, boxShadow: '0 8px 16px rgba(234, 179, 8, 0.15)' }}>
-                  🔥
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>Request Streak Recovery</h3>
-                  <p style={{ fontSize: 14, color: 'var(--text-3)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
-                    Missed a timesheet submission? Request a recovery to keep your streak alive.<br/>
-                    <strong style={{ color: 'var(--warning)' }}>Limit: Once per month.</strong>
-                  </p>
-                </div>
-              </div>
-              
-              <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: '24px 28px', border: '1px solid var(--border)', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-                <div className="grid-2" style={{ marginBottom: 20 }}>
-                  <div className="form-group">
-                    <label className="form-label">Week ID</label>
-                    <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 18 }}>📅</span>
-                      <input 
-                        className="form-input" 
-                        value={recoveryForm.weekId} 
-                        onChange={e => setRecoveryForm({ ...recoveryForm, weekId: e.target.value })} 
-                        placeholder="YYYY-WXX" 
-                        style={{ paddingLeft: 46, height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Current Streak</label>
-                    <div style={{ height: 48, padding: '0 20px', background: 'var(--bg-elevated)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-1)', fontWeight: 700, fontSize: 15, border: '1px solid var(--border)' }}>
-                      <span style={{ color: 'var(--warning)' }}>🔥</span> {user?.streak || 0} {user?.streak === 1 ? 'Week' : 'Weeks'}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="form-group" style={{ marginBottom: 24 }}>
-                  <label className="form-label">Reason for Request</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 16, top: 16, color: 'var(--text-3)', fontSize: 18 }}>✍️</span>
-                    <textarea 
-                      className="form-textarea" 
-                      value={recoveryForm.reason} 
-                      onChange={e => setRecoveryForm({ ...recoveryForm, reason: e.target.value })} 
-                      placeholder="Please concisely explain why you missed your submission..." 
-                      style={{ paddingLeft: 46, minHeight: 120, paddingTop: 16, fontSize: 14, borderRadius: 12 }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex' }}>
-                  <button 
-                    className="btn btn-primary w-full" 
-                    onClick={handleRecoveryRequest}
-                    disabled={!recoveryForm.weekId || !recoveryForm.reason}
-                    style={{ height: 52, fontSize: 16, borderRadius: 12, boxShadow: '0 4px 16px rgba(7, 108, 4, 0.25)' }}
-                  >
-                    <span style={{ marginRight: 8, fontSize: 18 }}>✨</span> Submit Recovery Request
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="card w-full mx-auto" style={{ maxWidth: 700, padding: 0, overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 20 }}>📜</span>
-              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{user?.role === 'admin' ? 'All Recovery Requests' : 'Your Recovery Requests'}</h3>
-            </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Staff</th>
-                    <th>Week</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    {user?.role === 'admin' && <th>Action</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(streakRecoveries || [])
-                    .filter(r => user?.role === 'admin' || r.staffId === user?.id)
-                    .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
-                    .map(r => (
-                      <tr key={r.id}>
-                        <td>{r.staffName}</td>
-                        <td className="font-mono">{r.weekId}</td>
-                        <td className="max-w-xs truncate" title={r.reason}>{r.reason}</td>
-                        <td>
-                          <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
-                            {r.status.toUpperCase()}
-                          </span>
-                        </td>
-                        {user?.role === 'admin' && r.status === 'pending' && (
-                          <td className="flex gap-2">
-                            <button className="btn btn-xs btn-green" onClick={() => resolveRecovery(r.id, 'approved')}>Approve</button>
-                            <button className="btn btn-xs btn-red" onClick={() => resolveRecovery(r.id, 'rejected')}>Reject</button>
-                          </td>
-                        )}
-                        {user?.role === 'admin' && r.status !== 'pending' && <td className="text-4 text-xs">Reviewed by {r.reviewedBy}</td>}
-                      </tr>
-                  ))}
-                  {(streakRecoveries || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-4">No requests found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1002,7 +766,7 @@ export default function LeaderboardPage() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowShop(false)}>
           <div className="modal modal-lg">
             <div className="modal-header">
-              <span className="modal-title">🛍️ Points Shop</span>
+              <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><ShoppingBag size={18} /> Points Shop</span>
               <button className="btn btn-icon btn-secondary btn-sm" onClick={() => setShowShop(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>

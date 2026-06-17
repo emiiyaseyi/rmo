@@ -4,6 +4,7 @@ import { rowToPublicHoliday, publicHolidayToRow, buildUpsert } from '../../_help
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    try { await pool.query("ALTER TABLE public_holidays ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'public'") } catch {}
     const body = await req.json()
     const row = publicHolidayToRow({ ...body, id })
     const { text, values } = buildUpsert('public_holidays', row)

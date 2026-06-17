@@ -19,7 +19,7 @@ SMTP_FROM="DSN RMO Notification"
 
 ### 1. BaseEmail
 Base layout component used by all other templates. Includes:
-- DSN RMO branded header (green #076C04)
+- DSN RMO branded header (green #0C7A37)
 - Consistent footer
 - Responsive design
 
@@ -195,9 +195,9 @@ To preview email templates during development:
 
 ### Brand Colors
 The templates use DSN RMO brand colors defined in `src/app/globals.css`:
-- Primary Green: `#076C04`
-- Hover Green: `#065903`
-- Light Green: `#F0FDF4`
+- Primary Green: `#0C7A37`
+- Hover Green: `#0A6730`
+- Light Green: `#E8F4EC`
 
 ### Fonts
 Templates use the Poppins font family to match the main application.

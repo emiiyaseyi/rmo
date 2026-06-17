@@ -547,12 +547,29 @@ interface LogTimePanelProps {
   defaultStart: string;
   defaultEnd: string;
   latePenalty?: number;
+  templates?: any[];
+  onSaveTemplate?: (tpl: any) => void;
 }
-function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate, defaultStart, defaultEnd, latePenalty }: LogTimePanelProps) {
+function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate, defaultStart, defaultEnd, latePenalty, templates = [], onSaveTemplate }: LogTimePanelProps) {
   const fresh = () => ({ project: '', leadId: '', lead: '', description: '', startDate: defaultStart, endDate: defaultEnd, hours: '', category: 'Project Execution', task: '', isNewTask: false })
   const [form, setForm] = useState<any>(fresh())
   const [errors, setErrors] = useState<any>({})
+  const [showTpl, setShowTpl] = useState(false)
+  const [tplName, setTplName] = useState('')
   const F = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
+
+  function applyTemplate(t: any) {
+    const lead = leads.find(l => l.id === t.leadId || l.name === t.lead)
+    setForm((f: any) => ({ ...f, project: t.project || '', leadId: lead?.id || '', lead: lead?.name || t.lead || '', description: t.description || '', category: t.category || 'Project Execution', hours: t.hours != null ? String(t.hours) : '', task: t.task || '' }))
+    setShowTpl(false)
+  }
+  function saveTemplate() {
+    if (!tplName.trim()) { toast.error('Enter a template name'); return }
+    if (!onSaveTemplate) return
+    onSaveTemplate({ name: tplName.trim(), project: form.project, leadId: form.leadId, lead: form.lead, description: form.description, category: form.category, hours: form.hours, task: form.task })
+    setTplName('')
+    toast.success('Template saved')
+  }
 
   const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 6 }
   const inp: React.CSSProperties = { width: '100%', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--ink)', padding: '9px 11px', fontSize: 13, fontFamily: 'inherit' }
@@ -583,8 +600,36 @@ function LogTimePanel({ onSave, projects, leads, categories, windowOpen, isLate,
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 22, boxShadow: 'var(--sh)', position: 'sticky', top: 0 }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Log time</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-sora)' }}>Log time</div>
+        <button type="button" onClick={() => setShowTpl(v => !v)} title="Templates"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: showTpl ? 'var(--tint)' : 'var(--elev)', color: showTpl ? 'var(--brand)' : 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          <BookOpen size={13} /> Templates{templates.length ? ` (${templates.length})` : ''}
+        </button>
+      </div>
       <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, marginBottom: 18 }}>Add an entry to this week</div>
+
+      {showTpl && (
+        <div style={{ marginBottom: 16, padding: 12, background: 'var(--canvas)', borderRadius: 'var(--r-sm)', border: '1px solid var(--line-2)' }}>
+          {templates.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>No saved templates. Fill the form, then save it below for one-click reuse.</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {templates.map((t: any) => (
+                <button key={t.id} type="button" onClick={() => applyTemplate(t)} title={t.description}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--surface)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  <BookOpen size={12} /> {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <input value={tplName} onChange={e => setTplName(e.target.value)} placeholder="Save current as template…"
+              style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--ink)', padding: '8px 10px', fontSize: 12, fontFamily: 'inherit' }} />
+            <button type="button" onClick={saveTemplate} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}><Save size={13} /> Save</button>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 14 }}>
         <label style={lbl}>Project</label>
@@ -1602,6 +1647,8 @@ export default function TimesheetPage() {
               windowOpen={isWindowOpen}
               isLate={!!windowStatus?.isPastDeadline}
               latePenalty={settings?.pointsConfig?.outsideWindowPenalty}
+              templates={myTemplates}
+              onSaveTemplate={handleSaveTemplate}
               defaultStart={new Date().toISOString().slice(0, 10)}
               defaultEnd={new Date().toISOString().slice(0, 10)}
             />

@@ -65,6 +65,19 @@ const ACTION_LABELS: Record<string, string> = {
   project_update: 'updated a project',
   project_delete: 'deleted a project',
   project_bulk_import: 'bulk imported projects',
+  leave_logged: 'logged a leave record',
+  leave_updated: 'updated a leave record',
+  leave_deleted: 'deleted a leave record',
+  badge_granted: 'earned a badge',
+  holiday_added: 'added a public holiday',
+  holiday_deleted: 'deleted a public holiday',
+  password_reset_approved: 'approved a password reset',
+  password_reset_declined: 'declined a password reset',
+  reward_redeemed: 'redeemed a reward',
+  reward_fulfilled: 'fulfilled a reward redemption',
+  points_recalculated: 'recalculated all points',
+  backup_downloaded: 'downloaded a data backup',
+  BULK_IMPORT_STAFF: 'bulk imported staff',
 }
 
 function prettyAction(action: string): string {

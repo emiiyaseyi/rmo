@@ -297,10 +297,12 @@ export default function ApprovalsPage() {
         if (filterDept && s?.department !== filterDept) return false
         if (filterWeek && e.weekKey !== filterWeek) return false
         const q = searchQuery.trim().toLowerCase()
+        const reviewerName = e.lead || staff.find(x => x.id === e.leadId)?.name || ''
         const matchSearch = !q ||
           (e.staffName || '').toLowerCase().includes(q) ||
           (e.project || '').toLowerCase().includes(q) ||
-          (s?.department || '').toLowerCase().includes(q)
+          (s?.department || '').toLowerCase().includes(q) ||
+          reviewerName.toLowerCase().includes(q)
         if (!matchSearch) return false
         return true
       })
@@ -779,7 +781,7 @@ export default function ApprovalsPage() {
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <Search size={15} style={{ position: 'absolute', left: 12, color: 'var(--ink-3)', pointerEvents: 'none' }} />
               <input
-                placeholder="Search name, project, or department..."
+                placeholder="Search name, project, reviewer, or department..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 style={{

@@ -136,10 +136,11 @@ export default function LeaderboardPage() {
 
   // Points for a staff member in the selected period
   function getPeriodPoints(staffId: string): number {
-    if (periodType === 'alltime') return staff.find(s => s.id === staffId)?.points ?? 0
-    return periodHistory
+    // Clamp at 0 — points never display negative
+    if (periodType === 'alltime') return Math.max(0, staff.find(s => s.id === staffId)?.points ?? 0)
+    return Math.max(0, periodHistory
       .filter(h => h.staffId === staffId)
-      .reduce((sum, h) => sum + (h.points ?? 0), 0)
+      .reduce((sum, h) => sum + (h.points ?? 0), 0))
   }
 
   // Submission leaderboard — all staff, ranked by points (period-aware)
@@ -241,7 +242,7 @@ export default function LeaderboardPage() {
       }
       const d = depts[deptName]
       d.members++
-      d.totalPts += s.points || 0
+      d.totalPts += Math.max(0, s.points || 0)
       const myEntries = entries.filter(e => e.staffId === s.id)
       // Exclude approved-leave weeks, consistent with calcSubmissionRate
       const weeks = Array.from(new Set(myEntries.map(e => e.weekKey))).filter(w => !weekOnLeave(s.id, w))
@@ -416,7 +417,7 @@ export default function LeaderboardPage() {
                   <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
                     {isReviewTab
                       ? <><span style={{ fontFamily: 'var(--mono)' }}>{me?.avgScore ?? 0}</span> avg score · <span style={{ fontFamily: 'var(--mono)' }}>{me?.totalReviewed ?? 0}</span> reviewed</>
-                      : <><span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak</>}
+                      : <><span style={{ fontFamily: 'var(--mono)' }}>{Math.max(0, user?.points || 0)}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak</>}
                   </div>
                 </div>
               </div>

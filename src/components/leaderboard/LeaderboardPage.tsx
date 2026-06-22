@@ -44,6 +44,8 @@ export default function LeaderboardPage() {
   const [periodHistory, setPeriodHistory] = useState<PointsHistoryEntry[]>([])
   const [periodLoading, setPeriodLoading] = useState(false)
   const periodFetchKey = useRef('')
+  const [reviewLimit, setReviewLimit] = useState(10)
+  const [subLimit, setSubLimit] = useState(25)
 
   // Reviewal period filter (independent of submission period)
   const [reviewPeriodType, setReviewPeriodType] = useState<PeriodType>('alltime')
@@ -164,32 +166,20 @@ export default function LeaderboardPage() {
     totalReviewed: number; avgScore: number;
   }
 
-  function reviewSpeedScore(submittedAt: string | undefined, reviewedAt: string | undefined, weekKey: string): number {
+  // Speed score = how fast a reviewer acted AFTER the entry was submitted.
+  // Tiered so every genuine review earns credit (min 20); faster = higher.
+  function reviewSpeedScore(submittedAt?: string, reviewedAt?: string): number {
     if (!submittedAt || !reviewedAt) return 0
-    const subWin = settings?.submissionWindow
-    // weekKey = Monday of the week, format "YYYY-MM-DD" (WAT). Derive submission
-    // deadline from it: Monday + endDay offset + endTime, all in WAT (UTC+1).
-    let deadlineMs: number | null = null
-    if (subWin?.enabled && subWin.schedule && /^\d{4}-\d{2}-\d{2}$/.test(weekKey)) {
-      const mondayUtcMidnight = Date.parse(weekKey + 'T00:00:00Z')
-      if (!isNaN(mondayUtcMidnight)) {
-        const WAT_MS = 60 * 60 * 1000
-        // WAT Monday 00:00 expressed in UTC ms
-        const watMondayUtc = mondayUtcMidnight - WAT_MS
-        const DAY: Record<string, number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:7 }
-        const endDayOff = (DAY[subWin.schedule.endDay.toLowerCase()] || 2) - 1
-        const [h, m] = subWin.schedule.endTime.split(':').map(Number)
-        deadlineMs = watMondayUtc + endDayOff * 86400000 + (h * 3600000 + m * 60000)
-      }
-    }
-    const reviewedMs = new Date(reviewedAt).getTime()
-    if (deadlineMs !== null && reviewedMs <= deadlineMs) return 100
-    // Hours after deadline (or after submission if no deadline config)
-    const baseMs = deadlineMs !== null ? deadlineMs : new Date(submittedAt).getTime()
-    const hoursAfter = (reviewedMs - baseMs) / (1000 * 60 * 60)
-    if (hoursAfter <= 2) return 80
-    if (hoursAfter <= 24) return 60
-    return 0
+    const subMs = new Date(submittedAt).getTime()
+    const revMs = new Date(reviewedAt).getTime()
+    if (isNaN(subMs) || isNaN(revMs)) return 0
+    const hrs = (revMs - subMs) / 3600000
+    if (hrs <= 6) return 100      // same working session
+    if (hrs <= 24) return 90      // within a day
+    if (hrs <= 48) return 75      // within two days
+    if (hrs <= 72) return 60      // within three days
+    if (hrs <= 168) return 40     // within a week
+    return 20                     // reviewed, but slow
   }
 
   // Best timestamp for when an entry was reviewed: approval/rejection time, else last update
@@ -226,8 +216,8 @@ export default function LeaderboardPage() {
         )
       )
       const scores = reviewed
-        .filter(e => e.submittedAt && reviewDateOf(e) && e.weekKey)
-        .map(e => reviewSpeedScore(e.submittedAt, reviewDateOf(e), e.weekKey))
+        .map(e => reviewSpeedScore(e.submittedAt || e.createdAt, reviewDateOf(e)))
+        .filter(n => n > 0)
       const avgScore = scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
         : 0
@@ -404,53 +394,52 @@ export default function LeaderboardPage() {
         gap: 28, boxShadow: 'var(--sh-sm)', flexWrap: 'wrap', position: 'relative', overflow: 'hidden'
       }}>
         <div style={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'radial-gradient(circle at 1px 1px,#fff 1.5px,transparent 0)', backgroundSize: '24px 24px', pointerEvents: 'none' }} />
-        {/* Your rank */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative', zIndex: 1 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
-            background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)'
-          }}>
-            {myRank > 0 && myRank <= 3 ? <Medal size={30} /> : `#${myRank || '-'}`}
-          </div>
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Your Rank</div>
-            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRank || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {ranked.length}</span></div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
-              <span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak
-            </div>
-          </div>
-        </div>
-        {/* Top-3 podium */}
-        {ranked.length >= 1 && (() => {
-          const top3 = ranked.slice(0, 3)
-          // Center the #1; only use the 2-1-3 podium order when all three exist
-          const order = (top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3).filter(Boolean) as RankedStaff[]
+        {(() => {
+          const isReviewTab = tab === 'reviewal'
+          const board: any[] = isReviewTab ? reviewalRanked : ranked
+          const myIdx = board.findIndex(x => x.id === user?.id)
+          const myRk = myIdx + 1
+          const me: any = myIdx > -1 ? board[myIdx] : null
+          const metric = (x: any) => isReviewTab ? `${x.avgScore} avg` : `${(x.points || 0).toLocaleString()} pts`
+          const top3src = isReviewTab ? reviewalRanked.filter(r => r.totalReviewed > 0).slice(0, 3) : ranked.slice(0, 3)
+          const order = (top3src.length >= 3 ? [top3src[1], top3src[0], top3src[2]] : top3src).filter(Boolean)
           return (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, position: 'relative', zIndex: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {order.map(s => {
-                const rank = ranked.findIndex(r => r.id === s.id) + 1
-                const isFirst = rank === 1
-                const size = isFirst ? 70 : 56
-                const isMe = s.id === user?.id
-                return (
-                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 78 }}>
-                    <div style={{
-                      width: size, height: size, borderRadius: '50%',
-                      background: avatarColor(s.name), color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: isFirst ? 24 : 19, fontWeight: 800, fontFamily: 'var(--font-sora)',
-                      border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)',
-                      boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15)' : 'none'
-                    }}>{initials(s.name)}</div>
-                    <span style={{ padding: '1px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)', color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)' }}>#{rank}</span>
-                    <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 13 : 12, textAlign: 'center', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name.split(' ')[0]}{isMe ? ' (You)' : ''}</span>
-                    <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 11, fontFamily: 'var(--mono)' }}>{(s.points || 0).toLocaleString()} pts</span>
+            <>
+              {/* Your rank (active board) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative', zIndex: 1 }}>
+                <div style={{ width: 64, height: 64, borderRadius: '50%', flexShrink: 0, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>
+                  {myRk > 0 && myRk <= 3 ? <Medal size={30} /> : `#${myRk || '-'}`}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>{isReviewTab ? 'Your Review Rank' : 'Your Rank'}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-sora)' }}>#{myRk || '-'} <span style={{ fontSize: 15, opacity: 0.7, fontWeight: 600 }}>of {board.length}</span></div>
+                  <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+                    {isReviewTab
+                      ? <><span style={{ fontFamily: 'var(--mono)' }}>{me?.avgScore ?? 0}</span> avg score · <span style={{ fontFamily: 'var(--mono)' }}>{me?.totalReviewed ?? 0}</span> reviewed</>
+                      : <><span style={{ fontFamily: 'var(--mono)' }}>{user?.points || 0}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak</>}
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              </div>
+              {/* Top-3 podium (active board) */}
+              {order.length >= 1 && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, position: 'relative', zIndex: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {order.map(s => {
+                    const rank = board.findIndex(r => r.id === s.id) + 1
+                    const isFirst = rank === 1
+                    const size = isFirst ? 70 : 56
+                    const isMe = s.id === user?.id
+                    return (
+                      <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 78 }}>
+                        <div style={{ width: size, height: size, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isFirst ? 24 : 19, fontWeight: 800, fontFamily: 'var(--font-sora)', border: isFirst ? '3px solid var(--gold)' : '3px solid rgba(255,255,255,.4)', boxShadow: isFirst ? '0 0 0 4px rgba(255,255,255,.15)' : 'none' }}>{initials(s.name)}</div>
+                        <span style={{ padding: '1px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: isFirst ? 'var(--gold)' : 'rgba(255,255,255,.2)', color: isFirst ? '#1a1a1a' : '#fff', fontFamily: 'var(--font-sora)' }}>#{rank}</span>
+                        <span style={{ color: '#fff', fontWeight: 700, fontSize: isFirst ? 13 : 12, textAlign: 'center', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name.split(' ')[0]}{isMe ? ' (You)' : ''}</span>
+                        <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 11, fontFamily: 'var(--mono)' }}>{metric(s)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )
         })()}
       </div>
@@ -567,7 +556,7 @@ export default function LeaderboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ranked.slice(0, 25).map((s, i) => {
+                  {ranked.slice(0, subLimit).map((s, i) => {
                     const isMe = s.id === user?.id
                     const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
                     return (
@@ -596,6 +585,18 @@ export default function LeaderboardPage() {
                 </tbody>
               </table>
             </div>
+            {ranked.length > subLimit && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 12, borderTop: '1px solid var(--line-2)' }}>
+                <button onClick={() => setSubLimit(ranked.length)} style={{ background: 'var(--elev)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  Show all {ranked.length} staff
+                </button>
+              </div>
+            )}
+            {subLimit > 25 && ranked.length > 25 && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '0 12px 12px' }}>
+                <button onClick={() => setSubLimit(25)} style={{ background: 'none', color: 'var(--ink-3)', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Show less</button>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
@@ -642,7 +643,7 @@ export default function LeaderboardPage() {
                 {reviewalRanked.length === 0 && (
                   <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-3)' }}>No review data yet</td></tr>
                 )}
-                {reviewalRanked.map((s, i) => {
+                {reviewalRanked.slice(0, reviewLimit).map((s, i) => {
                   const scoreColor = s.avgScore >= 80 ? 'var(--success)' : s.avgScore >= 40 ? 'var(--warning)' : s.totalReviewed > 0 ? 'var(--danger)' : 'var(--ink-3)'
                   const scoreLabel = s.avgScore === 100 ? 'Excellent' : s.avgScore >= 80 ? 'Great' : s.avgScore >= 60 ? 'Good' : s.avgScore >= 40 ? 'Fair' : s.avgScore > 0 ? 'Slow' : '—'
                   const rankColor = i < 3 ? RANK_COLORS[i] : 'var(--ink-3)'
@@ -681,14 +682,28 @@ export default function LeaderboardPage() {
               </tbody>
             </table>
           </div>
+          {reviewalRanked.length > reviewLimit && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '12px', borderTop: '1px solid var(--line-2)' }}>
+              <button onClick={() => setReviewLimit(reviewalRanked.length)} style={{ background: 'var(--elev)', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Show all {reviewalRanked.length} reviewers
+              </button>
+            </div>
+          )}
+          {reviewLimit > 10 && reviewalRanked.length > 10 && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '0 12px 12px' }}>
+              <button onClick={() => setReviewLimit(10)} style={{ background: 'none', color: 'var(--ink-3)', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Show less</button>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Scoring rubric:</span>
           {[
-            { score: 100, label: 'Within submission window', color: 'var(--success)' },
-            { score: 80, label: '≤ 2h after window closes', color: 'var(--brand)' },
-            { score: 60, label: '≤ 24h after window closes', color: 'var(--warning)' },
-            { score: 0, label: 'After 24h', color: 'var(--danger)' },
+            { score: 100, label: '≤ 6h after submit', color: 'var(--success)' },
+            { score: 90, label: '≤ 24h', color: 'var(--brand)' },
+            { score: 75, label: '≤ 48h', color: 'var(--info)' },
+            { score: 60, label: '≤ 72h', color: 'var(--warning)' },
+            { score: 40, label: '≤ 1 week', color: 'var(--warning)' },
+            { score: 20, label: 'slower', color: 'var(--danger)' },
           ].map(({ score, label, color }, i, arr) => (
             <React.Fragment key={score}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

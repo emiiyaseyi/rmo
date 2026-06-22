@@ -1650,7 +1650,7 @@ export default function TimesheetPage() {
               templates={myTemplates}
               onSaveTemplate={handleSaveTemplate}
               defaultStart={new Date().toISOString().slice(0, 10)}
-              defaultEnd={new Date().toISOString().slice(0, 10)}
+              defaultEnd={(() => { const d = new Date(selectedWeek); d.setDate(d.getDate() + 4); return d.toISOString().slice(0, 10) })()}
             />
           ) : (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 22, boxShadow: 'var(--sh)', position: 'sticky', top: 0 }}>

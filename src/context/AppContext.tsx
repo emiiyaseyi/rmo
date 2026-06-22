@@ -77,6 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const userRef = useRef<Staff | null>(null)
+  const submittingRef = useRef<Set<string>>(new Set())   // in-flight submission locks (staffId_weekKey)
   const pollNowRef = useRef<(() => void) | null>(null)
   const lastSyncRef = useRef<string | null>(null)          // ISO timestamp of last successful poll
   const lastAdminCheckRef = useRef<number>(0)              // epoch ms of last review-window/reminder check
@@ -686,8 +687,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (idx === -1) return
     const updated = [...staff]
     const s = updated[idx]
-    const newTotal = (s.points || 0) + points
-    const newWeekPoints = (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0)
+    // Points never go below zero — penalties reduce toward 0, not negative
+    const newTotal = Math.max(0, (s.points || 0) + points)
+    const newWeekPoints = Math.max(0, (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0))
     updated[idx] = { ...s, points: newTotal, currentWeekPoints: newWeekPoints, lastSubmittedWeek: weekId }
 
     const historyEntry: PointsHistoryEntry = {
@@ -921,6 +923,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const staffMember = staff.find(s => s.id === staffId)
     if (!staffMember) return
 
+    // Synchronous in-flight lock — blocks rapid double-submit (React batches
+    // state updates, so two fast clicks would otherwise both read stale state)
+    const lockKey = `${staffId}_${weekKey}`
+    if (submittingRef.current.has(lockKey)) return
+    submittingRef.current.add(lockKey)
+
+    try {
     const now = new Date()
     const weekStart = new Date(weekKey)
     const submissionId = `${staffId}_${weekKey}`
@@ -1083,6 +1092,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Re-evaluate badge eligibility for the submitting staff
       evaluateBadges(staffId)
     } catch (e) { console.error('Week submission failed', e) }
+    } finally {
+      submittingRef.current.delete(lockKey)
+    }
   }
 
   // ---------------------------------------------------------------------------

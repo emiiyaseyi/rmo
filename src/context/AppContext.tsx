@@ -686,8 +686,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (idx === -1) return
     const updated = [...staff]
     const s = updated[idx]
-    const newTotal = (s.points || 0) + points
-    const newWeekPoints = (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0)
+    // Points never go below zero — penalties reduce toward 0, not negative
+    const newTotal = Math.max(0, (s.points || 0) + points)
+    const newWeekPoints = Math.max(0, (s.currentWeekPoints || 0) + (weekId === getWeekKey() ? points : 0))
     updated[idx] = { ...s, points: newTotal, currentWeekPoints: newWeekPoints, lastSubmittedWeek: weekId }
 
     const historyEntry: PointsHistoryEntry = {

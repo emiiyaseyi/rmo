@@ -227,7 +227,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
           <>
             <div style={card}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><div style={cardLabel}>Total points</div><span style={{ display: 'flex', color: 'var(--gold)' }}><Trophy size={17} /></span></div>
-              <div style={bigNum}>{(user?.points || 0).toLocaleString()}</div>
+              <div style={bigNum}>{Math.max(0, user?.points || 0).toLocaleString()}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--gold)', fontWeight: 600, marginTop: 10, background: 'var(--gold-tint)', padding: '3px 9px', borderRadius: 999 }}><Flame size={13} />{user?.streak || 0}-week streak</div>
             </div>
             <div style={card}>
@@ -329,7 +329,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
                   <div style={{ width: 22, fontFamily: 'var(--font-sora)', fontSize: 14, fontWeight: 800, color: medal, textAlign: 'center' }}>{i + 1}</div>
                   <div style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(s.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{initials(s.name)}</div>
                   <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}{isMe ? <span style={{ color: 'var(--brand)' }}> (You)</span> : ''}</div>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{(s.points || 0).toLocaleString()}</div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{Math.max(0, s.points || 0).toLocaleString()}</div>
                 </div>
               )
             })}
@@ -338,7 +338,7 @@ export default function Dashboard({ setPage }: DashboardProps) {
                 <div style={{ width: 22, fontFamily: 'var(--font-sora)', fontSize: 14, fontWeight: 800, color: 'var(--ink-3)', textAlign: 'center' }}>{myRankIdx + 1}</div>
                 <div style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(user?.name || ''), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{initials(user?.name || '')}</div>
                 <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{user?.name} <span style={{ color: 'var(--brand)' }}>(You)</span></div>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{(user?.points || 0).toLocaleString()}</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{Math.max(0, user?.points || 0).toLocaleString()}</div>
               </div>
             )}
           </div>

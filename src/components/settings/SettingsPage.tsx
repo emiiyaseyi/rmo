@@ -131,7 +131,7 @@ export default function SettingsPage() {
         if (!h.staffId) continue
         totals.set(h.staffId, (totals.get(h.staffId) || 0) + (Number(h.points) || 0))
       }
-      const updated = staff.map(s => ({ ...s, points: totals.get(s.id) ?? 0 }))
+      const updated = staff.map(s => ({ ...s, points: Math.max(0, totals.get(s.id) ?? 0) }))
       saveStaff(updated)
       logAudit('points_recalculated', 'system', { staffCount: updated.length })
       toast.success('Points recalculated')

@@ -135,6 +135,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .catch(() => {})
   }, [user?.id, user?.role])
 
+  // Keep the session user's gamification fields in sync with the polled staff
+  // record (points/streak/badges change server-side; the cached user goes stale)
+  useEffect(() => {
+    if (!user) return
+    const rec = staff.find(s => s.id === user.id)
+    if (rec && (rec.points !== user.points || rec.streak !== user.streak ||
+        rec.currentWeekPoints !== (user as any).currentWeekPoints)) {
+      setUser(u => u ? { ...u, points: rec.points, streak: rec.streak, currentWeekPoints: rec.currentWeekPoints, badges: rec.badges } : u)
+    }
+  }, [staff, user?.id])
+
   // ---------------------------------------------------------------------------
   // 60-second polling with delta sync — only fetches changed records after first load
   // ---------------------------------------------------------------------------

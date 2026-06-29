@@ -53,6 +53,26 @@ export default function LeaderboardPage() {
   const [reviewSelectedMonth, setReviewSelectedMonth] = useState<string>('')
   const [reviewCustomFrom, setReviewCustomFrom] = useState<string>('')
   const [reviewCustomTo, setReviewCustomTo] = useState<string>('')
+  const [reviewerStats, setReviewerStats] = useState<Record<string, { reviewed: number; avgScore: number }>>({})
+
+  // Fetch reviewer stats from the server (computed over ALL entries)
+  useEffect(() => {
+    let from = '', to = ''
+    if (reviewPeriodType === 'week' && reviewSelectedWeek) {
+      from = reviewSelectedWeek
+      const d = new Date(reviewSelectedWeek); d.setDate(d.getDate() + 6); to = d.toISOString().slice(0, 10)
+    } else if (reviewPeriodType === 'month' && reviewSelectedMonth) {
+      from = `${reviewSelectedMonth}-01`
+      const d = new Date(`${reviewSelectedMonth}-01`); d.setMonth(d.getMonth() + 1); d.setDate(0); to = d.toISOString().slice(0, 10)
+    } else if (reviewPeriodType === 'custom') {
+      from = reviewCustomFrom; to = reviewCustomTo
+    }
+    const qs = from && to ? `?from=${from}&to=${to}` : ''
+    fetch(`/api/leaderboard/reviewers${qs}`)
+      .then(r => r.json())
+      .then(d => setReviewerStats(d && typeof d === 'object' ? d : {}))
+      .catch(() => setReviewerStats({}))
+  }, [reviewPeriodType, reviewSelectedWeek, reviewSelectedMonth, reviewCustomFrom, reviewCustomTo])
 
   // Derive available weeks and months from entries weekKeys
   const availableWeeks = useMemo(() => {
@@ -187,42 +207,13 @@ export default function LeaderboardPage() {
   const reviewDateOf = (e: any): string | undefined =>
     (e.status === 'approved' ? e.approvedAt : e.status === 'rejected' ? e.rejectedAt : undefined) || e.updatedAt
 
+  // Reviewer stats come from the server (computed over ALL entries — the client
+  // only polls its own scoped subset, which would zero-out other reviewers).
   const reviewalRanked: ReviewerStat[] = useMemo(() => {
-    const filteredForReview = reviewPeriodType === 'alltime'
-      ? entries
-      : entries.filter(e => {
-          const rd = reviewDateOf(e)
-          if (!rd) return false
-          const d = rd.slice(0, 10)
-          if (reviewPeriodType === 'month') return d.startsWith(reviewSelectedMonth)
-          if (reviewPeriodType === 'week') {
-            const weekStart = new Date(reviewSelectedWeek)
-            const weekEnd = new Date(reviewSelectedWeek)
-            weekEnd.setDate(weekEnd.getDate() + 6)
-            const entryDate = new Date(d)
-            return entryDate >= weekStart && entryDate <= weekEnd
-          }
-          if (reviewPeriodType === 'custom') {
-            if (!reviewCustomFrom || !reviewCustomTo) return true
-            return d >= reviewCustomFrom && d <= reviewCustomTo
-          }
-          return true
-        })
     const reviewers = staff.filter(s => !s.suspended && (s.role === 'team_lead' || s.role === 'admin'))
     return reviewers.map(s => {
-      const reviewed = filteredForReview.filter(e =>
-        !e.deleted && (
-          ((e.approvedBy === s.id || e.approvedByName === s.name) && e.status === 'approved') ||
-          (e.rejectedBy === s.id && e.status === 'rejected')
-        )
-      )
-      const scores = reviewed
-        .map(e => reviewSpeedScore(e.submittedAt || e.createdAt, reviewDateOf(e)))
-        .filter(n => n > 0)
-      const avgScore = scores.length > 0
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-        : 0
-      return { id: s.id, name: s.name, role: s.role, department: s.department, totalReviewed: reviewed.length, avgScore }
+      const st = reviewerStats[s.id]
+      return { id: s.id, name: s.name, role: s.role, department: s.department, totalReviewed: st?.reviewed || 0, avgScore: st?.avgScore || 0 }
     })
     .filter(s => {
       const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
@@ -230,7 +221,7 @@ export default function LeaderboardPage() {
       return matchSearch && matchDept
     })
     .sort((a, b) => b.avgScore - a.avgScore || b.totalReviewed - a.totalReviewed)
-  }, [staff, entries, search, deptFilter, settings, reviewPeriodType, reviewSelectedWeek, reviewSelectedMonth, reviewCustomFrom, reviewCustomTo])
+  }, [staff, search, deptFilter, reviewerStats])
 
   // Department leaderboard
   const deptRanked: DeptRank[] = useMemo(() => {
@@ -417,7 +408,7 @@ export default function LeaderboardPage() {
                   <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
                     {isReviewTab
                       ? <><span style={{ fontFamily: 'var(--mono)' }}>{me?.avgScore ?? 0}</span> avg score · <span style={{ fontFamily: 'var(--mono)' }}>{me?.totalReviewed ?? 0}</span> reviewed</>
-                      : <><span style={{ fontFamily: 'var(--mono)' }}>{Math.max(0, user?.points || 0)}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{user?.streak || 0}</span> week streak</>}
+                      : <><span style={{ fontFamily: 'var(--mono)' }}>{Math.max(0, me?.points ?? user?.points ?? 0)}</span> points · <span style={{ fontFamily: 'var(--mono)' }}>{me?.streak ?? user?.streak ?? 0}</span> week streak</>}
                   </div>
                 </div>
               </div>

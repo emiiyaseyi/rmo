@@ -28,6 +28,17 @@ async function awardSubmissionPoints(staffId: string, weekKey: string, submitted
     const isEarly = new Date(submittedAt).getTime() < cutoff
     pts = isEarly ? early3 : onTime
     action = isEarly ? 'Early submission bonus' : 'On-time submission'
+
+    // Early-streak bonus: 3 consecutive prior early weeks → +1 on this early submission
+    if (isEarly) {
+      const monMs = new Date(`${weekKey}T00:00:00Z`).getTime()
+      const prev3 = [7, 14, 21].map(d => new Date(monMs - d * 86400000).toISOString().slice(0, 10))
+      const streakRows = await query(
+        "SELECT DISTINCT week_id FROM points_history WHERE staff_id = $1 AND action ILIKE 'Early submission%' AND week_id = ANY($2)",
+        [staffId, prev3]
+      )
+      if (streakRows.length >= 3) { pts += 1; action = 'Early submission bonus (streak +1)' }
+    }
   }
 
   await pool.query(

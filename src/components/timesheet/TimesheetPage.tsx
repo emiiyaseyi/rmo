@@ -442,11 +442,57 @@ function CountdownTimer({ weekKey, submissionWindow, latePenalty }: { weekKey: s
 /* ────────────────────────────────────────────────────────────── */
 /*  Submission Confirmation Modal                                 */
 /* ────────────────────────────────────────────────────────────── */
-function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, latePenalty, onConfirm, onClose }: any) {
+function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, latePenalty, isUpdate, priorHours, draftHours, onConfirm, onClose }: any) {
+  // Week already submitted once → new drafts are additions/updates, not a late submission
+  const newTotal = (priorHours || 0) + (draftHours || 0)
+  const overCap = newTotal > cap
   // New-task-only submissions after close go to 2nd-level review — no late penalty
   const allNewTasks = entries.length > 0 && entries.every((e: any) => e.isNewTask)
-  const isLate = windowStatus?.isPastDeadline && !allNewTasks
+  const isLate = !isUpdate && windowStatus?.isPastDeadline && !allNewTasks
   const penalty = latePenalty || 0
+
+  if (isUpdate) {
+    return (
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-header">
+            <span className="modal-title">Submit Updates</span>
+            <button className="btn btn-icon btn-secondary btn-sm" onClick={onClose}>✕</button>
+          </div>
+          <div className="modal-body">
+            <p style={{ fontSize: 14, marginBottom: 16 }}>
+              You're adding <strong>{entries.length} new {entries.length === 1 ? 'task' : 'tasks'}</strong> ({(draftHours || 0)}h) to a week you already submitted.
+            </p>
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 12, borderRadius: 8, fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span>Already logged:</span>
+                <span>{priorHours || 0}h</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span>Adding now:</span>
+                <span>+{draftHours || 0}h</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', fontWeight: 700, color: overCap ? 'var(--warning)' : 'var(--text-1)' }}>
+                <span>New total this week:</span>
+                <span>{priorHours || 0} + {draftHours || 0} = {newTotal}h</span>
+              </div>
+            </div>
+            {overCap && (
+              <div style={{ background: 'var(--warn-tint)', border: '1px solid var(--warning)', padding: '12px 14px', borderRadius: 8, fontSize: 13, marginTop: 16, color: 'var(--warning)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>⚡ Over cap by {(newTotal - cap).toFixed(1)}h</div>
+                <div>Admin will be informed of overtime.</div>
+              </div>
+            )}
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 16 }}>These additions will be sent for review. No penalty applies — this is an update to an already-submitted week.</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={onConfirm}>Submit Updates</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -841,6 +887,9 @@ export default function TimesheetPage() {
   const totalHours = allWeekEntries.reduce((s, e) => s + (e.hours || 0), 0)
   const isOver = totalHours > weekCap
   const submitted = allWeekEntries.some(e => ['submitted', 'approved', 'resubmitted'].includes(e.status))
+  // Hours already on record (submitted/approved) vs new drafts being added
+  const priorHours = allWeekEntries.filter(e => ['submitted', 'approved', 'resubmitted', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)).reduce((s, e) => s + (e.hours || 0), 0)
+  const draftHours = allWeekEntries.filter(e => e.status === 'draft').reduce((s, e) => s + (e.hours || 0), 0)
   const hasRejected = allWeekEntries.some(e => e.status === 'rejected')
   const hasDraftEntries = allWeekEntries.some(e => e.status === 'draft')
   const canEdit = isAdmin || (!submitted && !isLocked)
@@ -1421,7 +1470,7 @@ export default function TimesheetPage() {
               )}
               {canSubmit && (
                 <button onClick={submitWeek} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(12,122,55,.25)' }}>
-                  📤 Submit week
+                  {submitted ? '➕ Submit Updates' : '📤 Submit week'}
                 </button>
               )}
             </div>
@@ -1903,6 +1952,9 @@ export default function TimesheetPage() {
           cap={weekCap}
           windowStatus={windowStatus}
           latePenalty={settings?.pointsConfig?.outsideWindowPenalty}
+          isUpdate={submitted}
+          priorHours={priorHours}
+          draftHours={draftHours}
           onConfirm={handleConfirmSubmit}
           onClose={() => setShowConfirm(false)}
         />

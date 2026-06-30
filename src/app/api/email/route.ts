@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy-init: constructing Resend at module load throws when the key is absent
+// (e.g. during `next build` page-data collection). Defer until first send.
+let _resend: Resend | null = null
+function getResend(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
+  return _resend
+}
 
 // Rate limiting: max 3 emails per recipient per 10 minutes
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
@@ -41,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     // Send email using Resend
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: FROM_ADDRESS,
       to: Array.isArray(to) ? to : [to],
       subject,

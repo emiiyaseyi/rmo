@@ -1015,6 +1015,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const submittingEntries = entries.filter(e => e.staffId === staffId && e.weekKey === weekKey && !e.deleted)
     const allNewTasks = submittingEntries.length > 0 && submittingEntries.every(e => e.isNewTask)
     if (allNewTasks) isLate = false
+    // Week already submitted once → these drafts are additions/updates, not a late submission
+    const alreadySubmittedWeek = entries.some(e =>
+      e.staffId === staffId && e.weekKey === weekKey && !e.deleted &&
+      ['submitted', 'resubmitted', 'approved', 'pending_2nd_approval', 'pending_clarification'].includes(e.status)
+    )
+    if (alreadySubmittedWeek) isLate = false
 
     const submission: WeekSubmission = {
       id: submissionId, staffId, weekKey, status: 'submitted',

@@ -443,7 +443,9 @@ function CountdownTimer({ weekKey, submissionWindow, latePenalty }: { weekKey: s
 /*  Submission Confirmation Modal                                 */
 /* ────────────────────────────────────────────────────────────── */
 function SubmissionConfirmationModal({ entries, totalHours, cap, windowStatus, latePenalty, onConfirm, onClose }: any) {
-  const isLate = windowStatus?.isPastDeadline
+  // New-task-only submissions after close go to 2nd-level review — no late penalty
+  const allNewTasks = entries.length > 0 && entries.every((e: any) => e.isNewTask)
+  const isLate = windowStatus?.isPastDeadline && !allNewTasks
   const penalty = latePenalty || 0
 
   return (

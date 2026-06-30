@@ -1544,7 +1544,7 @@ export default function TimesheetPage() {
                         <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--ink)', flexShrink: 0 }}>{e.hours}h</span>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: sc.fg, background: sc.bg, padding: '3px 9px', borderRadius: 20, flexShrink: 0, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{e.status.replace(/_/g, ' ')}</span>
                         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          {((e.status === 'draft' && canEdit) || ((e.status === 'rejected' || e.status === 'pending_clarification') && !viewingStaffId)) && !isLocked && (
+                          {(['draft', 'rejected', 'pending_clarification'].includes(e.status)) && !viewingStaffId && !isLocked && (
                             <button className="btn btn-icon btn-secondary btn-sm" title="Edit task / hours" onClick={() => { setEditEntry(e); setShowForm(true) }}><Pencil size={13} /></button>
                           )}
                           <button className="btn btn-icon btn-secondary btn-sm" title="Duplicate" onClick={() => duplicateEntry(e)}><Copy size={13} /></button>

@@ -1011,6 +1011,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bonusDesc = 'On-time submission'
     }
 
+    // New-task-only submissions after close go to 2nd-level review — not penalized as late
+    const submittingEntries = entries.filter(e => e.staffId === staffId && e.weekKey === weekKey && !e.deleted)
+    const allNewTasks = submittingEntries.length > 0 && submittingEntries.every(e => e.isNewTask)
+    if (allNewTasks) isLate = false
+
     const submission: WeekSubmission = {
       id: submissionId, staffId, weekKey, status: 'submitted',
       submittedAt: now.toISOString(), totalHours,

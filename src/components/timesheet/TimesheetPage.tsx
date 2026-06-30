@@ -1529,6 +1529,7 @@ export default function TimesheetPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</span>
+                            {e.isNewTask && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-2)', background: 'var(--tint)', padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>New task</span>}
                             {e.category && <span style={{ fontSize: 11, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>· {e.category}</span>}
                           </div>
                           <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.description}>{e.description}</div>

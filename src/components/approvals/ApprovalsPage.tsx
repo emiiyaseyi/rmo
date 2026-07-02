@@ -875,7 +875,7 @@ export default function ApprovalsPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
                       {e.description && (
-                        <div title={e.description} style={{ color: 'var(--ink-2)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0' }}>{e.description}</div>
+                        <div style={{ color: 'var(--ink-2)', fontSize: 12, whiteSpace: 'normal', overflowWrap: 'anywhere', margin: '2px 0' }}>{e.description}</div>
                       )}
                       <div style={{ color: 'var(--ink-3)', fontSize: 11.5 }}>
                         {weekRange(e.weekKey)}

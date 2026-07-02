@@ -69,6 +69,14 @@ export function fmtDate(iso: string | Date | undefined): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Date + time in WAT (Africa/Lagos), e.g. "1 Jul 2026, 14:32"
+export function fmtDateTime(iso: string | Date | undefined): string {
+  if (!iso) return ''
+  const d = typeof iso === 'string' ? new Date(iso) : iso
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })
+}
+
 export function timeAgo(iso: string | undefined): string {
   if (!iso) return ''
   const diff = Date.now() - new Date(iso).getTime()

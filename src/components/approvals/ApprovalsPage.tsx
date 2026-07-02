@@ -894,22 +894,22 @@ export default function ApprovalsPage() {
                       )
                     })()}
 
-                    {/* flag pill */}
-                    {isFlagged && (
-                      <span
-                        title={e.isNewTask ? 'New task (no late penalty)' : `Will trigger 2nd-level approval (threshold: ${secondLevelThreshold}h)`}
-                        style={{ fontSize: 11, fontWeight: 700, color: e.isNewTask ? 'var(--brand-2)' : 'var(--danger)', background: e.isNewTask ? 'var(--tint)' : 'var(--danger-tint)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                      >
-                        {e.isNewTask ? 'New task' : 'High value'}
-                      </span>
-                    )}
-
-                    {/* status pill for clarification/resubmitted/draft */}
-                    {e.status !== 'submitted' && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0, textTransform: 'capitalize' }}>
-                        {e.status === 'pending_clarification' ? 'clarification' : e.status === 'draft' ? 'planned' : e.status}
-                      </span>
-                    )}
+                    {/* pill slot — fixed width so reviewer/hours columns stay aligned across rows */}
+                    <div style={{ width: 94, flexShrink: 0, display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
+                      {isFlagged && (
+                        <span
+                          title={e.isNewTask ? 'New task (no late penalty)' : `Will trigger 2nd-level approval (threshold: ${secondLevelThreshold}h)`}
+                          style={{ fontSize: 11, fontWeight: 700, color: e.isNewTask ? 'var(--brand-2)' : 'var(--danger)', background: e.isNewTask ? 'var(--tint)' : 'var(--danger-tint)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' }}
+                        >
+                          {e.isNewTask ? 'New task' : 'High value'}
+                        </span>
+                      )}
+                      {e.status !== 'submitted' && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--elev)', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                          {e.status === 'pending_clarification' ? 'clarification' : e.status === 'draft' ? 'planned' : e.status}
+                        </span>
+                      )}
+                    </div>
 
                     {/* hours */}
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', width: 56, textAlign: 'right', flexShrink: 0 }}>

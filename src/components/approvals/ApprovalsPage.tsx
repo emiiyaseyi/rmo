@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { fmtDate, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
+import { fmtDate, fmtDateTime, weekRange, genId, logAudit, getWeekKey, formatTimeUntilDeadline, getSubmissionWindowStatus, sendEmailNotification, exportCSV, exportPDF, avatarColor, initials } from '../../lib/utils'
 import { Staff, Entry, ApprovalHistoryEntry } from '../../types'
 import toast from 'react-hot-toast'
 import { X, CheckSquare, Square, Trash2, Check, Search } from 'lucide-react'
@@ -234,6 +234,9 @@ export default function ApprovalsPage() {
   const [confirmAction, setConfirmAction] = useState<{isOpen: boolean, action: () => void, message: string, title?: string}>({isOpen: false, action: () => {}, message: ''})
   const [reviewTimeLeft, setReviewTimeLeft] = useState('')
   const [historyEntry, setHistoryEntry] = useState<Entry | null>(null)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyFrom, setHistoryFrom] = useState('')
+  const [historyTo, setHistoryTo] = useState('')
   const [exportFilters, setExportFilters] = useState<{ statuses: string[], departments: string[], weeks: string[] }>({ statuses: [], departments: [], weeks: [] })
   const [exporting, setExporting] = useState(false)
 
@@ -421,6 +424,7 @@ export default function ApprovalsPage() {
           status: 'rejected' as const,
           rejectedAt: now,
           rejectedBy: user.id,
+          rejectedByName: user.name,
           rejectionReason: note
         }
         notify(entry.staffId, `❌ Entry rejected by ${user.name}: ${note}`, 'rejection')
@@ -867,10 +871,16 @@ export default function ApprovalsPage() {
                       <div style={{ color: 'var(--ink-3)', fontSize: 12 }}>{s?.department || '—'}</div>
                     </div>
 
-                    {/* project + week */}
+                    {/* project + description + week/submitted-time */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.project}</div>
-                      <div style={{ color: 'var(--ink-3)', fontSize: 12 }}>{weekRange(e.weekKey)}</div>
+                      {e.description && (
+                        <div title={e.description} style={{ color: 'var(--ink-2)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0' }}>{e.description}</div>
+                      )}
+                      <div style={{ color: 'var(--ink-3)', fontSize: 11.5 }}>
+                        {weekRange(e.weekKey)}
+                        {e.submittedAt && <span> · submitted {fmtDateTime(e.submittedAt)}</span>}
+                      </div>
                     </div>
 
                     {/* project lead / reviewer */}
@@ -1070,30 +1080,71 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {tab === 'history' && (
+      {tab === 'history' && (() => {
+        const stickyTh: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: 'var(--elev, var(--bg-card))' }
+        // Resolve the person who actioned each entry to a display name (old rows stored only an id)
+        const actionedByName = (e: Entry) =>
+          e.approvedByName || e.rejectedByName ||
+          staff.find(s => s.id === (e.rejectedBy || e.approvedBy))?.name || '—'
+        const q = historySearch.trim().toLowerCase()
+        const fromMs = historyFrom ? new Date(historyFrom + 'T00:00:00').getTime() : null
+        const toMs = historyTo ? new Date(historyTo + 'T23:59:59').getTime() : null
+        const filteredHistory = history
+          .filter(e => {
+            if (q) {
+              const hay = `${e.staffName || ''} ${e.project || ''} ${actionedByName(e)}`.toLowerCase()
+              if (!hay.includes(q)) return false
+            }
+            const actionMs = new Date(e.approvedAt || e.rejectedAt || e.updatedAt || '').getTime()
+            if (fromMs !== null && (isNaN(actionMs) || actionMs < fromMs)) return false
+            if (toMs !== null && (isNaN(actionMs) || actionMs > toMs)) return false
+            return true
+          })
+          .sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.updatedAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.updatedAt || '').getTime())
+        return (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {history.length === 0 ? (
+          {/* filters */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: 12, borderBottom: '1px solid var(--line-2)' }}>
+            <input
+              className="form-input"
+              placeholder="Search staff, project or reviewer…"
+              value={historySearch}
+              onChange={e => setHistorySearch(e.target.value)}
+              style={{ flex: 1, minWidth: 200 }}
+            />
+            <label style={{ fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              From <input type="date" className="form-input" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} style={{ width: 'auto' }} />
+            </label>
+            <label style={{ fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              To <input type="date" className="form-input" value={historyTo} onChange={e => setHistoryTo(e.target.value)} style={{ width: 'auto' }} />
+            </label>
+            {(historySearch || historyFrom || historyTo) && (
+              <button className="btn btn-secondary btn-sm" onClick={() => { setHistorySearch(''); setHistoryFrom(''); setHistoryTo('') }}>Clear</button>
+            )}
+          </div>
+          {filteredHistory.length === 0 ? (
             <div className="empty-state" style={{ padding: 40 }}>
               <div className="empty-state-icon">📋</div>
-              <div className="empty-state-title">No history yet</div>
+              <div className="empty-state-title">{history.length === 0 ? 'No history yet' : 'No matches'}</div>
             </div>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
               <table>
                 <thead>
                   <tr>
-                    <th>Staff</th>
-                    <th>Project</th>
-                    <th>Hours</th>
-                    <th>Week</th>
-                    <th>Status</th>
-                    <th>Actioned By</th>
-                    <th>Date</th>
-                    <th>Note</th>
+                    <th style={stickyTh}>Staff</th>
+                    <th style={stickyTh}>Project</th>
+                    <th style={stickyTh}>Hours</th>
+                    <th style={stickyTh}>Week</th>
+                    <th style={stickyTh}>Submitted</th>
+                    <th style={stickyTh}>Status</th>
+                    <th style={stickyTh}>Actioned By</th>
+                    <th style={stickyTh}>Actioned</th>
+                    <th style={stickyTh}>Note</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.updatedAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.updatedAt || '').getTime()).slice(0, 100).map(e => (
+                  {filteredHistory.slice(0, 200).map(e => (
                     <tr key={e.id} style={{ cursor: 'pointer' }} onClick={() => setHistoryEntry(e)} title="Click to view details">
                       <td style={{ fontWeight: 600 }}>{e.staffName}</td>
                       <td>{e.project}</td>
@@ -1102,11 +1153,12 @@ export default function ApprovalsPage() {
                         {e.corrected && <span title="Hours were corrected" style={{ marginLeft: 4, color: 'var(--warning)' }}>✏️</span>}
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{weekRange(e.weekKey)}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{e.submittedAt ? fmtDateTime(e.submittedAt) : '—'}</td>
                       <td>
                         <span className={`badge badge-${e.status === 'approved' ? 'green' : 'red'}`}>{e.status}</span>
                       </td>
-                      <td>{e.approvedByName || e.rejectedBy || '—'}</td>
-                      <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{fmtDate(e.approvedAt || e.rejectedAt || '')}</td>
+                      <td>{actionedByName(e)}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{fmtDateTime(e.approvedAt || e.rejectedAt || '')}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 200 }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {e.correctionNote || e.rejectionReason || '—'}
@@ -1119,7 +1171,8 @@ export default function ApprovalsPage() {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {tab === 'export' && isAdmin && (() => {
         const allWeeks = Array.from(new Set(entries.filter(e => !e.deleted).map(e => e.weekKey))).sort().reverse()

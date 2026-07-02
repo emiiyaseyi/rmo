@@ -90,6 +90,7 @@ export interface Entry {
     submittedAt?: string;
     deletedAt?: string;
     rejectedBy?: string;
+    rejectedByName?: string;
     rejectedAt?: string;
     correctionNote?: string;
     clarifyNote?: string;

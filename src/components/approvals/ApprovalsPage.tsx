@@ -1103,6 +1103,11 @@ export default function ApprovalsPage() {
           .sort((a, b) => new Date(b.approvedAt || b.rejectedAt || b.updatedAt || '').getTime() - new Date(a.approvedAt || a.rejectedAt || a.updatedAt || '').getTime())
         return (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {/* caption — makes it clear this is the record of past actions */}
+          <div style={{ padding: '12px 14px 0' }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>History of past approvals</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Approved & rejected entries you've actioned. {filteredHistory.length} shown.</div>
+          </div>
           {/* filters */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: 12, borderBottom: '1px solid var(--line-2)' }}>
             <input

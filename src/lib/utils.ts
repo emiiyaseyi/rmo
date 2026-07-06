@@ -65,6 +65,12 @@ export function getWeekKey(date: Date = new Date()): string {
 
 export function fmtDate(iso: string | Date | undefined): string {
   if (!iso) return ''
+  // Date-only keys (YYYY-MM-DD) are calendar dates — format in UTC so a browser
+  // tz west of UTC doesn't render them as the previous day.
+  if (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
+  }
   const d = typeof iso === 'string' ? new Date(iso) : iso
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -285,10 +291,15 @@ export const BADGES = [
 
 export function weekRange(weekKey: string | undefined): string {
   if (!weekKey) return ''
-  const mon = new Date(weekKey)
+  // Parse the YYYY-MM-DD key as a fixed calendar date and format in UTC so the
+  // range reads the same in every browser timezone (a tz west of UTC would
+  // otherwise render Monday's UTC-midnight as the previous day — "Sunday").
+  const [y, m, d] = weekKey.split('-').map(Number)
+  const mon = new Date(Date.UTC(y, (m || 1) - 1, d || 1))
   const fri = new Date(mon)
-  fri.setDate(fri.getDate() + 4)
-  return `${mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+  fri.setUTCDate(fri.getUTCDate() + 4)
+  const opts: Intl.DateTimeFormatOptions = { timeZone: 'UTC' }
+  return `${mon.toLocaleDateString('en-GB', { ...opts, day: 'numeric', month: 'short' })} – ${fri.toLocaleDateString('en-GB', { ...opts, day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
 export function exportCSV(rows: any[], filename: string): void {

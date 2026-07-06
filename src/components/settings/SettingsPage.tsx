@@ -124,16 +124,13 @@ export default function SettingsPage() {
 
   const recalcAllPoints = async () => {
     try {
-      const res = await fetch('/api/points-history')
-      const history: { staffId?: string; points: number }[] = await res.json()
-      const totals = new Map<string, number>()
-      for (const h of history) {
-        if (!h.staffId) continue
-        totals.set(h.staffId, (totals.get(h.staffId) || 0) + (Number(h.points) || 0))
-      }
-      const updated = staff.map(s => ({ ...s, points: Math.max(0, totals.get(s.id) ?? 0) }))
-      saveStaff(updated)
-      logAudit('points_recalculated', 'system', { staffCount: updated.length })
+      // Server reconciles atomically: staff.points = floored sum of points_history,
+      // current_week_points = sum for the current week. Then pull fresh staff.
+      const res = await fetch('/api/points-history/recalc', { method: 'POST' })
+      if (!res.ok) throw new Error('recalc failed')
+      const fresh: any[] = await (await fetch('/api/staff')).json()
+      if (Array.isArray(fresh) && fresh.length) saveStaff(fresh)
+      logAudit('points_recalculated', 'system', { staffCount: fresh.length })
       toast.success('Points recalculated')
     } catch {
       toast.error('Failed to recalculate points')
